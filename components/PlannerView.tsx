@@ -430,8 +430,8 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
             </div>
         )}
 
-        {/* SPLIT VIEW: NEW STUDY vs REVISION - Unchanged Logic */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* SPLIT VIEW: NEW STUDY vs REVISION - Optimized for Large Screens */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* COLUMN 1: NEW STUDY TARGETS */}
             <div className="space-y-4">

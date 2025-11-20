@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession } from '../types';
 import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon } from './Icons';
@@ -255,9 +254,9 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Knowledge Base</h2>
         </div>
         
-        {/* Stats Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+        {/* Stats Summary - Responsive Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3 shadow-sm">
                  <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
                      <BookOpenIcon className="w-5 h-5" />
                  </div>
@@ -266,7 +265,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                      <p className="text-xl font-bold text-slate-800 dark:text-white">{totalPages}</p>
                  </div>
              </div>
-             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3 shadow-sm">
                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg">
                      <FireIcon className="w-5 h-5" />
                  </div>
@@ -275,7 +274,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                      <p className="text-xl font-bold text-slate-800 dark:text-white">{totalAnkiCards}</p>
                  </div>
              </div>
-             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-3 shadow-sm">
                  <div className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
                      <PaperClipIcon className="w-5 h-5" />
                  </div>
@@ -289,19 +288,19 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <p className="text-slate-500 dark:text-slate-400 text-sm">Manage content, visuals, and flashcard counts.</p>
             
-            <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto items-stretch sm:items-center">
               <input 
                 type="text" 
                 placeholder="Search..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm w-full md:w-48 focus:ring-2 focus:ring-primary/20 outline-none"
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm w-full sm:w-48 focus:ring-2 focus:ring-primary/20 outline-none"
               />
               
               <select 
                 value={selectedSystem}
                 onChange={e => setSelectedSystem(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm w-full md:w-40"
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm w-full sm:w-40"
               >
                 <option value="">All Systems</option>
                 {SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -312,7 +311,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                   <select 
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value as SortOption)}
-                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm cursor-pointer hover:border-indigo-300 transition-colors flex-grow sm:flex-grow-0"
                     title="Sort By"
                   >
                     <option value="PAGE">Page #</option>
@@ -323,7 +322,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                   
                   <button 
                     onClick={toggleSortOrder}
-                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
+                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors flex-shrink-0"
                     title={sortOrder === 'ASC' ? "Ascending" : "Descending"}
                   >
                       {sortOrder === 'ASC' ? <BarsArrowDownIcon className="w-5 h-5" /> : <BarsArrowUpIcon className="w-5 h-5" />}
@@ -333,8 +332,8 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
         </div>
       </div>
 
-      {/* Mobile & Tablet Card View (Up to LG) */}
-      <div className="lg:hidden space-y-4">
+      {/* Mobile & Tablet Card View (Up to LG) - Optimized for iPad Portrait with Grid */}
+      <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredData.map(entry => {
            const isEditing = editingId === entry.pageNumber;
            const session = sessions.find(s => s.pageNumber === entry.pageNumber);
@@ -344,7 +343,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
            
            if (isEditing) {
              return (
-               <div key={entry.pageNumber} className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4">
+               <div key={entry.pageNumber} className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4 md:col-span-2">
                   <div className="flex justify-between items-center">
                       <span className="font-bold text-slate-700 text-lg">Pg {entry.pageNumber}</span>
                   </div>
@@ -437,9 +436,9 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
 
            // Display Card
            return (
-             <div key={entry.pageNumber} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4">
+             <div key={entry.pageNumber} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex flex-col h-full">
                 <div className="flex justify-between items-start mb-3">
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 w-full">
                         {/* Integrated Page Badge */}
                         <PageBadge 
                             pageNumber={entry.pageNumber}
@@ -448,24 +447,25 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                             onClick={() => onViewPage(entry.pageNumber)}
                         />
                         
-                        <div>
-                            <h3 className="font-bold text-slate-800 dark:text-white text-lg leading-tight">{entry.topic}</h3>
+                        <div className="min-w-0 flex-1">
+                            <h3 className="font-bold text-slate-800 dark:text-white text-lg leading-tight truncate">{entry.topic}</h3>
                             <div className="flex gap-2 mt-1 flex-wrap">
                                 <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase">{entry.subject}</span>
-                                <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase">{entry.system || 'General'}</span>
+                                <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase truncate max-w-[100px]">{entry.system || 'General'}</span>
                             </div>
 
                             {/* Subtopics Display */}
                             {entry.subTopics && entry.subTopics.length > 0 && (
                                 <div className="mt-2 border-l-2 border-slate-200 dark:border-slate-700 pl-2 space-y-0.5">
-                                    {entry.subTopics.map((st, idx) => (
-                                        <p key={idx} className="text-xs text-slate-500 dark:text-slate-400 font-medium">• {st}</p>
+                                    {entry.subTopics.slice(0, 2).map((st, idx) => (
+                                        <p key={idx} className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">• {st}</p>
                                     ))}
+                                    {entry.subTopics.length > 2 && <p className="text-[10px] text-slate-400 italic">+ {entry.subTopics.length - 2} more</p>}
                                 </div>
                             )}
                         </div>
                     </div>
-                    <button onClick={() => startEdit(entry)} className="text-primary p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex-shrink-0">
+                    <button onClick={() => startEdit(entry)} className="text-primary p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex-shrink-0 -mt-2 -mr-2">
                         <span className="sr-only">Edit</span>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                           <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
@@ -475,7 +475,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 </div>
                 
                 {/* Mobile Anki Stats */}
-                <div className="mt-3 border-t border-slate-100 dark:border-slate-700 pt-2">
+                <div className="mt-auto border-t border-slate-100 dark:border-slate-700 pt-2">
                     <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
                         <div className="flex items-center gap-1">
                              <FireIcon className="w-4 h-4 text-amber-500" />

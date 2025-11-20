@@ -103,7 +103,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
   };
 
   return (
-    <div className="animate-fade-in h-[80dvh] sm:h-[calc(100vh-8rem)] flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+    <div className="animate-fade-in h-[80vh] sm:h-[calc(100vh-8rem)] flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
         
         {/* Header */}
         <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-teal-600 to-emerald-600 text-white flex items-center gap-3">
@@ -167,7 +167,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         </div>
 
         {/* Input Area */}
-        <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
+        <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 pb-safe">
             <div className="relative flex items-center gap-2">
                 <input 
                     type="text" 

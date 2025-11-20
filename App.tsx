@@ -704,8 +704,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-background dark:bg-dark-bg text-slate-800 dark:text-dark-text font-sans selection:bg-primary/20 transition-colors duration-200">
       {/* Navbar */}
-      <nav className="sticky top-0 z-30 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-md border-b border-slate-200 dark:border-dark-border">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
+      <nav className="sticky top-0 z-30 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-md border-b border-slate-200 dark:border-dark-border transition-all">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
           <button 
             onClick={() => setIsSidebarOpen(true)} 
             className="p-2 flex-shrink-0 rounded-lg bg-primary text-white shadow-md shadow-indigo-200/50 hover:bg-indigo-600 transition-all active:scale-95"
@@ -832,7 +832,7 @@ const App: React.FC = () => {
           </div>
       )}
 
-      <main className="max-w-6xl mx-auto px-3 sm:px-6 py-6 sm:py-8 pb-20 sm:pb-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
         {viewMode === 'SETTINGS' && (
             <SettingsView settings={settings} onUpdateSettings={setSettings} />
         )}

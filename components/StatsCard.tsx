@@ -196,8 +196,8 @@ const StatsCard: React.FC<StatsCardProps> = ({ sessions, studyPlan = [], onNavig
   return (
     <div className="space-y-6 mb-8 animate-fade-in">
       
-      {/* Summary Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* Summary Metrics Row - Optimized for iPad/Tablet (md:grid-cols-4) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div 
             onClick={onViewAllPages}
             className="bg-white dark:bg-dark-surface p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-dark-border shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 cursor-pointer hover:shadow-md hover:border-indigo-100 dark:hover:border-primary/30 transition-all group"
@@ -281,6 +281,7 @@ const StatsCard: React.FC<StatsCardProps> = ({ sessions, studyPlan = [], onNavig
           </div>
       </div>
 
+      {/* Charts Area - Optimized for iPad (lg:grid-cols-2 for side-by-side only on larger screens, stacked on portrait) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Chart 1: Daily Activity */}

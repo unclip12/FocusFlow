@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
     <title>FocusFlow - AI Study Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -30,6 +30,9 @@
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
             },
+            screens: {
+              'xs': '475px',
+            }
           },
         },
       };
@@ -51,16 +54,31 @@
           font-family: 'Inter', sans-serif; 
           background-color: rgb(var(--color-background));
           color: #1e293b;
+          /* Handle safe areas for iPhone/iPad */
+          padding-top: env(safe-area-inset-top);
+          padding-bottom: env(safe-area-inset-bottom);
+          padding-left: env(safe-area-inset-left);
+          padding-right: env(safe-area-inset-right);
       }
 
       html.dark body {
           color: #f1f5f9;
       }
 
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      /* Custom scrollbar for webkit */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       html.dark ::-webkit-scrollbar-thumb { background: #475569; }
+      
+      /* Hide scrollbar util */
+      .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
     </style>
   <script type="importmap">
 {

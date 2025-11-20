@@ -54,7 +54,7 @@ const SessionRow: React.FC<SessionRowProps> = ({ session, knowledgeBase = [], on
         </div>
 
         {/* Task Info */}
-        <div className="flex-grow min-w-0 cursor-pointer" onClick={() => onEdit(session)}>
+        <div className="flex-grow min-w-0 cursor-pointer w-full" onClick={() => onEdit(session)}>
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h4 className={`font-semibold text-slate-800 dark:text-slate-200 truncate text-base sm:text-lg ${isMastered ? 'text-slate-500 dark:text-slate-500' : ''}`}>
               {session.topic}

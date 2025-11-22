@@ -55,7 +55,11 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                 system: '',
                 subject: '',
                 subtopics: [],
-                url: ''
+                url: '',
+                videoDuration: undefined,
+                videoStartTime: undefined,
+                videoEndTime: undefined,
+                playbackSpeed: 2 // Default to 2x
             }
         };
         setTasks([...tasks, newTask]);
@@ -212,7 +216,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                             
                                             <div className="flex-1">
                                                 {isExpanded ? (
-                                                    <div className="flex gap-2">
+                                                    <div className="flex gap-2 items-center">
                                                         {task.type === 'FA' ? (
                                                             <input 
                                                                 className="w-24 p-1 border rounded text-sm bg-white dark:bg-slate-900 dark:text-white font-bold"
@@ -223,13 +227,63 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                                 onClick={(e) => e.stopPropagation()}
                                                             />
                                                         ) : task.type === 'VIDEO' ? (
-                                                            <input 
-                                                                className="flex-1 p-1 border rounded text-sm bg-white dark:bg-slate-900 dark:text-white font-bold"
-                                                                placeholder="Video Title"
-                                                                value={task.detail}
-                                                                onChange={(e) => updateTask(task.id, { detail: e.target.value })}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            />
+                                                            <div className="flex flex-1 gap-2 items-center">
+                                                                <input 
+                                                                    className="flex-[2] p-1 border rounded px-2 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                    placeholder="Video Title"
+                                                                    value={task.detail}
+                                                                    onChange={(e) => updateTask(task.id, { detail: e.target.value })}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
+                                                                <div className="flex items-center gap-1">
+                                                                    <input 
+                                                                        type="number"
+                                                                        className="w-12 p-1 border rounded text-center bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 text-[10px] sm:text-xs"
+                                                                        placeholder="Start"
+                                                                        value={task.meta?.videoStartTime ?? ''}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value);
+                                                                            const start = isNaN(val) ? 0 : val;
+                                                                            const end = task.meta?.videoEndTime || 0;
+                                                                            updateTaskMeta(task.id, { videoStartTime: start, videoDuration: Math.max(0, end - start) });
+                                                                        }}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    />
+                                                                    <span className="text-slate-400 text-[10px]">-</span>
+                                                                    <input 
+                                                                        type="number"
+                                                                        className="w-12 p-1 border rounded text-center bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 text-[10px] sm:text-xs"
+                                                                        placeholder="End"
+                                                                        value={task.meta?.videoEndTime ?? ''}
+                                                                        onChange={(e) => {
+                                                                            const val = parseFloat(e.target.value);
+                                                                            const end = isNaN(val) ? 0 : val;
+                                                                            const start = task.meta?.videoStartTime || 0;
+                                                                            updateTaskMeta(task.id, { videoEndTime: end, videoDuration: Math.max(0, end - start) });
+                                                                        }}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    />
+                                                                    <select
+                                                                        className="w-14 p-1 border rounded text-center bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                                                        value={task.meta?.playbackSpeed || 2}
+                                                                        onChange={(e) => updateTaskMeta(task.id, { playbackSpeed: parseFloat(e.target.value) })}
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        <option value="1">1x</option>
+                                                                        <option value="1.25">1.25x</option>
+                                                                        <option value="1.5">1.5x</option>
+                                                                        <option value="1.75">1.75x</option>
+                                                                        <option value="2">2x</option>
+                                                                        <option value="2.5">2.5x</option>
+                                                                        <option value="3">3x</option>
+                                                                    </select>
+                                                                    {task.meta?.videoDuration && task.meta?.playbackSpeed && (
+                                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 w-8 text-right">
+                                                                            ~{Math.ceil(task.meta.videoDuration / task.meta.playbackSpeed)}m
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex items-center gap-2">
                                                                 <input 

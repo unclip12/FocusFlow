@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Block, BlockTask } from '../types';
-import { CheckCircleIcon, XMarkIcon, ClockIcon, ArrowRightIcon, PlusIcon } from './Icons';
+import { CheckCircleIcon, XMarkIcon, ClockIcon, ArrowRightIcon, PlusIcon, CalendarIcon } from './Icons';
 
 interface TaskCompletionModalProps {
     isOpen: boolean;
@@ -10,7 +10,7 @@ interface TaskCompletionModalProps {
     onSave: (
         status: 'COMPLETED' | 'PARTIAL' | 'NOT_DONE', 
         tasks: BlockTask[], 
-        rescheduleAction?: { type: 'NEW_BLOCK' | 'NEXT_BLOCK', time?: string, tasks: BlockTask[] }
+        rescheduleAction?: { type: 'NEW_BLOCK' | 'NEXT_BLOCK' | 'FUTURE_DATE', time?: string, duration?: number, date?: string, tasks: BlockTask[] }
     ) => void;
     defaultDuration: number;
 }
@@ -19,11 +19,14 @@ const REASONS = ["Ran out of time", "Difficult topic", "Distracted", "Too tired"
 
 export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen, block, onClose, onSave, defaultDuration }) => {
     const [tasks, setTasks] = useState<BlockTask[]>([]);
-    const [rescheduleMode, setRescheduleMode] = useState<'NEW_BLOCK' | 'NEXT_BLOCK' | null>(null);
+    const [rescheduleMode, setRescheduleMode] = useState<'NEW_BLOCK' | 'NEXT_BLOCK' | 'FUTURE_DATE' | null>(null);
     
     // Reschedule Time State
     const [newBlockStartTime, setNewBlockStartTime] = useState('');
     const [newBlockEndTime, setNewBlockEndTime] = useState('');
+    
+    // Future Date State
+    const [futureDate, setFutureDate] = useState('');
     
     // Initialize state from block
     useEffect(() => {
@@ -41,6 +44,11 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen
             const d = new Date();
             d.setMinutes(d.getMinutes() + defaultDuration);
             setNewBlockEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+
+            // Default future date: tomorrow
+            const tmr = new Date();
+            tmr.setDate(tmr.getDate() + 1);
+            setFutureDate(tmr.toISOString().split('T')[0]);
         }
     }, [isOpen, block, defaultDuration]);
 
@@ -73,28 +81,8 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen
         
         let rescheduleAction = undefined;
         if (incomplete.length > 0 && rescheduleMode) {
-            // If NEXT_BLOCK, time isn't needed. If NEW_BLOCK, strictly use Start Time. 
-            // NOTE: The planService expects start time and duration. 
-            // We'll pass start time, but logic in TodaysPlanView needs to calculate duration from End Time.
-            // Actually onSave signature in TodaysPlanView for NEW_BLOCK takes time and duration.
-            // We will adapt onSave signature here to pass endTime if needed, or handle duration calc here.
-            
-            // Wait, `onSave` in Props accepts `time?: string`. 
-            // We should probably pass startTime AND duration, or simply startTime and let parent calc?
-            // Current signature: `time?: string`. Let's pass startTime. 
-            // BUT wait, we have End Time now. We should calculate duration here or pass end time.
-            // Let's pass startTime, but we need to communicate duration.
-            // The easiest way without changing types excessively is to just pass startTime, 
-            // and we can attach duration to the payload or let parent handle defaults.
-            // BETTER: Update `onSave` to accept an object or we calculate duration and pass it somehow?
-            // The prompt asks for start time and end time.
-            // I will hack `time` to be `START|DURATION` string or just `START`.
-            // Actually, let's stick to `startTime` and assume the parent uses default or we update the parent.
-            // Re-reading prompt: "ask me what is the end time... put plus 30".
-            // Okay, let's calculate duration here and pass it? No, `insertBlockAndShift` takes duration.
-            
-            // Let's calculate duration.
             let duration = defaultDuration;
+            
             if (rescheduleMode === 'NEW_BLOCK' && newBlockStartTime && newBlockEndTime) {
                 const [sH, sM] = newBlockStartTime.split(':').map(Number);
                 const [eH, eM] = newBlockEndTime.split(':').map(Number);
@@ -102,22 +90,16 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen
                 if (duration < 0) duration += 24*60;
             }
 
-            // We will encode duration into the `time` string as "HH:mm|DURATION" to pass it safely.
-            // Or cleaner: update `rescheduleAction` type in parent. I'll do the string hack for minimal file changes if I can't update types easily.
-            // Actually I can update types in this file since I am editing it.
-            // But `TodaysPlanView` uses this type. I am editing `TodaysPlanView` too. So I can change the type!
-            
             rescheduleAction = {
                 type: rescheduleMode,
                 time: rescheduleMode === 'NEW_BLOCK' ? newBlockStartTime : undefined,
                 duration: rescheduleMode === 'NEW_BLOCK' ? duration : undefined,
+                date: rescheduleMode === 'FUTURE_DATE' ? futureDate : undefined,
                 tasks: incomplete
             };
         }
 
-        // Cast to match parent expectation which might be stricter if I don't update it perfectly.
-        // I will update parent to accept `duration` in rescheduleAction.
-        onSave(status, tasks, rescheduleAction as any);
+        onSave(status, tasks, rescheduleAction);
         onClose();
     };
 
@@ -204,61 +186,97 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen
                                 <h4 className="font-bold">Reschedule {incompleteCount} Tasks</h4>
                             </div>
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <button 
-                                    onClick={() => setRescheduleMode('NEW_BLOCK')}
-                                    className={`p-4 rounded-xl border-2 text-left transition-all ${rescheduleMode === 'NEW_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}
-                                >
-                                    <div className="font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2"><PlusIcon className="w-4 h-4"/> Create New Block</div>
-                                    <p className="text-xs text-slate-500">Shift schedule forward</p>
-                                </button>
+                            <div className="space-y-3">
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'NEW_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'NEW_BLOCK'} 
+                                        onChange={() => setRescheduleMode('NEW_BLOCK')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <PlusIcon className="w-4 h-4"/> Create New Block Today
+                                        </span>
+                                        {rescheduleMode === 'NEW_BLOCK' && (
+                                            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-800/50">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1">
+                                                        <span className="text-[10px] text-slate-400 font-bold mb-1 block">Start</span>
+                                                        <input 
+                                                            type="time" 
+                                                            value={newBlockStartTime}
+                                                            onChange={(e) => setNewBlockStartTime(e.target.value)}
+                                                            className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <span className="text-[10px] text-slate-400 font-bold mb-1 block">End</span>
+                                                        <input 
+                                                            type="time" 
+                                                            value={newBlockEndTime}
+                                                            onChange={(e) => setNewBlockEndTime(e.target.value)}
+                                                            className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2 flex-wrap mt-2">
+                                                    {[15, 30, 45, 60].map(min => (
+                                                        <button 
+                                                            key={min} 
+                                                            onClick={() => adjustEndTime(min)}
+                                                            className="px-2 py-1 rounded bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-100 dark:border-amber-800 hover:bg-amber-50 transition-colors"
+                                                        >
+                                                            +{min}m
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
 
-                                <button 
-                                    onClick={() => setRescheduleMode('NEXT_BLOCK')}
-                                    className={`p-4 rounded-xl border-2 text-left transition-all ${rescheduleMode === 'NEXT_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}
-                                >
-                                    <div className="font-bold text-slate-800 dark:text-white mb-1 flex items-center gap-2"><ArrowRightIcon className="w-4 h-4"/> Add to Next Block</div>
-                                    <p className="text-xs text-slate-500">Merge with upcoming task</p>
-                                </button>
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'NEXT_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'NEXT_BLOCK'} 
+                                        onChange={() => setRescheduleMode('NEXT_BLOCK')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <ArrowRightIcon className="w-4 h-4"/> Add to Next Block
+                                        </span>
+                                    </div>
+                                </label>
+
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'FUTURE_DATE' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'FUTURE_DATE'} 
+                                        onChange={() => setRescheduleMode('FUTURE_DATE')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <CalendarIcon className="w-4 h-4"/> Reschedule to Date
+                                        </span>
+                                        {rescheduleMode === 'FUTURE_DATE' && (
+                                            <div className="mt-2 p-2">
+                                                <input 
+                                                    type="date" 
+                                                    value={futureDate}
+                                                    onChange={(e) => setFutureDate(e.target.value)}
+                                                    className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
                             </div>
-
-                            {rescheduleMode === 'NEW_BLOCK' && (
-                                <div className="mt-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-amber-100 dark:border-amber-900/30 animate-slide-in-up space-y-3">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase">Time Window</label>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex-1">
-                                            <span className="text-[10px] text-slate-400 font-bold mb-1 block">Start</span>
-                                            <input 
-                                                type="time" 
-                                                value={newBlockStartTime}
-                                                onChange={(e) => setNewBlockStartTime(e.target.value)}
-                                                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-lg font-bold outline-none focus:border-amber-500"
-                                            />
-                                        </div>
-                                        <div className="flex-1">
-                                            <span className="text-[10px] text-slate-400 font-bold mb-1 block">End</span>
-                                            <input 
-                                                type="time" 
-                                                value={newBlockEndTime}
-                                                onChange={(e) => setNewBlockEndTime(e.target.value)}
-                                                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-lg font-bold outline-none focus:border-amber-500"
-                                            />
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex gap-2 flex-wrap">
-                                        {[15, 30, 45, 60].map(min => (
-                                            <button 
-                                                key={min} 
-                                                onClick={() => adjustEndTime(min)}
-                                                className="px-3 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-100 dark:border-amber-800 hover:bg-amber-100 transition-colors"
-                                            >
-                                                +{min}m
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     )}
 

@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry } from '../types';
 import { getDayPlan, saveDayPlan, getRevisionSettings } from '../services/firebase';
 import { saveTimeLog } from '../services/timeLogService';
-import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock } from '../services/planService';
+import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock, startVirtualBlock, moveTasksToFuturePlan } from '../services/planService';
 import { generateBlocks } from '../services/blockGenerator'; 
-import { CalendarIcon, ClockIcon, VideoIcon, FireIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon } from './Icons';
+import { CalendarIcon, ClockIcon, VideoIcon, FireIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon } from './Icons';
 import { TaskCompletionModal } from './TaskCompletionModal'; 
 import { ManualPlanModal } from './ManualPlanModal'; 
 import { AddBlockModal } from './AddBlockModal';
@@ -42,6 +42,10 @@ const formatDurationString = (minutes: number) => {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
+const formatTime24 = (date: Date) => {
+    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 };
 
 // --- COMPONENTS ---
@@ -292,6 +296,8 @@ const SwipeableBlockWrapper: React.FC<{
 const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, onStart: () => void, onPause: () => void, onFinish: () => void }> = ({ block, isCurrent, isNext, onStart, onPause, onFinish }) => {
     const isDone = block.status === 'DONE';
     const isBreak = block.type === 'BREAK';
+    const isRevision = block.type === 'REVISION_FA';
+    const isVirtual = block.isVirtual; // Flag for revision projections
     
     // Countdown Timer Logic
     const [countdown, setCountdown] = useState<string>('--:--');
@@ -306,11 +312,15 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                 startTime.setHours(startH, startM, 0);
                 
                 const elapsedMs = now.getTime() - startTime.getTime();
+                // For regular blocks, count down from planned duration
                 const totalDurationMs = block.plannedDurationMinutes * 60 * 1000;
                 const remainingMs = totalDurationMs - elapsedMs;
                 
                 if (remainingMs <= 0) {
-                    setCountdown('00:00');
+                    // If overtime, show negative or elapsed? Let's show negative for urgency.
+                    const m = Math.floor(Math.abs(remainingMs) / 60000);
+                    const s = Math.floor((Math.abs(remainingMs) % 60000) / 1000);
+                    setCountdown(`-${m}:${s.toString().padStart(2, '0')}`);
                 } else {
                     const m = Math.floor(remainingMs / 60000);
                     const s = Math.floor((remainingMs % 60000) / 1000);
@@ -343,7 +353,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                     {/* LEFT SIDE: ORIGINAL PLAN */}
                     <div className="flex-1 p-4 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                         <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Original Plan</div>
-                        <div className="font-mono font-bold text-sm text-slate-600 dark:text-slate-300 mb-1">{formatTime12(block.plannedStartTime)} - {formatTime12(block.plannedEndTime)}</div>
+                        <div className="font-mono font-bold text-sm text-slate-600 dark:text-slate-300 mb-1">{isVirtual ? formatTime12(block.plannedStartTime) : `${formatTime12(block.plannedStartTime)} - ${formatTime12(block.plannedEndTime)}`}</div>
                         <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-3">{block.title}</h4>
                         
                         <div className="space-y-1">
@@ -352,7 +362,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></div>
                                     {t.detail}
                                 </div>
-                            )) : <span className="text-xs text-slate-400 italic">No specific subtasks logged.</span>}
+                            )) : <span className="text-xs text-slate-400 italic">{block.description || "No specific subtasks."}</span>}
                         </div>
                     </div>
 
@@ -383,7 +393,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                         {block.rescheduledTo && (
                             <div className="mb-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300 font-bold">
                                 <ArrowRightIcon className="w-3.5 h-3.5" />
-                                <span>Rescheduled to {formatTime12(block.rescheduledTo)}</span>
+                                <span>Rescheduled to {block.rescheduledTo.includes(':') ? formatTime12(block.rescheduledTo) : block.rescheduledTo}</span>
                             </div>
                         )}
 
@@ -416,23 +426,25 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
 
     // Active / Pending Block View
     return (
-        <div className={`relative pl-4 md:pl-0 transition-all ${isBreak ? 'opacity-80' : ''}`}>
-            <div className="absolute left-[-8px] md:left-[-20px] top-0 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700 hidden md:block"></div>
+        <div className={`relative pl-4 md:pl-0 transition-all ${isBreak ? 'opacity-80' : ''} ${isVirtual ? 'hover:scale-[1.01] hover:shadow-md' : ''}`}>
+            <div className={`absolute left-[-8px] md:left-[-20px] top-0 bottom-0 w-0.5 hidden md:block ${isVirtual ? 'bg-amber-300 dark:bg-amber-700' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
             
             <div className={`rounded-xl p-4 border flex flex-col gap-4 
-                ${isBreak ? 'bg-slate-50 dark:bg-slate-800/50 border-dashed border-slate-300 dark:border-slate-600' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'} 
+                ${isBreak ? 'bg-slate-50 dark:bg-slate-800/50 border-dashed border-slate-300 dark:border-slate-600' : isVirtual ? 'bg-amber-50/30 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'} 
                 ${isCurrent ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-slate-900' : ''}
-                ${isNext ? 'border-indigo-200 dark:border-indigo-800' : ''}
+                ${isNext && !isVirtual ? 'border-indigo-200 dark:border-indigo-800' : ''}
             `}>
                 <div className="flex justify-between items-start">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <span className={`font-mono font-bold text-sm ${isCurrent ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'}`}>
-                                {formatTime12(block.plannedStartTime)} - {formatTime12(block.plannedEndTime)}
+                                {isVirtual ? formatTime12(block.plannedStartTime) : `${formatTime12(block.plannedStartTime)} - ${formatTime12(block.plannedEndTime)}`}
                             </span>
                             {isBreak && <span className="text-[10px] font-bold bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500">BREAK</span>}
+                            {isVirtual && <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">DUE</span>}
                         </div>
                         <h4 className="font-bold text-lg text-slate-800 dark:text-white">{block.title}</h4>
+                        {isVirtual && block.description && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 font-medium">{block.description}</p>}
                     </div>
                     
                     {/* Controls */}
@@ -461,7 +473,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                             </button>
                         ) : (
                             !isBreak && (
-                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`p-2 rounded-full transition-all ${isNext ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-indigo-500'}`}>
+                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`p-2 rounded-full transition-all ${isNext ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-indigo-500'} ${isVirtual ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-md' : ''}`}>
                                     <PlayIcon className="w-5 h-5" />
                                 </button>
                             )
@@ -503,35 +515,29 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
 };
 
 const BlocksLayout: React.FC<{ 
-    plan: DayPlan, 
-    onStartBlock: (id: string) => void, 
+    blocks: Block[], // Sorted blocks including virtual ones
+    onStartBlock: (id: string, block: Block) => void, 
     onPauseBlock: (id: string) => void, 
     onFinishBlock: (block: Block) => void,
     onDeleteBlock: (block: Block) => void,
     onSelectBlock: (block: Block) => void
-}> = ({ plan, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock }) => {
-    // Ensure blocks are strictly chronological for display
-    const sortedBlocks = useMemo(() => {
-        if (!plan.blocks) return [];
-        return [...plan.blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-    }, [plan.blocks]);
+}> = ({ blocks, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock }) => {
+    const currentBlock = blocks.find(b => b.status === 'IN_PROGRESS');
+    const nextBlock = blocks.find(b => b.status === 'NOT_STARTED');
 
-    const currentBlock = sortedBlocks.find(b => b.status === 'IN_PROGRESS');
-    const nextBlock = sortedBlocks.find(b => b.status === 'NOT_STARTED');
-
-    if (sortedBlocks.length === 0) {
+    if (blocks.length === 0) {
         return (
             <div className="p-8 text-center flex flex-col items-center">
                 <ListCheckIcon className="w-12 h-12 text-slate-300 mb-4" />
-                <h3 className="text-lg font-bold text-slate-700 dark:text-white">No Blocks Generated</h3>
-                <p className="text-slate-500 mb-4">The timeline hasn't been generated yet.</p>
+                <h3 className="text-lg font-bold text-slate-700 dark:text-white">No Timeline Items</h3>
+                <p className="text-slate-500 mb-4">Add a block or wait for revision items to appear.</p>
             </div>
         );
     }
 
     return (
         <div className="animate-fade-in space-y-4">
-            {sortedBlocks.map((block) => (
+            {blocks.map((block) => (
                 <SwipeableBlockWrapper 
                     key={block.id}
                     onDelete={() => onDeleteBlock(block)}
@@ -541,7 +547,7 @@ const BlocksLayout: React.FC<{
                         block={block}
                         isCurrent={currentBlock?.id === block.id}
                         isNext={nextBlock?.id === block.id}
-                        onStart={() => onStartBlock(block.id)}
+                        onStart={() => onStartBlock(block.id, block)}
                         onPause={() => onPauseBlock(block.id)}
                         onFinish={() => onFinishBlock(block)}
                     />
@@ -601,12 +607,68 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         setCurrentDate(getAdjustedDate(d));
     };
 
+    // --- MERGED BLOCKS LOGIC (Actual Plan + Due Revisions) ---
+    const mergedBlocks = useMemo(() => {
+        let actualBlocks = plan?.blocks || [];
+        
+        // Filter KB for due revisions
+        const dueRevisions = knowledgeBase.filter(kb => {
+            if (!kb.nextRevisionAt) return false;
+            const dueStr = getAdjustedDate(new Date(kb.nextRevisionAt));
+            return dueStr === currentDate;
+        });
+
+        const virtualBlocks: Block[] = dueRevisions.map(kb => {
+            const dueTime = new Date(kb.nextRevisionAt!);
+            const timeStr = formatTime24(dueTime);
+            
+            const isAlreadyDone = actualBlocks.some(b => 
+                b.status === 'DONE' && 
+                b.tasks?.some(t => t.type === 'FA' && (t.detail.includes(kb.pageNumber) || t.meta?.pageNumber === parseInt(kb.pageNumber)))
+            );
+
+            if (isAlreadyDone) return null;
+
+            return {
+                id: `rev-${kb.pageNumber}`, // Temporary ID
+                index: -1,
+                date: currentDate,
+                plannedStartTime: timeStr,
+                plannedEndTime: timeStr, // Point in time
+                type: 'REVISION_FA',
+                title: `Revise: ${kb.title}`,
+                description: `Revision Page: ${kb.pageNumber}`,
+                plannedDurationMinutes: 15, // Default assumption
+                status: 'NOT_STARTED',
+                isVirtual: true,
+                tasks: [{
+                    id: `vt-${kb.pageNumber}`,
+                    type: 'FA',
+                    detail: `Page ${kb.pageNumber}`,
+                    completed: false,
+                    meta: { pageNumber: parseInt(kb.pageNumber), topic: kb.title }
+                }]
+            };
+        }).filter(Boolean) as Block[];
+
+        // Merge and Sort
+        const all = [...actualBlocks, ...virtualBlocks];
+        return all.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+    }, [plan, knowledgeBase, currentDate]);
+
+
     // --- BLOCK ACTIONS ---
 
-    const handleStartBlock = async (blockId: string) => {
+    const handleStartBlock = async (blockId: string, blockObj: Block) => {
         try {
-            const updatedPlan = await startBlock(currentDate, blockId);
-            if (updatedPlan) setPlan(updatedPlan);
+            if (blockObj.isVirtual) {
+                // Materialize virtual block into DB then start
+                const updatedPlan = await startVirtualBlock(currentDate, blockObj);
+                if (updatedPlan) setPlan(updatedPlan);
+            } else {
+                const updatedPlan = await startBlock(currentDate, blockId);
+                if (updatedPlan) setPlan(updatedPlan);
+            }
         } catch (e) { console.error("Start block failed", e); }
     };
     
@@ -625,7 +687,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const handleFinishConfirm = async (
         status: 'COMPLETED' | 'PARTIAL' | 'NOT_DONE', 
         tasks: BlockTask[], 
-        rescheduleAction?: { type: 'NEW_BLOCK' | 'NEXT_BLOCK', time?: string, duration?: number, tasks: BlockTask[] }
+        rescheduleAction?: { type: 'NEW_BLOCK' | 'NEXT_BLOCK' | 'FUTURE_DATE', time?: string, duration?: number, date?: string, tasks: BlockTask[] }
     ) => {
         if (!finishingBlock) return;
         
@@ -633,22 +695,23 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             // 1. Handle Rescheduling Logic First
             if (rescheduleAction) {
                 if (rescheduleAction.type === 'NEW_BLOCK' && rescheduleAction.time) {
-                    // Create new block with specific title format: "[Original] (Rescheduled)"
                     const newTitle = `${finishingBlock.title} (Rescheduled)`;
                     await insertBlockAndShift(currentDate, rescheduleAction.time, rescheduleAction.duration || 30, rescheduleAction.tasks, newTitle);
                 } else if (rescheduleAction.type === 'NEXT_BLOCK') {
                     await moveTasksToNextBlock(currentDate, finishingBlock.id, rescheduleAction.tasks);
+                } else if (rescheduleAction.type === 'FUTURE_DATE' && rescheduleAction.date) {
+                    await moveTasksToFuturePlan(currentDate, rescheduleAction.date, rescheduleAction.tasks);
                 }
             }
 
-            // 2. Finish Current Block (Pass rescheduledTo info if new block created)
+            // 2. Finish Current Block
             const updatedPlan = await finishBlock(currentDate, finishingBlock.id, { 
                 status, 
                 pagesCovered: [],
                 carryForwardPages: [], 
                 notes: '', 
                 tasks: tasks,
-                rescheduledTo: rescheduleAction?.type === 'NEW_BLOCK' ? rescheduleAction.time : undefined
+                rescheduledTo: rescheduleAction?.type === 'NEW_BLOCK' ? rescheduleAction.time : (rescheduleAction?.type === 'FUTURE_DATE' ? rescheduleAction.date : undefined)
             });
 
             if (updatedPlan) {
@@ -658,12 +721,15 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             // 3. SYNC TO KB & TimeLogs if task is completed (FA Logger & KnowledgeBase)
             if (status === 'COMPLETED' || status === 'PARTIAL') {
                 // Find completed FA tasks
-                const completedFATasks = tasks.filter(t => t.type === 'FA' && t.execution?.completed && t.detail);
+                // Robustly find any task that looks like a FA page read
+                const completedFATasks = tasks.filter(t => t.type === 'FA' && t.execution?.completed);
                 
                 if (completedFATasks.length > 0 && onUpdateKnowledgeBase) {
-                    // Convert tasks to log entries
+                    // Fetch latest settings to ensure SRS is applied correctly
+                    const revSettings = await getRevisionSettings() || { mode: 'balanced', targetCount: 7 };
+
                     const entriesToLog = completedFATasks.map(t => {
-                        // Extract page number from detail if possible
+                        // Ensure we get a page number
                         const pageMatch = t.detail.match(/\d+/);
                         const pageNum = pageMatch ? parseInt(pageMatch[0]) : (t.meta?.pageNumber || 0);
                         
@@ -671,34 +737,31 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                             pageNumber: pageNum,
                             isExplicitRevision: finishingBlock.title.toLowerCase().includes('revis') || t.detail.toLowerCase().includes('revis'),
                             topics: t.meta?.topic ? [t.meta.topic] : [],
-                            date: currentDate
+                            date: currentDate // Explicitly use today's plan date
                         };
-                    }).filter(e => e.pageNumber > 0); // Valid pages only
+                    }).filter(e => e.pageNumber > 0);
 
                     if (entriesToLog.length > 0) {
-                        const revSettings = await getRevisionSettings() || { mode: 'balanced', targetCount: 7 };
+                        // processLogEntries calculates nextRevisionAt based on current RevisionSettings
                         const { results, updatedKB } = processLogEntries(entriesToLog, knowledgeBase, revSettings);
                         await onUpdateKnowledgeBase(updatedKB);
                         
-                        // Save TimeLogs for each entry (using block actual time)
+                        // Save TimeLogs for each processed entry
                         const startTimeStr = finishingBlock.actualStartTime || "00:00";
                         const endTimeStr = finishingBlock.actualEndTime || "00:00";
-                        
-                        // Approximate duration per task if multiple tasks (split evenly for logging purposes)
-                        const totalDuration = finishingBlock.actualDurationMinutes || 30;
-                        const durationPerTask = Math.round(totalDuration / entriesToLog.length) || 1;
+                        const durationPerTask = Math.round((finishingBlock.actualDurationMinutes || 30) / entriesToLog.length) || 1;
 
                         for (const res of results) {
                             const start = new Date(currentDate + 'T' + startTimeStr + ':00');
                             const end = new Date(currentDate + 'T' + endTimeStr + ':00');
+                            // Handle midnight crossover for time logging
                             if (end < start) end.setDate(end.getDate() + 1);
 
-                            // Create TimeLogEntry to sync with FALogger view
                             const timeLog: TimeLogEntry = {
                                 id: generateId(),
                                 date: currentDate,
                                 startTime: start.toISOString(),
-                                endTime: end.toISOString(), // Use block time roughly
+                                endTime: end.toISOString(),
                                 durationMinutes: durationPerTask,
                                 category: res.eventType === 'REVISION' ? 'REVISION' : 'STUDY',
                                 source: 'TODAYS_PLAN_BLOCK',
@@ -715,13 +778,11 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         } catch (e) { console.error("Finish block failed", e); } finally { setIsCompletionModalOpen(false); setFinishingBlock(null); }
     };
 
-    // Open specific Add Block modal
+    // ... (Modal Handlers - unchanged) ...
     const handleOpenAddBlock = () => {
         const lastBlock = plan?.blocks && plan.blocks.length > 0 ? plan.blocks[plan.blocks.length - 1] : null;
         let startTime = '08:00';
-        if (lastBlock) {
-            startTime = lastBlock.plannedEndTime;
-        }
+        if (lastBlock) startTime = lastBlock.plannedEndTime;
         setAddBlockStartTime(startTime);
         setIsAddBlockModalOpen(true);
     };
@@ -731,7 +792,6 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         const [eH, eM] = endTime.split(':').map(Number);
         let duration = (eH * 60 + eM) - (sH * 60 + sM);
         if (duration < 0) duration += 24 * 60;
-
         const updatedPlan = await insertBlockAndShift(currentDate, startTime, duration, tasks, title);
         if (updatedPlan) setPlan(updatedPlan);
     };
@@ -741,23 +801,24 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         setPlan(newPlan);
     };
 
-    // Detail Modal Handlers
     const handleOpenBlockDetail = (block: Block) => {
         setSelectedBlock(block);
         setIsDetailModalOpen(true);
     };
 
     const handleUpdateBlock = async (updatedBlock: Block) => {
+        if (updatedBlock.isVirtual) {
+            return;
+        }
         try {
             await updateBlockInPlan(currentDate, updatedBlock.id, updatedBlock);
-            // Refresh local plan
             const updated = await getDayPlan(currentDate);
             setPlan(updated);
         } catch (e) { console.error(e); }
     };
 
     const handleRescheduleFromModal = async (action: { type: 'NEW_BLOCK' | 'NEXT_BLOCK', time?: string, duration?: number, tasks: BlockTask[] }) => {
-        if (!selectedBlock) return;
+        if (!selectedBlock || selectedBlock.isVirtual) return;
         try {
             if (action.type === 'NEW_BLOCK' && action.time) {
                 const newTitle = `${selectedBlock.title} (Rescheduled)`;
@@ -765,16 +826,17 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             } else if (action.type === 'NEXT_BLOCK') {
                 await moveTasksToNextBlock(currentDate, selectedBlock.id, action.tasks);
             }
-            
-            // Update original block status if needed? Usually Detail Modal handles edits.
             const updated = await getDayPlan(currentDate);
             setPlan(updated);
         } catch (e) { console.error(e); }
     };
 
-    // Delete Handling
     const confirmDeleteBlock = async () => {
         if (blockToDelete) {
+            if (blockToDelete.isVirtual) {
+                setBlockToDelete(null);
+                return;
+            }
             const updatedPlan = await deleteBlock(currentDate, blockToDelete.id);
             if (updatedPlan) setPlan(updatedPlan);
             setBlockToDelete(null);
@@ -829,7 +891,19 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
 
             <div className="flex justify-between items-center relative">
                 <button onClick={() => handleDateChange(-1)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><ChevronLeftIcon className="w-6 h-6 text-slate-500" /></button>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white text-center">{formattedDate}</h2>
+                
+                <div className="relative group cursor-pointer px-4 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-white text-center select-none">
+                        {formattedDate}
+                    </h2>
+                    <input 
+                        type="date"
+                        value={currentDate}
+                        onChange={(e) => e.target.value && setCurrentDate(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                    />
+                </div>
+
                 <button onClick={() => handleDateChange(1)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
             </div>
 
@@ -862,11 +936,11 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             </div>
 
             {loading ? <div className="p-8 text-center text-slate-400">Loading Plan...</div> :
-             !plan ? (
+             !plan && mergedBlocks.length === 0 ? (
                 <div className="p-8 text-center flex flex-col items-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
                     <CalendarIcon className="w-12 h-12 text-slate-300 mb-4" />
                     <h3 className="text-lg font-bold text-slate-700 dark:text-white">No Plan for this day</h3>
-                    <p className="text-slate-500 mb-6">Create a block schedule to get started.</p>
+                    <p className="text-slate-500 mb-6">Create a block schedule or wait for revisions.</p>
                     
                     <button 
                         onClick={() => setIsManualModalOpen(true)} 
@@ -877,9 +951,9 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 </div>
              ) : (
                 viewMode === 'full' 
-                ? <FullDayPlanLayout plan={plan} onEdit={() => setIsManualModalOpen(true)} /> 
+                ? <FullDayPlanLayout plan={plan || { date: currentDate, faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0, videos: [], anki: null, qbank: null, breaks: [], notesFromUser: '', notesFromAI: '', attachments: [], totalStudyMinutesPlanned: 0, totalBreakMinutes: 0, blocks: mergedBlocks }} onEdit={() => setIsManualModalOpen(true)} /> 
                 : <BlocksLayout 
-                    plan={plan} 
+                    blocks={mergedBlocks}
                     onStartBlock={handleStartBlock} 
                     onPauseBlock={handlePauseBlock} 
                     onFinishBlock={initiateFinish}

@@ -26,33 +26,55 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
 
     const metrics = useMemo(() => {
         let todayMinutes = 0;
-        const studiedPages = new Set<string>();
-        const revisedPages = new Set<string>();
+        const studiedPagesLog = new Set<string>();
+        const revisedPagesLog = new Set<string>();
 
-        // 1. Calculate base stats from KnowledgeBase Logs (which now includes syncd data from blocks)
+        // 1. Calculate base stats from KnowledgeBase Logs (Actual Execution Source of Truth)
         knowledgeBase.forEach(kb => {
             (kb.logs || []).forEach(log => {
                 if (getAdjustedDate(log.timestamp) === todayStr) {
-                    // Only count duration if source is NOT TodaysPlanBlock to avoid double counting if we use block data primarily
-                    // BUT, since we want accurate total time, we can rely on block data for "Study Time" card if available.
-                    // For pages, we use KB.
                     if (log.type === 'STUDY') {
-                        studiedPages.add(kb.pageNumber);
+                        studiedPagesLog.add(kb.pageNumber);
                     } else if (log.type === 'REVISION') {
-                        revisedPages.add(kb.pageNumber);
+                        revisedPagesLog.add(kb.pageNumber);
                     }
                 }
             });
         });
 
-        // 2. Calculate Time from DayPlan Blocks (Primary source for "Study Time")
+        // 2. Calculate Time from DayPlan Blocks
         let plannedMinutes = 0;
+        let ankiPlanned = 0;
+        let ankiCompleted = 0;
+
         if (todayPlan && todayPlan.blocks) {
             const executedBlocks = todayPlan.blocks.filter(b => b.status === 'DONE');
             todayMinutes = executedBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
             plannedMinutes = todayPlan.totalStudyMinutesPlanned || 0;
+
+            // Calculate Anki Stats from Blocks
+            todayPlan.blocks.forEach(block => {
+                // Check Granular Tasks first
+                const ankiTasks = block.tasks?.filter(t => t.type === 'ANKI') || [];
+                if (ankiTasks.length > 0) {
+                    ankiTasks.forEach(t => {
+                        const count = t.meta?.count || 0;
+                        ankiPlanned += count;
+                        if (t.execution?.completed) {
+                            ankiCompleted += count;
+                        }
+                    });
+                } else if (block.relatedAnkiInfo?.totalCards) {
+                    // Fallback to block generic info if no granular tasks
+                    ankiPlanned += block.relatedAnkiInfo.totalCards;
+                    if (block.status === 'DONE') {
+                        ankiCompleted += block.relatedAnkiInfo.totalCards;
+                    }
+                }
+            });
+
         } else {
-            // Fallback to KB logs if no plan (legacy mode)
+             // Fallback for time if no plan structure
              knowledgeBase.forEach(kb => {
                 (kb.logs || []).forEach(log => {
                     if (getAdjustedDate(log.timestamp) === todayStr) {
@@ -60,44 +82,78 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                     }
                 });
             });
-            plannedMinutes = 240; // Default target 4h
+            plannedMinutes = 240;
         }
 
-        // Calculate revision goal
-        const pagesWithDueRevisions = new Set<string>();
-        knowledgeBase.forEach(kb => {
-            const checkItem = (item: { nextRevisionAt: string | null }, pageNum: string) => {
-                if (item.nextRevisionAt && new Date(item.nextRevisionAt) <= now) {
-                    pagesWithDueRevisions.add(pageNum);
+        // 3. Planned Pages Calculation (From Today's Plan Blocks)
+        const plannedPagesSet = new Set<string>();
+        const completedPlannedPagesSet = new Set<string>();
+
+        if (todayPlan && todayPlan.blocks) {
+            todayPlan.blocks.forEach(block => {
+                // Check tasks for FA pages
+                if (block.tasks) {
+                    block.tasks.forEach(task => {
+                        if (task.type === 'FA') {
+                            // Extract page number from meta or detail
+                            const pg = task.meta?.pageNumber ? String(task.meta.pageNumber) : (task.detail.match(/\d+/)?.[0]);
+                            if (pg) {
+                                plannedPagesSet.add(pg);
+                                // Check completion status
+                                if (task.execution?.completed) {
+                                    completedPlannedPagesSet.add(pg);
+                                }
+                            }
+                        }
+                    });
                 }
-            };
-            checkItem(kb, kb.pageNumber);
-            kb.topics.forEach(topic => {
-                checkItem(topic, kb.pageNumber);
-                (topic.subTopics || []).forEach(subTopic => checkItem(subTopic, kb.pageNumber));
+                // Fallback to relatedFaPages if tasks not detailed
+                if (block.relatedFaPages) {
+                    block.relatedFaPages.forEach(pg => plannedPagesSet.add(String(pg)));
+                    if (block.status === 'DONE' && (!block.tasks || block.tasks.length === 0)) {
+                        block.relatedFaPages.forEach(pg => completedPlannedPagesSet.add(String(pg)));
+                    }
+                }
             });
+        }
+
+        const plannedPagesTotal = plannedPagesSet.size;
+        const plannedPagesCompleted = completedPlannedPagesSet.size;
+
+
+        // 4. Revision Goal Calculation
+        let currentDueCount = 0;
+        knowledgeBase.forEach(kb => {
+            if (kb.nextRevisionAt && new Date(kb.nextRevisionAt) <= now) {
+                currentDueCount++;
+            } 
         });
 
-        const revisionGoalTotal = pagesWithDueRevisions.size;
-        // Count how many of the due pages were actually revised today
-        const revisionGoalCompleted = Array.from(revisedPages).filter(p => pagesWithDueRevisions.has(p)).length;
-
-
+        const revisedTodayCount = revisedPagesLog.size;
+        const revisionGoalTotal = currentDueCount + revisedTodayCount; 
+        
         const hours = Math.floor(todayMinutes / 60);
         const mins = todayMinutes % 60;
         const timeString = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-
-        const totalTodayPages = studiedPages.size + revisedPages.size;
 
         return { 
             timeString, 
             todayMinutes,
             plannedMinutes,
-            pagesStudiedToday: studiedPages.size,
-            pagesRevisedToday: revisedPages.size,
-            totalTodayPages,
+            
+            // Study Pages
+            plannedPagesTotal,
+            plannedPagesCompleted,
+            totalUniqueStudied: studiedPagesLog.size,
+
+            // Revision Pages
             revisionGoalTotal,
-            revisionGoalCompleted
+            revisionGoalCompleted: revisedTodayCount,
+            totalUniqueRevised: revisedPagesLog.size,
+
+            // Anki
+            ankiPlanned,
+            ankiCompleted
         };
     }, [knowledgeBase, todayStr, now, todayPlan]);
 
@@ -108,62 +164,81 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                 Today at a Glance
             </h3>
             
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Time Card */}
-                <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30">
-                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
-                        <ClockIcon className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Study Time</span>
-                    </div>
-                    <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.timeString}</p>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        of {Math.round(metrics.plannedMinutes / 60)}h planned
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Card 1: Time */}
+                <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 flex flex-col justify-between h-full">
+                    <div>
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
+                            <ClockIcon className="w-4 h-4" />
+                            <span className="text-xs font-bold uppercase tracking-wider">Study Time</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.timeString}</p>
+                            <span className="text-xs text-slate-500 font-medium">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
+                        </div>
                     </div>
                     <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-blue-500" />
                 </div>
 
-                {/* Pages Studied Card */}
-                <div className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30">
-                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
-                        <BookOpenIcon className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Pages Studied</span>
+                {/* Card 2: Pages Studied */}
+                <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 flex flex-col justify-between h-full">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
+                                <BookOpenIcon className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Pages</span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.plannedPagesCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold">/ {metrics.plannedPagesTotal}</span>
+                            </div>
+                        </div>
+                        <div className="text-right bg-white dark:bg-slate-800/50 px-2 py-1 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">Total</p>
+                            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">{metrics.totalUniqueStudied}</p>
+                        </div>
                     </div>
-                    <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">
-                        {metrics.pagesStudiedToday}
-                    </p>
-                     <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        First-time logs
+                    <div className="mt-auto">
+                        <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-emerald-500" />
                     </div>
-                    <ProgressBar current={metrics.pagesStudiedToday} total={metrics.totalTodayPages || 1} colorClass="bg-emerald-500" />
                 </div>
 
-                {/* Pages Revised Card */}
-                <div className="p-3 rounded-xl bg-sky-50/50 dark:bg-sky-900/10 border border-sky-100 dark:border-sky-900/30">
-                    <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400 mb-1">
-                        <RepeatIcon className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Pages Revised</span>
+                {/* Card 3: Revisions */}
+                <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-900/30 flex flex-col justify-between h-full">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 mb-1">
+                                <ArrowPathIcon className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Revisions</span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.revisionGoalCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold">/ {metrics.revisionGoalTotal}</span>
+                            </div>
+                        </div>
                     </div>
-                    <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.pagesRevisedToday}</p>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        Revision logs
+                    <div className="mt-auto">
+                        <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-violet-500" />
                     </div>
-                     <ProgressBar current={metrics.pagesRevisedToday} total={metrics.totalTodayPages || 1} colorClass="bg-sky-500" />
                 </div>
 
-                {/* NEW Revision Goal Card */}
-                <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30">
-                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-1">
-                        <ArrowPathIcon className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase">Revision Goal</span>
+                {/* Card 4: Anki */}
+                <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 flex flex-col justify-between h-full">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-1">
+                                <FireIcon className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Anki Cards</span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.ankiCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold">/ {metrics.ankiPlanned}</span>
+                            </div>
+                        </div>
                     </div>
-                    <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">
-                        {metrics.revisionGoalCompleted}
-                        <span className="text-sm font-medium text-slate-400"> / {metrics.revisionGoalTotal} due</span>
-                    </p>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        Due items completed
+                    <div className="mt-auto">
+                        <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-amber-500" />
                     </div>
-                    <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-amber-500" />
                 </div>
             </div>
         </div>
@@ -247,8 +322,7 @@ export const StatsGrid: React.FC<Pick<StatsProps, 'knowledgeBase' | 'streak'>> =
     );
 };
 
-// Default export kept for compatibility if imported elsewhere, 
-// but basically rendering the Today view as a fallback
+// Default export kept for compatibility if imported elsewhere
 const StatsCard: React.FC<StatsProps> = (props) => {
     return (
         <div className="space-y-6">

@@ -171,6 +171,10 @@ export interface BlockTask {
         subject?: string;
         subtopics?: string[];
         url?: string;
+        videoDuration?: number;
+        videoStartTime?: number;
+        videoEndTime?: number;
+        playbackSpeed?: number;
     };
     execution?: TaskExecution;
 }
@@ -216,6 +220,9 @@ export interface Block {
   
   // Link to where tasks were moved
   rescheduledTo?: string; // Time string e.g. "09:00 PM" or Block ID
+  
+  // --- DYNAMIC / UI PROPERTIES ---
+  isVirtual?: boolean; // If true, this block is projected from KnowledgeBase and not saved in DayPlan yet
 }
 
 export interface DayPlan {
@@ -499,23 +506,16 @@ export const SYSTEMS = [
 ];
 
 /**
- * Returns YYYY-MM-DD string relative to the "Study Day".
- * If time is before 4:00 AM, it returns the Previous Day's date.
+ * Returns YYYY-MM-DD string relative to the standard calendar day.
+ * Updates at 12:00 AM.
  */
 export const getAdjustedDate = (dateInput: Date | string): string => {
     const date = new Date(dateInput);
-    // Clone to avoid mutation
-    const adjusted = new Date(date);
-    
-    // If hour is 0, 1, 2, 3 (before 4am), subtract 1 day to count as previous "Study Day"
-    if (adjusted.getHours() < 4) {
-        adjusted.setDate(adjusted.getDate() - 1);
-    }
     
     // Return YYYY-MM-DD in local time
-    const year = adjusted.getFullYear();
-    const month = String(adjusted.getMonth() + 1).padStart(2, '0');
-    const day = String(adjusted.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
     
     return `${year}-${month}-${day}`;
 };

@@ -72,6 +72,13 @@ export const BlockDetailModal: React.FC<BlockDetailModalProps> = ({ isOpen, bloc
         setFormData({ ...formData, tasks });
     };
 
+    const updateTaskMeta = (idx: number, metaUpdates: Partial<BlockTask['meta']>) => {
+        if (!formData.tasks) return;
+        const tasks = [...formData.tasks];
+        tasks[idx] = { ...tasks[idx], meta: { ...tasks[idx].meta, ...metaUpdates } };
+        setFormData({ ...formData, tasks });
+    };
+
     const addTask = () => {
         if (!newTaskDetail.trim()) return;
         const newTask: BlockTask = {
@@ -175,13 +182,76 @@ export const BlockDetailModal: React.FC<BlockDetailModalProps> = ({ isOpen, bloc
                                     </button>
                                     
                                     {isEditing ? (
-                                        <input 
-                                            value={task.detail}
-                                            onChange={e => updateTaskDetail(idx, e.target.value)}
-                                            className="flex-1 bg-slate-100 dark:bg-slate-900 rounded px-2 py-1 text-sm"
-                                        />
+                                        task.type === 'VIDEO' ? (
+                                            <div className="flex flex-1 gap-2 items-center">
+                                                <input 
+                                                    value={task.detail}
+                                                    onChange={e => updateTaskDetail(idx, e.target.value)}
+                                                    className="flex-[2] bg-slate-100 dark:bg-slate-900 rounded px-2 py-1 text-sm"
+                                                    placeholder="Video Title"
+                                                />
+                                                <div className="flex items-center gap-1">
+                                                    <input 
+                                                        type="number"
+                                                        className="w-12 p-1 border rounded text-center bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 text-[10px] sm:text-xs"
+                                                        placeholder="Start"
+                                                        value={task.meta?.videoStartTime ?? ''}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value);
+                                                            const start = isNaN(val) ? 0 : val;
+                                                            const end = task.meta?.videoEndTime || 0;
+                                                            updateTaskMeta(idx, { videoStartTime: start, videoDuration: Math.max(0, end - start) });
+                                                        }}
+                                                    />
+                                                    <span className="text-slate-400 text-[10px]">-</span>
+                                                    <input 
+                                                        type="number"
+                                                        className="w-12 p-1 border rounded text-center bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 text-[10px] sm:text-xs"
+                                                        placeholder="End"
+                                                        value={task.meta?.videoEndTime ?? ''}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value);
+                                                            const end = isNaN(val) ? 0 : val;
+                                                            const start = task.meta?.videoStartTime || 0;
+                                                            updateTaskMeta(idx, { videoEndTime: end, videoDuration: Math.max(0, end - start) });
+                                                        }}
+                                                    />
+                                                    <select
+                                                        className="w-14 p-1 border rounded text-sm bg-white dark:bg-slate-900 dark:text-white text-center"
+                                                        value={task.meta?.playbackSpeed || 2}
+                                                        onChange={(e) => updateTaskMeta(idx, { playbackSpeed: parseFloat(e.target.value) })}
+                                                    >
+                                                        <option value="1">1x</option>
+                                                        <option value="1.25">1.25x</option>
+                                                        <option value="1.5">1.5x</option>
+                                                        <option value="1.75">1.75x</option>
+                                                        <option value="2">2x</option>
+                                                        <option value="2.5">2.5x</option>
+                                                        <option value="3">3x</option>
+                                                    </select>
+                                                    {task.meta?.videoDuration && task.meta?.playbackSpeed && (
+                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 w-10 text-right">
+                                                            ~{Math.ceil(task.meta.videoDuration / task.meta.playbackSpeed)}m
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <input 
+                                                value={task.detail}
+                                                onChange={e => updateTaskDetail(idx, e.target.value)}
+                                                className="flex-1 bg-slate-100 dark:bg-slate-900 rounded px-2 py-1 text-sm"
+                                            />
+                                        )
                                     ) : (
-                                        <span className={`flex-1 text-sm ${task.execution?.completed ? 'text-slate-800 dark:text-white' : 'text-slate-500'}`}>{task.detail}</span>
+                                        <div className="flex-1 flex justify-between items-center">
+                                            <span className={`text-sm ${task.execution?.completed ? 'text-slate-800 dark:text-white' : 'text-slate-500'}`}>{task.detail}</span>
+                                            {task.type === 'VIDEO' && task.meta?.videoDuration && task.meta?.playbackSpeed && (
+                                                <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-500 dark:text-slate-400">
+                                                    {task.meta.videoDuration}m @ {task.meta.playbackSpeed}x
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
 
                                     {isEditing && (

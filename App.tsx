@@ -18,7 +18,7 @@ import { calculateNextRevisionDate } from './services/srsService';
 // Components
 import { LoginView } from './components/LoginView';
 import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon } from './components/Icons';
-import { TodayGlance, StatsGrid } from './components/StatsCard';
+import { TodayGlance } from './components/StatsCard';
 import { ActivityGraphs } from './components/ActivityGraphs';
 import SessionModal from './components/SessionModal';
 import LogRevisionModal from './components/LogRevisionModal';
@@ -167,48 +167,64 @@ export default function App() {
       }
   }, [currentView]);
 
+  // Updated Streak Logic: Strict Check on Planned vs Completed
   const streak = useMemo(() => {
-    const allStudyDates = new Set<string>();
-    
-    const gatherDates = (items: TrackableItem[]) => {
-        items.forEach(item => {
-            item.logs.forEach(log => {
-                allStudyDates.add(getAdjustedDate(log.timestamp));
-            });
-            if (item.subTopics) {
-                gatherDates(item.subTopics);
-            }
-        });
-    };
+    if (studyPlan.length === 0) return 0;
 
-    knowledgeBase.forEach(kbEntry => {
-        kbEntry.logs.forEach(log => {
-            allStudyDates.add(getAdjustedDate(log.timestamp));
-        });
-        gatherDates(kbEntry.topics);
+    const todayStr = getAdjustedDate(new Date());
+    let currentStreak = 0;
+    
+    // Group items by date
+    const itemsByDate = new Map<string, StudyPlanItem[]>();
+    studyPlan.forEach(item => {
+        const items = itemsByDate.get(item.date) || [];
+        items.push(item);
+        itemsByDate.set(item.date, items);
     });
 
-    if (allStudyDates.size === 0) {
-        return 0;
-    }
-
-    let currentStreak = 0;
+    // Check backwards from today or yesterday
     let checkDate = new Date();
-    const todayStr = getAdjustedDate(checkDate);
+    let checkDateStr = getAdjustedDate(checkDate);
+
+    // If today has items but not all completed, streak might be broken unless they are rescheduled (moved date)
+    // Note: Rescheduled items in 'studyPlan' effectively change their date property.
+    // So, a day maintains streak if all items REMAINING on that date are completed.
+    // If items are moved to tomorrow, they disappear from today's list.
     
-    // If no study today, start checking from yesterday to get current streak.
-    if (!allStudyDates.has(todayStr)) {
+    // If today has NO items, check yesterday
+    if (!itemsByDate.has(checkDateStr)) {
         checkDate.setDate(checkDate.getDate() - 1);
+        checkDateStr = getAdjustedDate(checkDate);
     }
 
-    // Loop backwards from either today or yesterday.
-    while (allStudyDates.has(getAdjustedDate(checkDate))) {
-        currentStreak++;
+    while (true) {
+        const items = itemsByDate.get(checkDateStr);
+        
+        if (!items || items.length === 0) {
+            // No items planned/remaining for this day. 
+            // If we are deep in history, gap breaks streak. 
+            // Exception: Rest days? Assuming strict mode: Gap = Break.
+            if (currentStreak > 0) break; // Stop if we hit a gap after finding a streak
+        } else {
+            const allDone = items.every(i => i.isCompleted);
+            if (allDone) {
+                currentStreak++;
+            } else {
+                // If any item is incomplete on this date, streak breaks
+                break;
+            }
+        }
+
+        // Go to previous day
         checkDate.setDate(checkDate.getDate() - 1);
+        checkDateStr = getAdjustedDate(checkDate);
+        
+        // Safety break for infinite loop (unlikely with date logic but good practice)
+        if (currentStreak > 3650) break; 
     }
 
     return currentStreak;
-  }, [knowledgeBase]);
+  }, [studyPlan]);
 
   useEffect(() => {
     if (settings.darkMode) {
@@ -459,7 +475,6 @@ export default function App() {
                             {/* Pass todayPlan to StatsCard for integration */}
                             <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} />
                             <ActivityGraphs knowledgeBase={knowledgeBase} />
-                            <StatsGrid knowledgeBase={knowledgeBase} streak={streak} />
                          </div>
                          <div className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-white/50 dark:border-slate-700/50 shadow-sm">
                              <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">

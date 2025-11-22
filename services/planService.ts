@@ -114,6 +114,71 @@ export const updateBlockInPlan = async (date: string, blockId: string, updates: 
 };
 
 /**
+ * Start a virtual block (one that exists in UI but not DB yet).
+ * This materializes it into the DB and starts it.
+ */
+export const startVirtualBlock = async (date: string, block: Block): Promise<DayPlan | null> => {
+    try {
+        let plan = await getDayPlan(date);
+        
+        // If plan doesn't exist, create skeleton
+        if (!plan) {
+            plan = {
+                date: date,
+                blocks: [],
+                startTimePlanned: block.plannedStartTime,
+                estimatedEndTime: block.plannedEndTime,
+                totalStudyMinutesPlanned: block.plannedDurationMinutes,
+                totalBreakMinutes: 0,
+                faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0,
+                videos: [], anki: null, qbank: null, breaks: [],
+                notesFromUser: '', notesFromAI: '', attachments: [], blockDurationSetting: 30
+            };
+        }
+
+        const nowTime = getFormattedTime();
+        
+        // Prepare the new block (remove virtual flag)
+        const newBlock: Block = {
+            ...block,
+            status: 'IN_PROGRESS',
+            actualStartTime: nowTime,
+            segments: [{ start: nowTime }],
+            isVirtual: false // Materialize
+        };
+
+        // Insert into blocks
+        let updatedBlocks = plan.blocks ? [...plan.blocks] : [];
+        
+        // Pause any currently running block
+        updatedBlocks = updatedBlocks.map(b => {
+            if (b.status === 'IN_PROGRESS') {
+                 if (b.segments && b.segments.length > 0) {
+                    const lastSeg = b.segments[b.segments.length - 1];
+                    if (!lastSeg.end) lastSeg.end = nowTime;
+                }
+                const interruptions = b.interruptions ? [...b.interruptions] : [];
+                interruptions.push({ start: nowTime, reason: 'Switched to revision task' });
+                return { ...b, status: 'PAUSED', interruptions } as Block;
+            }
+            return b;
+        });
+
+        updatedBlocks.push(newBlock);
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        updatedBlocks.forEach((b, i) => b.index = i);
+
+        const updatedPlan = { ...plan, blocks: updatedBlocks, startTimeActual: plan.startTimeActual || nowTime };
+        await saveDayPlan(updatedPlan);
+        return updatedPlan;
+
+    } catch (e) {
+        console.error("planService: startVirtualBlock failed", e);
+        throw e;
+    }
+};
+
+/**
  * Start or resume a block (and pause any other active blocks)
  */
 export const startBlock = async (date: string, blockId: string): Promise<DayPlan | null> => {
@@ -393,6 +458,67 @@ export const moveTasksToNextBlock = async (date: string, currentBlockId: string,
 
     } catch (e) {
         console.error("moveTasksToNextBlock failed", e);
+        throw e;
+    }
+};
+
+/**
+ * Moves tasks to a future date's plan (Reschedule to specific date).
+ */
+export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: string, tasksToMove: BlockTask[]): Promise<void> => {
+    try {
+        let targetPlan = await getDayPlan(targetDate);
+        
+        // Create target plan skeleton if not exists
+        if (!targetPlan) {
+            targetPlan = {
+                date: targetDate,
+                blocks: [],
+                startTimePlanned: '08:00',
+                estimatedEndTime: '09:00',
+                totalStudyMinutesPlanned: 60,
+                totalBreakMinutes: 0,
+                faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0,
+                videos: [], anki: null, qbank: null, breaks: [],
+                notesFromUser: '', notesFromAI: '', attachments: [], blockDurationSetting: 30
+            };
+        }
+
+        // Create a new block for these tasks in the target plan
+        // We'll append it to the end or default time if empty
+        let newStartTime = '08:00';
+        if (targetPlan.blocks && targetPlan.blocks.length > 0) {
+            newStartTime = targetPlan.blocks[targetPlan.blocks.length - 1].plannedEndTime;
+        }
+        
+        // Default 60 min block for rescheduled items
+        const newStartMins = parseTimeToMinutes(newStartTime);
+        const newEndMins = newStartMins + 60;
+        
+        const newBlock: Block = {
+            id: generateId(),
+            index: (targetPlan.blocks?.length || 0),
+            date: targetDate,
+            plannedStartTime: formatTime(newStartMins),
+            plannedEndTime: formatTime(newEndMins),
+            type: 'MIXED',
+            title: 'Rescheduled Tasks',
+            description: `Moved from ${sourceDate}`,
+            plannedDurationMinutes: 60,
+            status: 'NOT_STARTED',
+            tasks: tasksToMove
+        };
+
+        const updatedBlocks = [...(targetPlan.blocks || []), newBlock];
+        // Sort
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        updatedBlocks.forEach((b, i) => b.index = i);
+
+        const updatedTargetPlan = { ...targetPlan, blocks: updatedBlocks };
+        await saveDayPlan(updatedTargetPlan);
+
+    } catch (e) {
+        console.error("moveTasksToFuturePlan failed", e);
         throw e;
     }
 };

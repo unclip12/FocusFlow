@@ -150,14 +150,9 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
     }
   }, [isOpen, initialData, prefillData, planContext]);
 
-  // Helper to construct date respecting the 4AM rule
+  // Helper to construct date
   const constructDateTime = (dateStr: string, timeStr: string): Date => {
-      const d = new Date(`${dateStr}T${timeStr}:00`);
-      const hours = parseInt(timeStr.split(':')[0], 10);
-      if (hours < 4) {
-          d.setDate(d.getDate() + 1);
-      }
-      return d;
+      return new Date(`${dateStr}T${timeStr}:00`);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

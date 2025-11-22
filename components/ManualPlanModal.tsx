@@ -28,11 +28,11 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
                     index: 0,
                     date: initialDate,
                     plannedStartTime: '08:00',
-                    plannedEndTime: '09:00',
+                    plannedEndTime: '08:30',
                     type: 'MIXED',
                     title: 'Study Session 1',
                     description: '',
-                    plannedDurationMinutes: 60,
+                    plannedDurationMinutes: 30,
                     status: 'NOT_STARTED',
                     tasks: []
                 }]);
@@ -43,13 +43,14 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
     const addBlock = () => {
         const lastBlock = blocks[blocks.length - 1];
         let newStart = '09:00';
-        let newEnd = '10:00';
+        let newEnd = '09:30';
         
         if (lastBlock) {
             newStart = lastBlock.plannedEndTime;
             const [h, m] = newStart.split(':').map(Number);
-            const endH = h + 1 > 23 ? 0 : h + 1;
-            newEnd = `${endH.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+            const d = new Date();
+            d.setHours(h, m + 30);
+            newEnd = d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
         }
 
         setBlocks([...blocks, {
@@ -61,7 +62,7 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
             type: 'MIXED',
             title: `Study Session ${blocks.length + 1}`,
             description: '',
-            plannedDurationMinutes: 60,
+            plannedDurationMinutes: 30,
             status: 'NOT_STARTED',
             tasks: []
         }]);
@@ -156,7 +157,7 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
             notesFromUser: '',
             notesFromAI: '',
             attachments: [],
-            blockDurationSetting: 60
+            blockDurationSetting: 30
         };
         
         onSave(plan);
@@ -246,7 +247,10 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
                                                     placeholder="0"
                                                     type="number"
                                                     value={task.meta?.count || ''}
-                                                    onChange={(e) => updateTask(bIdx, tIdx, { detail: `${e.target.value} items`, meta: { count: parseInt(e.target.value) } })}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        updateTask(bIdx, tIdx, { detail: `${e.target.value} items`, meta: { ...task.meta, count: isNaN(val) ? 0 : val } })
+                                                    }}
                                                 />
                                             </div>
                                         )}

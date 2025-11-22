@@ -24,10 +24,10 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
         if (isOpen) {
             setTitle('Study Block');
             setStartTime(initialStartTime);
-            // Default 60m
+            // Default 30m
             const [h, m] = initialStartTime.split(':').map(Number);
             const d = new Date();
-            d.setHours(h, m + 60);
+            d.setHours(h, m + 30);
             setEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
             setTasks([]);
             setExpandedTaskId(null);
@@ -141,7 +141,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                     {/* Time Controls */}
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                         <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Time Window</label>
-                        <div className="flex items-center gap-3 mb-3">
+                        {/* Increased gap-6 to gap-8 for better separation */}
+                        <div className="flex items-center gap-8 mb-3">
                             <div className="flex-1">
                                 <label className="text-[10px] text-slate-400 font-bold mb-1 block">Start</label>
                                 <input 
@@ -287,7 +288,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                         ) : (
                                                             <div className="flex items-center gap-2">
                                                                 <input 
-                                                                    className="w-20 p-1 border rounded text-sm bg-white dark:bg-slate-900 dark:text-white font-bold"
+                                                                    className="w-20 p-1 border rounded text-center bg-white dark:bg-slate-900 dark:text-white font-bold"
                                                                     placeholder="Count"
                                                                     type="number"
                                                                     value={task.meta?.count || ''}

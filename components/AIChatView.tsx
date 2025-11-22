@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings } from '../types';
 import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
@@ -498,9 +499,30 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                planArgs.estimatedEndTime = addMinutesToTime(planArgs.startTimePlanned, totalMinutes);
                            }
 
+                           // If the AI provided detailed blocks (from schedule parsing), use them.
+                           // Otherwise generate default blocks from summary
                            if (!planArgs.blocks || planArgs.blocks.length === 0) {
                                planArgs.blocks = generateBlocks(planArgs, 30);
                                planArgs.blockDurationSetting = 30;
+                           } else {
+                               // Ensure AI provided blocks have IDs and indexes
+                               planArgs.blocks = planArgs.blocks.map((b, idx) => ({
+                                   ...b,
+                                   id: generateId(),
+                                   index: idx,
+                                   status: 'NOT_STARTED',
+                                   // Calculate duration if missing based on times
+                                   plannedDurationMinutes: b.plannedDurationMinutes || 
+                                       (b.plannedStartTime && b.plannedEndTime ? 
+                                           (parseInt(b.plannedEndTime.split(':')[0])*60 + parseInt(b.plannedEndTime.split(':')[1])) - 
+                                           (parseInt(b.plannedStartTime.split(':')[0])*60 + parseInt(b.plannedStartTime.split(':')[1])) 
+                                       : 30),
+                                   tasks: b.tasks?.map(t => ({
+                                       ...t,
+                                       id: generateId(),
+                                       completed: false
+                                   }))
+                               }));
                            }
 
                            await saveDayPlan(planArgs);

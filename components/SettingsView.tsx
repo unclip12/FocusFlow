@@ -1,8 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppSettings, ThemeColor, AISettings, RevisionSettings } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon } from './Icons';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
+import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface SettingsViewProps {
     settings: AppSettings;
@@ -67,6 +70,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       carryForwardRule: 'next_block'
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  // Data Management State
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   useEffect(() => {
     setLocalName(displayName);
@@ -134,19 +142,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       }
   };
 
-  const handleNotificationTypeChange = (key: keyof typeof settings.notifications.types, value: boolean) => {
-      onUpdateSettings({
-          ...settings,
-          notifications: {
-              ...settings.notifications,
-              types: {
-                  ...settings.notifications.types,
-                  [key]: value
-              }
-          }
-      });
-  };
-
   const handleSaveAllConfig = async () => {
       setIsLoading(true);
       await Promise.all([
@@ -155,10 +150,77 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       ]);
       alert("Settings saved!");
       setIsLoading(false);
-  }
+  };
+
+  // --- Data Management Handlers ---
+
+  const handleBackup = async () => {
+      setIsBackingUp(true);
+      try {
+          await exportUserData();
+      } catch (e) {
+          console.error("Backup failed", e);
+          alert("Backup failed. Please try again.");
+      } finally {
+          setIsBackingUp(false);
+      }
+  };
+
+  const handleImportClick = () => {
+      document.getElementById('restore-file-input')?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          setIsRestoring(true);
+          
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+              try {
+                  const json = JSON.parse(ev.target?.result as string);
+                  await importUserData(json);
+                  alert("Data restored successfully! Reloading...");
+                  window.location.reload();
+              } catch (err) {
+                  console.error("Restore failed", err);
+                  alert("Failed to restore data. Invalid file or network error.");
+                  setIsRestoring(false);
+              }
+          };
+          reader.readAsText(file);
+          e.target.value = ''; // Reset input
+      }
+  };
+
+  const handleResetConfirm = async () => {
+      setIsResetModalOpen(false);
+      // Double confirmation via native alert for safety
+      // (Using DeleteConfirmationModal triggers the flow, but this is nuclear)
+      // We trust the modal, but let's be safe.
+      
+      setIsLoading(true);
+      try {
+          await resetAppData();
+          alert("App data reset complete. Restarting...");
+          window.location.reload();
+      } catch (e) {
+          console.error("Reset failed", e);
+          alert("Failed to reset data. Please check your connection.");
+          setIsLoading(false);
+      }
+  };
 
   return (
     <div className="animate-fade-in max-w-3xl mx-auto pb-20">
+        <DeleteConfirmationModal 
+            isOpen={isResetModalOpen}
+            onClose={() => setIsResetModalOpen(false)}
+            onConfirm={handleResetConfirm}
+            title="Reset Application?"
+            message="WARNING: This will permanently delete ALL your study logs, plans, notes, and history. This action cannot be undone. It will be like starting a fresh account."
+        />
+
         <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 text-primary">
                 <Cog6ToothIcon className="w-8 h-8" />
@@ -197,6 +259,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     >
                         Sign Out
                     </button>
+                </div>
+            </Section>
+
+            {/* DATA MANAGEMENT SECTION */}
+            <Section title="Data Management" icon={DatabaseIcon}>
+                <SettingRow label="Backup Data" description="Export all your study logs, plans, and settings to a JSON file.">
+                    <button 
+                        onClick={handleBackup}
+                        disabled={isBackingUp}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg font-bold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                    >
+                        {isBackingUp ? 'Exporting...' : 'Export Backup'}
+                        <ArrowUpTrayIcon className="w-4 h-4" />
+                    </button>
+                </SettingRow>
+
+                <SettingRow label="Restore Data" description="Import a previously saved backup file. This will overwrite conflicting data.">
+                    <div>
+                        <button 
+                            onClick={handleImportClick}
+                            disabled={isRestoring}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg font-bold text-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                        >
+                            {isRestoring ? 'Restoring...' : 'Import Backup'}
+                            <ArrowDownTrayIcon className="w-4 h-4" />
+                        </button>
+                        <input 
+                            type="file" 
+                            id="restore-file-input" 
+                            className="hidden" 
+                            accept=".json" 
+                            onChange={handleFileChange}
+                        />
+                    </div>
+                </SettingRow>
+
+                <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <p className="font-bold text-red-600 dark:text-red-400">Reset App Data</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Permanently wipe all study history and start fresh.</p>
+                        </div>
+                        <button 
+                            onClick={() => setIsResetModalOpen(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg font-bold text-xs hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-200 dark:border-red-900/50"
+                        >
+                            Reset Everything
+                            <ArchiveBoxXMarkIcon className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             </Section>
 
@@ -335,7 +447,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
             </Section>
 
             <div className="text-center pt-8 text-slate-400 text-xs">
-                <p>FocusFlow v1.5</p>
+                <p>FocusFlow v1.6</p>
             </div>
         </div>
     </div>

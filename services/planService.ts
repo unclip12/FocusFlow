@@ -29,6 +29,49 @@ const formatTime = (minutes: number): string => {
 };
 
 /**
+ * Recalculates total study/break minutes and start/end times based on current blocks.
+ * Used to keep DayPlan stats in sync when blocks are added or removed.
+ */
+const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
+    // Ensure sorted by time
+    const sortedBlocks = [...blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+    
+    let totalStudy = 0;
+    let totalBreak = 0;
+
+    sortedBlocks.forEach(b => {
+        if (b.type === 'BREAK') {
+            totalBreak += b.plannedDurationMinutes;
+        } else {
+            totalStudy += b.plannedDurationMinutes;
+        }
+    });
+
+    // Determine start/end from blocks if possible
+    // We preserve original planned start time if blocks exist, or default to it.
+    // But estimated end time should strictly follow the last block.
+    let newStart = plan.startTimePlanned;
+    let newEnd = plan.estimatedEndTime;
+
+    if (sortedBlocks.length > 0) {
+        newStart = sortedBlocks[0].plannedStartTime;
+        newEnd = sortedBlocks[sortedBlocks.length - 1].plannedEndTime;
+    } else {
+        // If no blocks, reset stats. Keep start time if set, but end time equals start (0 duration).
+        if (newStart) newEnd = newStart;
+    }
+
+    return {
+        ...plan,
+        blocks: sortedBlocks,
+        startTimePlanned: newStart,
+        estimatedEndTime: newEnd,
+        totalStudyMinutesPlanned: totalStudy,
+        totalBreakMinutes: totalBreak
+    };
+};
+
+/**
  * Shift subsequent blocks if a block runs overtime.
  */
 const shiftSchedule = (blocks: Block[], startIndex: number, minutesToShift: number): Block[] => {
@@ -165,10 +208,12 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
         });
 
         updatedBlocks.push(newBlock);
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-        updatedBlocks.forEach((b, i) => b.index = i);
+        
+        // Recalculate stats with new block included
+        const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
+        updatedPlan.blocks?.forEach((b, i) => b.index = i);
+        updatedPlan.startTimeActual = plan.startTimeActual || nowTime;
 
-        const updatedPlan = { ...plan, blocks: updatedBlocks, startTimeActual: plan.startTimeActual || nowTime };
         await saveDayPlan(updatedPlan);
         return updatedPlan;
 
@@ -249,7 +294,9 @@ export const finishBlock = async (
         notes: string,
         interruptions?: { start: string, end: string, reason: string }[],
         tasks?: BlockTask[], // Updated tasks with execution status
-        rescheduledTo?: string // The time or context where tasks were pushed
+        rescheduledTo?: string, // The time or context where tasks were pushed
+        generatedLogIds?: string[],
+        generatedTimeLogIds?: string[]
     }
 ): Promise<DayPlan | null> => {
     try {
@@ -310,7 +357,9 @@ export const finishBlock = async (
             segments: finalSegments,
             interruptions: finalInterruptions,
             tasks: reflection.tasks || b.tasks,
-            rescheduledTo: reflection.rescheduledTo // Store where it went
+            rescheduledTo: reflection.rescheduledTo,
+            generatedLogIds: reflection.generatedLogIds,
+            generatedTimeLogIds: reflection.generatedTimeLogIds
         };
 
         // --- TIME SHIFTING LOGIC ---
@@ -318,15 +367,9 @@ export const finishBlock = async (
             updatedBlocks = shiftSchedule(updatedBlocks, currentBlockIndex, overrun);
         }
 
-        // Ensure chronological order is maintained
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-
-        const updatedPlan = { ...plan, blocks: updatedBlocks };
-
-        if (updatedPlan.blocks.length > 0) {
-            const lastBlock = updatedPlan.blocks[updatedPlan.blocks.length - 1];
-            updatedPlan.estimatedEndTime = lastBlock.plannedEndTime;
-        }
+        // Recalculate stats (end time might shift due to overrun)
+        const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
+        updatedPlan.blocks?.forEach((b, i) => b.index = i);
 
         await saveDayPlan(updatedPlan);
         return updatedPlan;
@@ -348,8 +391,22 @@ export const insertBlockAndShift = async (
     title: string = 'New Study Block'
 ): Promise<DayPlan | null> => {
     try {
-        const plan = await getDayPlan(date);
-        if (!plan || !plan.blocks) return null;
+        let plan = await getDayPlan(date);
+        
+        if (!plan) {
+             plan = {
+                date: date,
+                blocks: [],
+                startTimePlanned: startTimeStr,
+                estimatedEndTime: formatTime(parseTimeToMinutes(startTimeStr) + 60),
+                totalStudyMinutesPlanned: 0,
+                totalBreakMinutes: 0,
+                faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0,
+                videos: [], anki: null, qbank: null, breaks: [],
+                notesFromUser: '', notesFromAI: '', attachments: [], blockDurationSetting: 30
+            };
+        }
+        if (!plan.blocks) plan.blocks = [];
 
         const newBlockStart = parseTimeToMinutes(startTimeStr);
         const newBlockEnd = newBlockStart + durationMinutes;
@@ -403,13 +460,12 @@ export const insertBlockAndShift = async (
         });
 
         // Combine
-        updatedBlocks = [...doneBlocks, newBlock, ...shiftedPendingBlocks];
+        const allBlocks = [...doneBlocks, newBlock, ...shiftedPendingBlocks];
         
-        // Re-sort and re-index immediately to ensure chronological order
-        updatedBlocks.sort((a,b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-        updatedBlocks.forEach((b, i) => b.index = i);
+        // Recalculate stats and re-sort
+        const updatedPlan = recalculatePlanStats(plan, allBlocks);
+        updatedPlan.blocks?.forEach((b, i) => b.index = i);
 
-        const updatedPlan = { ...plan, blocks: updatedBlocks };
         await saveDayPlan(updatedPlan);
         return updatedPlan;
 
@@ -510,11 +566,11 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
         };
 
         const updatedBlocks = [...(targetPlan.blocks || []), newBlock];
-        // Sort
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-        updatedBlocks.forEach((b, i) => b.index = i);
+        
+        // Recalculate stats
+        const updatedTargetPlan = recalculatePlanStats(targetPlan, updatedBlocks);
+        updatedTargetPlan.blocks?.forEach((b, i) => b.index = i);
 
-        const updatedTargetPlan = { ...targetPlan, blocks: updatedBlocks };
         await saveDayPlan(updatedTargetPlan);
 
     } catch (e) {
@@ -529,10 +585,13 @@ export const deleteBlock = async (date: string, blockId: string): Promise<DayPla
         if (!plan || !plan.blocks) return null;
 
         const updatedBlocks = plan.blocks.filter(b => b.id !== blockId);
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-        updatedBlocks.forEach((b, i) => b.index = i);
+        
+        // Recalculate stats (IMPORTANT: this fixes the stale summary bug)
+        const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
+        
+        // Re-index
+        updatedPlan.blocks?.forEach((b, i) => b.index = i);
 
-        const updatedPlan = { ...plan, blocks: updatedBlocks };
         await saveDayPlan(updatedPlan);
         return updatedPlan;
     } catch (e) {

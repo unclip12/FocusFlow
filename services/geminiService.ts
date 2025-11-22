@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Attachment, StudySession, StudyPlanItem, getAdjustedDate, QuizQuestion, DayPlan, Block, MentorMemory, TimeLogCategory, AISettings } from "../types";
 
@@ -665,7 +666,7 @@ const addStudyTaskTool: FunctionDeclaration = {
 
 const createDayPlanTool: FunctionDeclaration = {
     name: 'createDayPlan',
-    description: 'Creates or overwrites a comprehensive "Today\'s Plan".',
+    description: 'Creates or overwrites a comprehensive "Today\'s Plan" or schedule. Use this when the user provides a schedule or asks for a plan.',
     parameters: {
         type: Type.OBJECT,
         properties: {
@@ -721,6 +722,40 @@ const createDayPlanTool: FunctionDeclaration = {
                         durationMinutes: { type: Type.INTEGER }
                     },
                     required: ['label', 'durationMinutes']
+                }
+            },
+            blocks: {
+                type: Type.ARRAY,
+                description: 'Specific timeline blocks extracted from user input. Use this if the user provides explicit times.',
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        plannedStartTime: { type: Type.STRING, description: "HH:mm format" },
+                        plannedEndTime: { type: Type.STRING, description: "HH:mm format" },
+                        title: { type: Type.STRING },
+                        type: { type: Type.STRING, enum: ['VIDEO', 'REVISION_FA', 'ANKI', 'QBANK', 'BREAK', 'OTHER', 'MIXED'] },
+                        tasks: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    type: { type: Type.STRING, enum: ['FA', 'VIDEO', 'ANKI', 'QBANK', 'OTHER'] },
+                                    detail: { type: Type.STRING },
+                                    meta: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            playbackSpeed: { type: Type.NUMBER },
+                                            topic: { type: Type.STRING },
+                                            videoStartTime: { type: Type.NUMBER },
+                                            videoEndTime: { type: Type.NUMBER }
+                                        }
+                                    }
+                                },
+                                required: ['type', 'detail']
+                            }
+                        }
+                    },
+                    required: ['plannedStartTime', 'plannedEndTime', 'title', 'type']
                 }
             },
             notesFromUser: { type: Type.STRING },
@@ -931,6 +966,20 @@ export const chatWithMentor = async (
         - Refer to the user by their name if it is provided. Be conversational and motivational based on your personality settings.
         - **PLAN-MODIFYING ACTIONS**: For any request that creates, overwrites, or deletes the daily plan, you MUST ask for user confirmation first. The \`createDayPlan\` tool can overwrite an existing plan, so it requires confirmation.
           - When creating/overwriting a plan with \`createDayPlan\`: First, present the key details of the plan you've generated (e.g., total study time, number of videos/pages). Then ask, "Does this look good? I can set this as your schedule for today." Wait for a confirmation like "yes," "confirm," or "go ahead" before calling the tool.
+          - **SCHEDULE PARSING INSTRUCTIONS**: If the user pastes a detailed schedule (e.g., "09:00 – 09:30 → Watch OBG Day-2 (Video: 0:00 – 60:00)"), YOU MUST use the \`blocks\` property in the \`createDayPlan\` tool to exactly replicate it.
+            - **EXACT TIMES**: Use the start and end times provided (e.g., "09:00", "09:30").
+            - **TYPE MAPPING**: 
+              - If the line says "Watch", map to \`type: 'VIDEO'\`.
+              - If the line says "Revise", map to \`type: 'REVISION_FA'\`.
+            - **TASKS**: Create a task for the block.
+              - For "Watch" items:
+                - Set \`tasks[0].type = 'VIDEO'\`.
+                - **EXTRACT TIMESTAMPS**: If the schedule specifies a video range (e.g., "0:00-60:00", "0-60m", "60 to 120"), you MUST extract these numbers.
+                  - Set \`tasks[0].meta.videoStartTime\` to the start minute (e.g., 0 or 60).
+                  - Set \`tasks[0].meta.videoEndTime\` to the end minute (e.g., 60 or 120).
+                  - Set \`tasks[0].detail\` to the video title WITHOUT the raw timestamp (e.g., "Watch OBG Day-2"). Do NOT duplicate the time range in the detail text if you put it in the meta boxes.
+              - **2X SPEED INFERENCE**: If the user's schedule shows a short duration (e.g., 30 mins) for a long video segment (e.g., 60 mins), calculate the playback speed (60/30 = 2x). Set \`tasks[0].meta.playbackSpeed\` to this calculated value (e.g., 2).
+            - **TITLE**: Use the main action and subject as the title (e.g., "Watch OBG Day-2").
           - When deleting a plan with \`deleteDayPlan\`: Ask, "Are you sure you want to delete the plan for today? This cannot be undone." Wait for confirmation before calling the tool.
         - If the user says they studied a page (e.g., "finished FA 147") but doesn't specify the topic, you MUST ask: "Great, what topics did you cover? Or upload a photo of the page so I can extract it for you."
         - **PARTIAL COMPLETION:** If the user says they only studied some topics from a page, you MUST ask for clarification on which topics were completed and which are pending. Use this to update the log and potentially the backlog.

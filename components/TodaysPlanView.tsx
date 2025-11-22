@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry } from '../types';
-import { getDayPlan, saveDayPlan, getRevisionSettings } from '../services/firebase';
-import { saveTimeLog } from '../services/timeLogService';
+import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry, RevisionSettings } from '../types';
+import { getDayPlan, saveDayPlan, getRevisionSettings, saveKnowledgeBase } from '../services/firebase';
+import { saveTimeLog, deleteTimeLog } from '../services/timeLogService';
 import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock, startVirtualBlock, moveTasksToFuturePlan } from '../services/planService';
 import { generateBlocks } from '../services/blockGenerator'; 
-import { CalendarIcon, ClockIcon, VideoIcon, FireIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon } from './Icons';
+import { CalendarIcon, ClockIcon, VideoIcon, FireIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, CursorArrowRaysIcon } from './Icons';
 import { TaskCompletionModal } from './TaskCompletionModal'; 
 import { ManualPlanModal } from './ManualPlanModal'; 
 import { AddBlockModal } from './AddBlockModal';
 import { BlockDetailModal } from './BlockDetailModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { processLogEntries } from '../services/faLoggerService';
+import { calculateNextRevisionDate } from '../services/srsService';
 
 // --- HELPERS ---
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -213,51 +214,60 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
 const SwipeableBlockWrapper: React.FC<{ 
     children: React.ReactNode, 
     onDelete: () => void, 
-    onClick: () => void 
-}> = ({ children, onDelete, onClick }) => {
+    onClick: () => void,
+    isSelectMode: boolean,
+    isSelected: boolean,
+    onSelect: () => void
+}> = ({ children, onDelete, onClick, isSelectMode, isSelected, onSelect }) => {
     const touchStartRef = useRef<{ x: number, y: number } | null>(null);
     const [offset, setOffset] = useState(0);
 
+    // Only enable swipe if not in select mode
+    const enableSwipe = !isSelectMode;
+
     const handleTouchStart = (e: React.TouchEvent) => {
+        if (!enableSwipe) return;
         touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
 
     const handleTouchMove = (e: React.TouchEvent) => {
-        if (!touchStartRef.current) return;
+        if (!touchStartRef.current || !enableSwipe) return;
         const deltaX = e.touches[0].clientX - touchStartRef.current.x;
         const deltaY = e.touches[0].clientY - touchStartRef.current.y;
         
-        // Horizontal swipe dominant
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
-            const newOffset = Math.min(0, Math.max(-100, deltaX)); // Cap at -100px
+            const newOffset = Math.min(0, Math.max(-100, deltaX));
             setOffset(newOffset);
         }
     };
 
     const handleTouchEnd = () => {
+        if (!enableSwipe) return;
         if (offset < -50) {
-            setOffset(-80); // Snap open
+            setOffset(-80);
         } else {
-            setOffset(0); // Snap close
+            setOffset(0);
         }
         touchStartRef.current = null;
     };
 
     // Mouse handlers for desktop swipe simulation
     const handleMouseDown = (e: React.MouseEvent) => {
+        if (!enableSwipe) return;
         touchStartRef.current = { x: e.clientX, y: e.clientY };
     };
     
     const handleMouseMove = (e: React.MouseEvent) => {
-        if (!touchStartRef.current || e.buttons !== 1) return;
+        if (!touchStartRef.current || e.buttons !== 1 || !enableSwipe) return;
         const deltaX = e.clientX - touchStartRef.current.x;
-        if (deltaX < 0) { // Only swipe left
-             const newOffset = Math.min(0, Math.max(-100, deltaX));
+        if (deltaX < 0) {
+             const newOffset = Math.min(0, Math.max(-100, deltaX)); 
              setOffset(newOffset);
         }
     };
 
     const handleMouseUp = () => {
+        if (!enableSwipe) return;
         if (offset < -50) setOffset(-80);
         else setOffset(0);
         touchStartRef.current = null;
@@ -272,7 +282,7 @@ const SwipeableBlockWrapper: React.FC<{
                 <TrashIcon className="w-6 h-6 text-white" />
             </div>
             <div 
-                className="relative z-10 bg-white dark:bg-slate-900 transition-transform duration-200 ease-out cursor-pointer"
+                className="relative z-10 bg-white dark:bg-slate-900 transition-transform duration-200 ease-out"
                 style={{ transform: `translateX(${offset}px)` }}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
@@ -282,11 +292,25 @@ const SwipeableBlockWrapper: React.FC<{
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
                 onClick={() => {
-                    if (offset === 0) onClick();
-                    else setOffset(0); // Close swipe on click if open
+                    if (isSelectMode) {
+                        onSelect();
+                    } else {
+                        if (offset === 0) onClick();
+                        else setOffset(0);
+                    }
                 }}
             >
-                {children}
+                {/* Select Mode Checkbox Overlay */}
+                {isSelectMode && (
+                    <div className={`absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center z-20 ${isSelected ? 'bg-indigo-500/10' : 'bg-transparent'}`}>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'}`}>
+                            {isSelected && <CheckCircleIcon className="w-3 h-3 text-white" />}
+                        </div>
+                    </div>
+                )}
+                <div className={`${isSelectMode ? 'pl-12 pointer-events-none' : ''} transition-all`}>
+                    {children}
+                </div>
             </div>
         </div>
     );
@@ -296,7 +320,6 @@ const SwipeableBlockWrapper: React.FC<{
 const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, onStart: () => void, onPause: () => void, onFinish: () => void }> = ({ block, isCurrent, isNext, onStart, onPause, onFinish }) => {
     const isDone = block.status === 'DONE';
     const isBreak = block.type === 'BREAK';
-    const isRevision = block.type === 'REVISION_FA';
     const isVirtual = block.isVirtual; // Flag for revision projections
     
     // Countdown Timer Logic
@@ -361,6 +384,11 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                 <div key={i} className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></div>
                                     {t.detail}
+                                    {t.meta?.playbackSpeed && t.meta.playbackSpeed > 1 && (
+                                        <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1 rounded font-bold text-slate-600 dark:text-slate-400">
+                                            {t.meta.playbackSpeed}x
+                                        </span>
+                                    )}
                                 </div>
                             )) : <span className="text-xs text-slate-400 italic">{block.description || "No specific subtasks."}</span>}
                         </div>
@@ -495,6 +523,11 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                 {task.type === 'VIDEO' && <VideoIcon className="w-3 h-3" />}
                                 {task.type === 'ANKI' && <FireIcon className="w-3 h-3" />}
                                 <span>{task.detail}</span>
+                                {task.meta?.playbackSpeed && task.meta.playbackSpeed > 1 && (
+                                    <span className="text-[9px] bg-white/50 dark:bg-black/20 px-1 rounded ml-1 font-bold">
+                                        {task.meta.playbackSpeed}x
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -520,8 +553,11 @@ const BlocksLayout: React.FC<{
     onPauseBlock: (id: string) => void, 
     onFinishBlock: (block: Block) => void,
     onDeleteBlock: (block: Block) => void,
-    onSelectBlock: (block: Block) => void
-}> = ({ blocks, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock }) => {
+    onSelectBlock: (block: Block) => void,
+    isSelectMode: boolean,
+    selectedBlockIds: Set<string>,
+    onToggleSelection: (id: string) => void
+}> = ({ blocks, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock, isSelectMode, selectedBlockIds, onToggleSelection }) => {
     const currentBlock = blocks.find(b => b.status === 'IN_PROGRESS');
     const nextBlock = blocks.find(b => b.status === 'NOT_STARTED');
 
@@ -542,6 +578,9 @@ const BlocksLayout: React.FC<{
                     key={block.id}
                     onDelete={() => onDeleteBlock(block)}
                     onClick={() => onSelectBlock(block)}
+                    isSelectMode={isSelectMode}
+                    isSelected={selectedBlockIds.has(block.id)}
+                    onSelect={() => onToggleSelection(block.id)}
                 >
                     <BlockCard 
                         block={block}
@@ -571,6 +610,15 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const [plan, setPlan] = useState<DayPlan | null>(null);
     const [loading, setLoading] = useState(true);
     
+    // Undo/Redo State
+    const [historyPast, setHistoryPast] = useState<DayPlan[]>([]);
+    const [historyFuture, setHistoryFuture] = useState<DayPlan[]>([]);
+
+    // Select & Delete State
+    const [isSelectMode, setIsSelectMode] = useState(false);
+    const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+
     // Block Logic State
     const [finishingBlock, setFinishingBlock] = useState<Block | null>(null);
     const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
@@ -598,7 +646,146 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         try {
             const data = await getDayPlan(currentDate);
             setPlan(data);
+            // Reset history on fresh load from DB to avoid stale state mixing
+            setHistoryPast([]);
+            setHistoryFuture([]);
         } catch (e) { console.error(e); } finally { setLoading(false); }
+    };
+
+    // --- UNDO/REDO LOGIC ---
+    const handlePlanChange = async (newPlan: DayPlan | null, addToHistory = true) => {
+        if (!newPlan) return;
+
+        if (addToHistory && plan) {
+            setHistoryPast(prev => [...prev, plan]);
+            setHistoryFuture([]); // Clear future on new action
+        }
+        
+        setPlan(newPlan);
+        await saveDayPlan(newPlan);
+    };
+
+    const handleUndo = async () => {
+        if (historyPast.length === 0 || !plan) return;
+        
+        const previousState = historyPast[historyPast.length - 1];
+        const newPast = historyPast.slice(0, -1);
+        
+        setHistoryFuture(prev => [plan, ...prev]);
+        setPlan(previousState);
+        setHistoryPast(newPast);
+        
+        await saveDayPlan(previousState);
+    };
+
+    const handleRedo = async () => {
+        if (historyFuture.length === 0 || !plan) return;
+
+        const nextState = historyFuture[0];
+        const newFuture = historyFuture.slice(1);
+
+        setHistoryPast(prev => [...prev, plan]);
+        setPlan(nextState);
+        setHistoryFuture(newFuture);
+
+        await saveDayPlan(nextState);
+    };
+
+    // --- SELECT / DELETE LOGIC ---
+    const toggleSelectMode = () => {
+        setIsSelectMode(!isSelectMode);
+        setSelectedBlockIds(new Set());
+    };
+
+    const handleToggleBlockSelection = (blockId: string) => {
+        const newSet = new Set(selectedBlockIds);
+        if (newSet.has(blockId)) {
+            newSet.delete(blockId);
+        } else {
+            newSet.add(blockId);
+        }
+        setSelectedBlockIds(newSet);
+    };
+
+    // CASCADE DELETE HELPER
+    // Deletes associated TimeLogs and KnowledgeBase logs for a given block
+    const deleteBlocksAndSync = async (blocksToDelete: Block[]) => {
+        // 1. Gather IDs
+        const timeLogIds = blocksToDelete.flatMap(b => b.generatedTimeLogIds || []);
+        const kbLogIds = blocksToDelete.flatMap(b => b.generatedLogIds || []);
+
+        // 2. Delete Time Logs
+        if (timeLogIds.length > 0) {
+            await Promise.all(timeLogIds.map(id => deleteTimeLog(id)));
+        }
+
+        // 3. Update KB if needed
+        if (kbLogIds.length > 0 && onUpdateKnowledgeBase) {
+            const updatedKB = knowledgeBase.map(entry => {
+                // Check if this entry has logs that are being deleted
+                const logsToDeleteForEntry = entry.logs.filter(l => kbLogIds.includes(l.id));
+                
+                if (logsToDeleteForEntry.length > 0) {
+                    // Filter them out
+                    const newLogs = entry.logs.filter(l => !kbLogIds.includes(l.id));
+                    
+                    // Re-calc stats roughly to maintain consistency
+                    // If all logs gone, reset revision count? Or just count remaining revisions.
+                    const revCount = newLogs.filter(l => l.type === 'REVISION').length;
+                    
+                    // Find the new latest log to update lastStudiedAt
+                    const sortedLogs = [...newLogs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                    const latestLog = sortedLogs.length > 0 ? sortedLogs[0] : null;
+                    
+                    return { 
+                        ...entry, 
+                        logs: newLogs, 
+                        revisionCount: revCount,
+                        lastStudiedAt: latestLog ? latestLog.timestamp : null,
+                        // Note: currentRevisionIndex and nextRevisionAt might be stale without full SRS recalc, 
+                        // but this is a safe approximation for deletion.
+                    };
+                }
+                return entry;
+            });
+            
+            // Perform one batch update
+            await onUpdateKnowledgeBase(updatedKB);
+            await saveKnowledgeBase(updatedKB); // Ensure persistence to Firestore
+        }
+    };
+
+    const handleDeleteSelected = async () => {
+        if (!plan || selectedBlockIds.size === 0) return;
+        if (!confirm(`Permanently delete ${selectedBlockIds.size} blocks and their synced logs?`)) return;
+
+        // 1. Perform cascade delete for selected blocks
+        const blocksToDelete = (plan.blocks || []).filter(b => selectedBlockIds.has(b.id));
+        await deleteBlocksAndSync(blocksToDelete);
+
+        // 2. Update Plan
+        const updatedBlocks = (plan.blocks || []).filter(b => !selectedBlockIds.has(b.id));
+        
+        // Simple update
+        const updatedPlan = { ...plan, blocks: updatedBlocks };
+        await handlePlanChange(updatedPlan);
+        
+        setIsSelectMode(false);
+        setSelectedBlockIds(new Set());
+    };
+
+    const handleDeletePage = async () => {
+        if (!plan) return;
+        
+        // 1. Perform cascade delete for ALL blocks
+        if (plan.blocks) {
+            await deleteBlocksAndSync(plan.blocks);
+        }
+
+        // 2. Clear plan
+        const updatedPlan = { ...plan, blocks: [], totalStudyMinutesPlanned: 0, totalBreakMinutes: 0 };
+        await handlePlanChange(updatedPlan);
+        setIsDeleteAllModalOpen(false);
     };
 
     const handleDateChange = (offset: number) => {
@@ -664,10 +851,10 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             if (blockObj.isVirtual) {
                 // Materialize virtual block into DB then start
                 const updatedPlan = await startVirtualBlock(currentDate, blockObj);
-                if (updatedPlan) setPlan(updatedPlan);
+                if (updatedPlan) handlePlanChange(updatedPlan);
             } else {
                 const updatedPlan = await startBlock(currentDate, blockId);
-                if (updatedPlan) setPlan(updatedPlan);
+                if (updatedPlan) handlePlanChange(updatedPlan);
             }
         } catch (e) { console.error("Start block failed", e); }
     };
@@ -675,7 +862,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const handlePauseBlock = async (blockId: string) => {
         try {
             const updatedPlan = await updateBlockInPlan(currentDate, blockId, { status: 'PAUSED' });
-            if (updatedPlan) setPlan(updatedPlan);
+            if (updatedPlan) handlePlanChange(updatedPlan);
         } catch (e) { console.error("Pause block failed", e); }
     };
 
@@ -704,32 +891,18 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 }
             }
 
-            // 2. Finish Current Block
-            const updatedPlan = await finishBlock(currentDate, finishingBlock.id, { 
-                status, 
-                pagesCovered: [],
-                carryForwardPages: [], 
-                notes: '', 
-                tasks: tasks,
-                rescheduledTo: rescheduleAction?.type === 'NEW_BLOCK' ? rescheduleAction.time : (rescheduleAction?.type === 'FUTURE_DATE' ? rescheduleAction.date : undefined)
-            });
+            // Arrays to capture generated IDs
+            let generatedKbLogIds: string[] = [];
+            let generatedTimeLogIds: string[] = [];
 
-            if (updatedPlan) {
-                setPlan(updatedPlan);
-            }
-
-            // 3. SYNC TO KB & TimeLogs if task is completed (FA Logger & KnowledgeBase)
+            // 2. SYNC TO KB & TimeLogs if task is completed
             if (status === 'COMPLETED' || status === 'PARTIAL') {
-                // Find completed FA tasks
-                // Robustly find any task that looks like a FA page read
                 const completedFATasks = tasks.filter(t => t.type === 'FA' && t.execution?.completed);
                 
                 if (completedFATasks.length > 0 && onUpdateKnowledgeBase) {
-                    // Fetch latest settings to ensure SRS is applied correctly
                     const revSettings = await getRevisionSettings() || { mode: 'balanced', targetCount: 7 };
 
                     const entriesToLog = completedFATasks.map(t => {
-                        // Ensure we get a page number
                         const pageMatch = t.detail.match(/\d+/);
                         const pageNum = pageMatch ? parseInt(pageMatch[0]) : (t.meta?.pageNumber || 0);
                         
@@ -737,16 +910,20 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                             pageNumber: pageNum,
                             isExplicitRevision: finishingBlock.title.toLowerCase().includes('revis') || t.detail.toLowerCase().includes('revis'),
                             topics: t.meta?.topic ? [t.meta.topic] : [],
-                            date: currentDate // Explicitly use today's plan date
+                            date: currentDate
                         };
                     }).filter(e => e.pageNumber > 0);
 
                     if (entriesToLog.length > 0) {
-                        // processLogEntries calculates nextRevisionAt based on current RevisionSettings
                         const { results, updatedKB } = processLogEntries(entriesToLog, knowledgeBase, revSettings);
                         await onUpdateKnowledgeBase(updatedKB);
                         
-                        // Save TimeLogs for each processed entry
+                        // Capture IDs from results
+                        results.forEach(res => {
+                            const newLog = res.updatedEntry.logs[res.updatedEntry.logs.length - 1];
+                            if (newLog) generatedKbLogIds.push(newLog.id);
+                        });
+
                         const startTimeStr = finishingBlock.actualStartTime || "00:00";
                         const endTimeStr = finishingBlock.actualEndTime || "00:00";
                         const durationPerTask = Math.round((finishingBlock.actualDurationMinutes || 30) / entriesToLog.length) || 1;
@@ -754,11 +931,11 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                         for (const res of results) {
                             const start = new Date(currentDate + 'T' + startTimeStr + ':00');
                             const end = new Date(currentDate + 'T' + endTimeStr + ':00');
-                            // Handle midnight crossover for time logging
                             if (end < start) end.setDate(end.getDate() + 1);
 
+                            const newTimeLogId = generateId();
                             const timeLog: TimeLogEntry = {
-                                id: generateId(),
+                                id: newTimeLogId,
                                 date: currentDate,
                                 startTime: start.toISOString(),
                                 endTime: end.toISOString(),
@@ -770,9 +947,26 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                                 linkedEntityId: res.updatedEntry.logs[res.updatedEntry.logs.length-1].id
                             };
                             await saveTimeLog(timeLog);
+                            generatedTimeLogIds.push(newTimeLogId);
                         }
                     }
                 }
+            }
+
+            // 3. Finish Current Block (Updating it with generated IDs)
+            const updatedPlan = await finishBlock(currentDate, finishingBlock.id, { 
+                status, 
+                pagesCovered: [],
+                carryForwardPages: [], 
+                notes: '', 
+                tasks: tasks,
+                rescheduledTo: rescheduleAction?.type === 'NEW_BLOCK' ? rescheduleAction.time : (rescheduleAction?.type === 'FUTURE_DATE' ? rescheduleAction.date : undefined),
+                generatedLogIds: generatedKbLogIds,
+                generatedTimeLogIds: generatedTimeLogIds
+            });
+
+            if (updatedPlan) {
+                handlePlanChange(updatedPlan);
             }
 
         } catch (e) { console.error("Finish block failed", e); } finally { setIsCompletionModalOpen(false); setFinishingBlock(null); }
@@ -793,17 +987,20 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         let duration = (eH * 60 + eM) - (sH * 60 + sM);
         if (duration < 0) duration += 24 * 60;
         const updatedPlan = await insertBlockAndShift(currentDate, startTime, duration, tasks, title);
-        if (updatedPlan) setPlan(updatedPlan);
+        if (updatedPlan) handlePlanChange(updatedPlan);
     };
 
     const handleSaveManualPlan = async (newPlan: DayPlan) => {
-        await saveDayPlan(newPlan);
-        setPlan(newPlan);
+        handlePlanChange(newPlan);
     };
 
     const handleOpenBlockDetail = (block: Block) => {
-        setSelectedBlock(block);
-        setIsDetailModalOpen(true);
+        if (isSelectMode) {
+            handleToggleBlockSelection(block.id);
+        } else {
+            setSelectedBlock(block);
+            setIsDetailModalOpen(true);
+        }
     };
 
     const handleUpdateBlock = async (updatedBlock: Block) => {
@@ -813,7 +1010,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         try {
             await updateBlockInPlan(currentDate, updatedBlock.id, updatedBlock);
             const updated = await getDayPlan(currentDate);
-            setPlan(updated);
+            if (updated) handlePlanChange(updated);
         } catch (e) { console.error(e); }
     };
 
@@ -827,7 +1024,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 await moveTasksToNextBlock(currentDate, selectedBlock.id, action.tasks);
             }
             const updated = await getDayPlan(currentDate);
-            setPlan(updated);
+            if (updated) handlePlanChange(updated);
         } catch (e) { console.error(e); }
     };
 
@@ -837,8 +1034,11 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 setBlockToDelete(null);
                 return;
             }
+            // Cascade delete
+            await deleteBlocksAndSync([blockToDelete]);
+            
             const updatedPlan = await deleteBlock(currentDate, blockToDelete.id);
-            if (updatedPlan) setPlan(updatedPlan);
+            if (updatedPlan) handlePlanChange(updatedPlan);
             setBlockToDelete(null);
         }
     };
@@ -886,13 +1086,21 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 onClose={() => setBlockToDelete(null)}
                 onConfirm={confirmDeleteBlock}
                 title="Delete Block?"
-                message={`Are you sure you want to delete "${blockToDelete?.title}"?`}
+                message={`Are you sure you want to delete "${blockToDelete?.title}"? This will also remove synced logs.`}
+            />
+
+            <DeleteConfirmationModal 
+                isOpen={isDeleteAllModalOpen}
+                onClose={() => setIsDeleteAllModalOpen(false)}
+                onConfirm={handleDeletePage}
+                title="Delete Today's Plan?"
+                message="Are you sure you want to clear all blocks for today? This will permanently remove all associated study logs from Dashboard and History."
             />
 
             <div className="flex justify-between items-center relative">
                 <button onClick={() => handleDateChange(-1)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><ChevronLeftIcon className="w-6 h-6 text-slate-500" /></button>
                 
-                <div className="relative group cursor-pointer px-4 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <div className="relative group cursor-pointer px-4 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex flex-col items-center">
                     <h2 className="text-xl font-bold text-slate-800 dark:text-white text-center select-none">
                         {formattedDate}
                     </h2>
@@ -904,7 +1112,28 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                     />
                 </div>
 
-                <button onClick={() => handleDateChange(1)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
+                <div className="flex gap-2 items-center">
+                    {!isSelectMode ? (
+                        <>
+                            <button onClick={() => setIsDeleteAllModalOpen(true)} className="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-colors" title="Delete All Blocks">
+                                <TrashIcon className="w-5 h-5" />
+                            </button>
+                            <button onClick={toggleSelectMode} className="p-2 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-slate-400 hover:text-indigo-500 transition-colors" title="Select Blocks to Delete">
+                                <CursorArrowRaysIcon className="w-5 h-5" />
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={handleDeleteSelected} className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1.5 rounded-lg disabled:opacity-50 hover:bg-red-100 transition-colors" disabled={selectedBlockIds.size === 0}>
+                                Delete ({selectedBlockIds.size})
+                            </button>
+                            <button onClick={toggleSelectMode} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-2">
+                                Cancel
+                            </button>
+                        </>
+                    )}
+                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
+                </div>
             </div>
 
             {/* Control Bar */}
@@ -915,6 +1144,26 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {/* Undo/Redo Buttons */}
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                        <button 
+                            onClick={handleUndo} 
+                            disabled={historyPast.length === 0}
+                            className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300"
+                            title="Undo last change"
+                        >
+                            <ArrowUturnLeftIcon className="w-4 h-4" />
+                        </button>
+                        <button 
+                            onClick={handleRedo} 
+                            disabled={historyFuture.length === 0}
+                            className="p-1.5 rounded hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300"
+                            title="Redo last change"
+                        >
+                            <ArrowUturnRightIcon className="w-4 h-4" />
+                        </button>
+                    </div>
+
                     <select 
                         value={defaultDuration}
                         onChange={(e) => setDefaultDuration(parseInt(e.target.value))}
@@ -959,6 +1208,9 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                     onFinishBlock={initiateFinish}
                     onDeleteBlock={(b) => setBlockToDelete(b)}
                     onSelectBlock={handleOpenBlockDetail}
+                    isSelectMode={isSelectMode}
+                    selectedBlockIds={selectedBlockIds}
+                    onToggleSelection={handleToggleBlockSelection}
                   />
              )
             }

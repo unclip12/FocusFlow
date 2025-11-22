@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export const AppLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
@@ -21,7 +22,7 @@ export const AppLogo = ({ className = "w-10 h-10" }: { className?: string }) => 
     <path 
         d="M60 56L68 62L60 68"
         stroke="white"
-        strokeWidth="8"
+        strokeWidth="8" 
         strokeLinecap="round"
         strokeLinejoin="round"
     />
@@ -101,6 +102,24 @@ export const ArrowPathIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+export const ArrowUturnLeftIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+  </svg>
+);
+
+export const ArrowUturnRightIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+  </svg>
+);
+
+export const CursorArrowRaysIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672 13.684 16.6m0 0-2.51 2.225.569-9.47 5.227 7.917-3.286-.672ZM12 2.25V4.5m5.834.166-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243-1.59-1.59" />
+  </svg>
+);
+
 export const CalendarPlusIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zM14.25 15h.008v.008H14.25V15zm0 2.25h.008v.008H14.25v-.008zM16.5 15h.008v.008H16.5V15zm0 2.25h.008v.008H16.5v-.008zM18.75 15h.008v.008H18.75V15zm0 2.25h.008v.008H18.75v-.008z" />
@@ -121,7 +140,7 @@ export const DocumentTextIcon = ({ className }: { className?: string }) => (
 
 export const ChatBubbleLeftRightIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.18.078-2.1 1.048-2.1 2.203v4.419c0 1.133.847 2.1 1.98 2.193 3.42.279 6.892.279 10.312 0 1.133-.093 1.98-1.06 1.98-2.193v-4.419c0-1.155-.92-2.125-2.1-2.203zM8.25 5.25a48.64 48.64 0 01-5.932 0c-1.18-.078-2.1-1.048-2.1-2.203V.825a2.126 2.126 0 01.476-.095c.34-.027.68-.052 1.02-.072v3.091l3-3c1.354 0 2.694.055 4.02.163a2.115 2.115 0 00.825.242m-9.345 8.334a2.126 2.126 0 01.476.095" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.18.078-2.1 1.048-2.1 2.203v4.419c0 1.133.847 2.1 1.98 2.193 3.42.279 6.892.279 10.312 0 1.133-.093 1.98-1.06 1.98-2.193v-4.419c0-1.155-.92-2.125-2.1-2.203zM8.25 5.25a48.64 48.64 0 01-5.932 0c-1.18-.078-2.1 1.048-2.1-2.203V.825a2.126 2.126 0 01.476-.095c.34-.027.68-.052 1.02-.072v3.091l3-3c1.354 0 2.694.055 4.02.163a2.115 2.115 0 00.825.242m-9.345 8.334a2.126 2.126 0 01.476.095" />
   </svg>
 );
 
@@ -386,5 +405,23 @@ export const PlusCircleIcon = ({ className }: { className?: string }) => (
 export const ClipboardDocumentCheckIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.125 2.25h-4.5c-1.125 0-2.25 1.125-2.25 2.25v12c0 1.125 1.125 2.25 2.25 2.25h9c1.125 0 2.25-1.125 2.25-2.25v-5.625M10.125 2.25c.375 0 .75.062 1.125.188A6.75 6.75 0 0118 8.25v.375m-6.75-6.375c.375 0 .75.062 1.125.188m-1.125-.188a3.375 3.375 0 00-3.375 3.375v.375M10.125 2.25c-.375 0-.75.062-1.125.188M16.5 11.25l-3.75 3.75-1.5-1.5" />
+  </svg>
+);
+
+export const ArrowDownTrayIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+  </svg>
+);
+
+export const ArrowUpTrayIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+  </svg>
+);
+
+export const ArchiveBoxXMarkIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
   </svg>
 );

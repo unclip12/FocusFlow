@@ -221,6 +221,10 @@ export interface Block {
   // Link to where tasks were moved
   rescheduledTo?: string; // Time string e.g. "09:00 PM" or Block ID
   
+  // Sync Tracking
+  generatedLogIds?: string[]; // IDs of KnowledgeBase logs created by this block
+  generatedTimeLogIds?: string[]; // IDs of TimeLogs created by this block
+
   // --- DYNAMIC / UI PROPERTIES ---
   isVirtual?: boolean; // If true, this block is projected from KnowledgeBase and not saved in DayPlan yet
 }

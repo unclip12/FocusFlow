@@ -179,11 +179,16 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
             };
         }
 
+        // Determine new persistent index
+        const maxIndex = plan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
+        const newIndex = maxIndex + 1;
+
         const nowTime = getFormattedTime();
         
         // Prepare the new block (remove virtual flag)
         const newBlock: Block = {
             ...block,
+            index: newIndex,
             status: 'IN_PROGRESS',
             actualStartTime: nowTime,
             segments: [{ start: nowTime }],
@@ -211,7 +216,6 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
         
         // Recalculate stats with new block included
         const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
-        updatedPlan.blocks?.forEach((b, i) => b.index = i);
         updatedPlan.startTimeActual = plan.startTimeActual || nowTime;
 
         await saveDayPlan(updatedPlan);
@@ -369,7 +373,6 @@ export const finishBlock = async (
 
         // Recalculate stats (end time might shift due to overrun)
         const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
-        updatedPlan.blocks?.forEach((b, i) => b.index = i);
 
         await saveDayPlan(updatedPlan);
         return updatedPlan;
@@ -411,10 +414,14 @@ export const insertBlockAndShift = async (
         const newBlockStart = parseTimeToMinutes(startTimeStr);
         const newBlockEnd = newBlockStart + durationMinutes;
         
+        // Determine new persistent index
+        const maxIndex = plan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
+        const newIndex = maxIndex + 1;
+
         // 1. Create the new block
         const newBlock: Block = {
             id: generateId(),
-            index: -1, // Temporary
+            index: newIndex,
             date: date,
             plannedStartTime: formatTime(newBlockStart),
             plannedEndTime: formatTime(newBlockEnd),
@@ -464,7 +471,6 @@ export const insertBlockAndShift = async (
         
         // Recalculate stats and re-sort
         const updatedPlan = recalculatePlanStats(plan, allBlocks);
-        updatedPlan.blocks?.forEach((b, i) => b.index = i);
 
         await saveDayPlan(updatedPlan);
         return updatedPlan;
@@ -486,24 +492,25 @@ export const moveTasksToNextBlock = async (date: string, currentBlockId: string,
         const currentIdx = plan.blocks.findIndex(b => b.id === currentBlockId);
         if (currentIdx === -1) return null;
 
-        // Find next pending block
-        const nextBlockIdx = plan.blocks.findIndex((b, i) => i > currentIdx && b.status !== 'DONE' && b.type !== 'BREAK');
+        // Find next pending block by time
+        // Note: we use time sort order now because indices might not be sequential if deleted
+        const sortedBlocks = [...plan.blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        const currentSortedIdx = sortedBlocks.findIndex(b => b.id === currentBlockId);
         
-        if (nextBlockIdx !== -1) {
-            const updatedBlocks = [...plan.blocks];
-            const nextBlock = updatedBlocks[nextBlockIdx];
+        const nextBlock = sortedBlocks.find((b, i) => i > currentSortedIdx && b.status !== 'DONE' && b.type !== 'BREAK');
+        
+        if (nextBlock) {
+            const updatedBlocks = plan.blocks.map(b => {
+                if (b.id === nextBlock.id) {
+                    return {
+                        ...b,
+                        tasks: [...(b.tasks || []), ...tasksToMove],
+                        title: b.title + (b.title.includes('Carried') ? '' : ' + Carried Tasks')
+                    };
+                }
+                return b;
+            });
             
-            const mergedTasks = [...(nextBlock.tasks || []), ...tasksToMove];
-            
-            updatedBlocks[nextBlockIdx] = {
-                ...nextBlock,
-                tasks: mergedTasks,
-                title: nextBlock.title + (nextBlock.title.includes('Carried') ? '' : ' + Carried Tasks')
-            };
-            
-            // Ensure sorting
-            updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-
             const updatedPlan = { ...plan, blocks: updatedBlocks };
             await saveDayPlan(updatedPlan);
             return updatedPlan;
@@ -540,6 +547,10 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
             };
         }
 
+        // Determine new persistent index for target plan
+        const maxIndex = targetPlan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
+        const newIndex = maxIndex + 1;
+
         // Create a new block for these tasks in the target plan
         // We'll append it to the end or default time if empty
         let newStartTime = '08:00';
@@ -553,7 +564,7 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
         
         const newBlock: Block = {
             id: generateId(),
-            index: (targetPlan.blocks?.length || 0),
+            index: newIndex,
             date: targetDate,
             plannedStartTime: formatTime(newStartMins),
             plannedEndTime: formatTime(newEndMins),
@@ -569,7 +580,6 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
         
         // Recalculate stats
         const updatedTargetPlan = recalculatePlanStats(targetPlan, updatedBlocks);
-        updatedTargetPlan.blocks?.forEach((b, i) => b.index = i);
 
         await saveDayPlan(updatedTargetPlan);
 
@@ -584,14 +594,12 @@ export const deleteBlock = async (date: string, blockId: string): Promise<DayPla
         const plan = await getDayPlan(date);
         if (!plan || !plan.blocks) return null;
 
+        // Just filter out the block. Do NOT re-index remaining blocks to preserve their IDs.
         const updatedBlocks = plan.blocks.filter(b => b.id !== blockId);
         
         // Recalculate stats (IMPORTANT: this fixes the stale summary bug)
         const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
         
-        // Re-index
-        updatedPlan.blocks?.forEach((b, i) => b.index = i);
-
         await saveDayPlan(updatedPlan);
         return updatedPlan;
     } catch (e) {

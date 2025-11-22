@@ -107,7 +107,10 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                         {plan.blocks && plan.blocks.length > 0 ? plan.blocks.map((b, i) => (
                             <div key={i} className="flex justify-between text-sm py-1 border-b border-slate-100 dark:border-slate-800 last:border-0">
                                 <span className="font-mono text-slate-500 w-24">{formatTime12(b.plannedStartTime)} - {formatTime12(b.plannedEndTime)}</span>
-                                <span className="font-bold truncate flex-1 text-slate-700 dark:text-slate-300">{b.title}</span>
+                                <span className="font-bold truncate flex-1 text-slate-700 dark:text-slate-300">
+                                    <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1 rounded mr-2">#{b.index + 1}</span>
+                                    {b.title}
+                                </span>
                                 <span className="text-xs text-slate-400">{b.plannedDurationMinutes}m</span>
                             </div>
                         )) : <p className="text-sm text-slate-400 italic">No blocks scheduled.</p>}
@@ -127,7 +130,10 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                                         {formatTime12(b.actualStartTime)} - {formatTime12(b.actualEndTime)}
                                     </span>
                                     <div>
-                                        <span className="font-bold text-slate-800 dark:text-white block sm:inline">{b.title}</span>
+                                        <span className="font-bold text-slate-800 dark:text-white block sm:inline">
+                                            <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-1 rounded mr-1">#{b.index + 1}</span>
+                                            {b.title}
+                                        </span>
                                         {b.rescheduledTo && (
                                             <span className="text-[10px] text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded ml-0 sm:ml-2 font-bold">
                                                 Rescheduled
@@ -282,7 +288,7 @@ const SwipeableBlockWrapper: React.FC<{
                 <TrashIcon className="w-6 h-6 text-white" />
             </div>
             <div 
-                className="relative z-10 bg-white dark:bg-slate-900 transition-transform duration-200 ease-out"
+                className="relative z-10 transition-transform duration-200 ease-out"
                 style={{ transform: `translateX(${offset}px)` }}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
@@ -361,18 +367,24 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
         };
     }, [isCurrent, block.actualStartTime, block.plannedDurationMinutes]);
 
-    // Split View for Completed Blocks
-    if (isDone) {
-        const actualDuration = block.actualDurationMinutes || 0;
-        const plannedDuration = block.plannedDurationMinutes || 0;
-        const overrun = actualDuration - plannedDuration;
-        
-        return (
-            <div className="relative pl-4 md:pl-0 group animate-fade-in">
-                <div className="absolute left-[-8px] md:left-[-20px] top-0 bottom-0 w-0.5 bg-green-200 dark:bg-green-900 hidden md:block"></div>
-                
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800 overflow-hidden flex flex-col md:flex-row">
-                    
+    // Determine line color
+    let lineColor = 'bg-slate-200 dark:bg-slate-700';
+    if (isVirtual) {
+        lineColor = 'bg-amber-300 dark:bg-amber-700';
+    } else if (block.rescheduledTo || block.completionStatus === 'NOT_DONE') {
+        lineColor = 'bg-red-400 dark:bg-red-800'; // Red for rescheduled/not done
+    } else if (isDone) {
+        lineColor = 'bg-green-400 dark:bg-green-700'; // Green for completed
+    }
+
+    const renderCardContent = () => {
+        if (isDone) {
+            const actualDuration = block.actualDurationMinutes || 0;
+            const plannedDuration = block.plannedDurationMinutes || 0;
+            const overrun = actualDuration - plannedDuration;
+            
+            return (
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-800 overflow-hidden flex flex-col md:flex-row w-full">
                     {/* LEFT SIDE: ORIGINAL PLAN */}
                     <div className="flex-1 p-4 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                         <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Original Plan</div>
@@ -387,6 +399,11 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                     {t.meta?.playbackSpeed && t.meta.playbackSpeed > 1 && (
                                         <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1 rounded font-bold text-slate-600 dark:text-slate-400">
                                             {t.meta.playbackSpeed}x
+                                        </span>
+                                    )}
+                                    {t.type === 'VIDEO' && (t.meta?.videoStartTime !== undefined || t.meta?.videoEndTime !== undefined) && (
+                                        <span className="text-[9px] bg-slate-200 dark:bg-slate-700 px-1 rounded font-bold text-slate-600 dark:text-slate-400 ml-1">
+                                            {t.meta.videoStartTime ?? 0}m-{t.meta.videoEndTime ?? '?'}m
                                         </span>
                                     )}
                                 </div>
@@ -419,7 +436,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
 
                         {/* Reschedule Link */}
                         {block.rescheduledTo && (
-                            <div className="mb-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300 font-bold">
+                            <div className="mb-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-red-700 dark:text-red-300 font-bold">
                                 <ArrowRightIcon className="w-3.5 h-3.5" />
                                 <span>Rescheduled to {block.rescheduledTo.includes(':') ? formatTime12(block.rescheduledTo) : block.rescheduledTo}</span>
                             </div>
@@ -448,16 +465,12 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                         </div>
                     </div>
                 </div>
-            </div>
-        );
-    }
+            );
+        }
 
-    // Active / Pending Block View
-    return (
-        <div className={`relative pl-4 md:pl-0 transition-all ${isBreak ? 'opacity-80' : ''} ${isVirtual ? 'hover:scale-[1.01] hover:shadow-md' : ''}`}>
-            <div className={`absolute left-[-8px] md:left-[-20px] top-0 bottom-0 w-0.5 hidden md:block ${isVirtual ? 'bg-amber-300 dark:bg-amber-700' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
-            
-            <div className={`rounded-xl p-4 border flex flex-col gap-4 
+        // Active / Pending View
+        return (
+            <div className={`rounded-xl p-4 border flex flex-col gap-4 w-full 
                 ${isBreak ? 'bg-slate-50 dark:bg-slate-800/50 border-dashed border-slate-300 dark:border-slate-600' : isVirtual ? 'bg-amber-50/30 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'} 
                 ${isCurrent ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-slate-900' : ''}
                 ${isNext && !isVirtual ? 'border-indigo-200 dark:border-indigo-800' : ''}
@@ -528,6 +541,11 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                         {task.meta.playbackSpeed}x
                                     </span>
                                 )}
+                                {task.type === 'VIDEO' && (task.meta?.videoStartTime !== undefined || task.meta?.videoEndTime !== undefined) && (
+                                    <span className="text-[9px] bg-white/50 dark:bg-black/20 px-1 rounded ml-1 font-bold">
+                                        {task.meta.videoStartTime ?? 0}m-{task.meta.videoEndTime ?? '?'}m
+                                    </span>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -542,6 +560,34 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                         <span className="text-xs text-slate-400">started at {formatTime12(block.actualStartTime)}</span>
                     </div>
                 )}
+            </div>
+        );
+    };
+
+    return (
+        <div className={`flex gap-4 relative group ${isBreak ? 'opacity-80' : ''} ${isVirtual ? 'hover:scale-[1.01]' : ''}`}>
+            
+            {/* Left Gutter: Line & Number */}
+            <div className="w-10 flex-shrink-0 relative flex flex-col items-center justify-center">
+                {/* Timeline Line */}
+                <div className={`absolute top-0 bottom-0 w-0.5 ${lineColor}`}></div>
+                
+                {/* Number Badge */}
+                {!isVirtual && block.index >= 0 && !isBreak && (
+                    <div className="relative z-10 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm">
+                        {block.index + 1}
+                    </div>
+                )}
+                
+                {/* Break Icon/Dot if break */}
+                {isBreak && (
+                    <div className="relative z-10 w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 border-2 border-slate-50 dark:border-slate-900"></div>
+                )}
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 min-w-0">
+                {renderCardContent()}
             </div>
         </div>
     );
@@ -941,7 +987,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                                 endTime: end.toISOString(),
                                 durationMinutes: durationPerTask,
                                 category: res.eventType === 'REVISION' ? 'REVISION' : 'STUDY',
-                                source: 'TODAYS_PLAN_BLOCK',
+                                source: 'FA_LOGGER',
                                 activity: `Block: ${finishingBlock.title} - FA Pg ${res.pageNumber}`,
                                 pageNumber: res.pageNumber,
                                 linkedEntityId: res.updatedEntry.logs[res.updatedEntry.logs.length-1].id

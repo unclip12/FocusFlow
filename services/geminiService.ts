@@ -824,7 +824,8 @@ export const chatWithMentor = async (
     displayName?: string,
     activeMaterialText?: string,
     retrievedContext?: string, // New param for RAG
-    aiSettings?: AISettings | null
+    aiSettings?: AISettings | null,
+    modelName: string = 'gemini-3-pro-preview'
 ): Promise<{ text: string, toolCalls?: any[] }> => {
     if (!ai) return { text: "AI Service unavailable." };
 
@@ -921,9 +922,13 @@ export const chatWithMentor = async (
         ${activeMaterialContext}
         ${infoFilesContext}
 
-        INSTRUCTIONS:
+        CORE DIRECTIVES:
+        1.  **ALWAYS PROVIDE TEXT:** Your primary function is to converse. Every single response you generate MUST contain a user-visible \`text\` component.
+        2.  **CONFIRM TOOL USE:** When you use a tool (like \`logFAStudy\` or \`controlSession\`), you MUST accompany the tool call with a confirmation message in the \`text\` component. For example: "Okay, I've started the timer for 'Cardio Block'." or "Logged page 151 for you. Nice work!". A response containing ONLY tool calls is a failure.
+        3.  **HANDLE GREETINGS:** If the user provides a simple greeting like "Hi" or "Hello", or a conversational filler, simply respond with a friendly greeting. Do NOT try to call a tool for this. Just be conversational.
+
+        DETAILED INSTRUCTIONS:
         - Refer to the user by their name if it is provided. Be conversational and motivational based on your personality settings.
-        - **After calling a tool, ALWAYS provide a brief, conversational confirmation message in the same turn.** For example, after logging a study session, say something like "Great, I've logged page 147 for you. What's next?". Do not just call the tool without a text response.
         - **PLAN-MODIFYING ACTIONS**: For any request that creates, overwrites, or deletes the daily plan, you MUST ask for user confirmation first. The \`createDayPlan\` tool can overwrite an existing plan, so it requires confirmation.
           - When creating/overwriting a plan with \`createDayPlan\`: First, present the key details of the plan you've generated (e.g., total study time, number of videos/pages). Then ask, "Does this look good? I can set this as your schedule for today." Wait for a confirmation like "yes," "confirm," or "go ahead" before calling the tool.
           - When deleting a plan with \`deleteDayPlan\`: Ask, "Are you sure you want to delete the plan for today? This cannot be undone." Wait for confirmation before calling the tool.
@@ -949,7 +954,7 @@ export const chatWithMentor = async (
         }));
 
     const chat = ai.chats.create({
-        model: 'gemini-3-pro-preview',
+        model: modelName,
         config: {
             systemInstruction: systemInstruction,
             tools: [{ functionDeclarations: [logFAStudyTool, addStudyTaskTool, createDayPlanTool, controlSessionTool, updateUserMemoryTool, deleteDayPlanTool] }]
@@ -990,7 +995,8 @@ export const chatWithMentor = async (
 export const chatWithStudyBuddy = async (
     history: { role: 'user' | 'model', text: string }[],
     newMessage: string,
-    studyMaterial: string
+    studyMaterial: string,
+    modelName: string = 'gemini-2.5-flash'
 ): Promise<{ text: string }> => {
     if (!ai) return { text: "AI Service unavailable." };
 
@@ -1006,7 +1012,7 @@ ${processedMaterial}
     `;
 
     const chat = ai.chats.create({
-        model: 'gemini-2.5-flash', 
+        model: modelName, 
         config: {
             systemInstruction: systemInstruction,
         },

@@ -395,8 +395,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                 const pageMatch = input.match(/\d+/);
                 if (pageMatch) {
                     entryWithTopic.pageNumber = parseInt(pageMatch[0]);
-                    // If the input was just the number, we keep the AI extracted topics.
-                    // If input has more text, we could potentially append it, but let's stick to simple correction for now.
+                    // We KEEP the AI-extracted topics from pendingLogEntry.
                 } else {
                     setMessages(prev => [...prev, { id: generateId(), role: 'model', text: "I still need a page number. Please type just the number." }]);
                     setIsProcessing(false);

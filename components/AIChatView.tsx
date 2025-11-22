@@ -42,6 +42,7 @@ type ChatMode = 'MENTOR' | 'BUDDY';
 
 export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, streak, onAddToPlan, onViewDayPlan, displayName, knowledgeBase, onUpdateKnowledgeBase }) => {
   const [mode, setMode] = useState<ChatMode>('MENTOR');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro-preview');
   
   const [mentorMessages, setMentorMessages] = useState<MentorMessage[]>([]);
   const [mentorMemory, setMentorMemory] = useState<MentorMemory | null>(null);
@@ -451,7 +452,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                   displayName,
                   activeMaterial?.text,
                   retrievedContext, // Pass RAG context
-                  aiSettings
+                  aiSettings,
+                  selectedModel // Pass selected model
               );
               
               if (response.toolCalls && response.toolCalls.length > 0) {
@@ -590,7 +592,12 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                   .filter(m => !m.isSystemAction)
                   .map(m => ({ role: m.role, text: m.text }));
               
-              const response = await chatWithStudyBuddy(historyForApi, textToSend, activeMaterial.text);
+              const response = await chatWithStudyBuddy(
+                  historyForApi, 
+                  textToSend, 
+                  activeMaterial.text, 
+                  selectedModel // Pass selected model
+              );
               
               const modelMsg = {
                   id: generateId(),
@@ -648,6 +655,16 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
             </div>
 
             <div className="flex gap-3 items-center">
+                {/* Model Selector */}
+                <select 
+                    value={selectedModel} 
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="bg-slate-100 dark:bg-slate-900 border-none text-xs font-bold text-slate-600 dark:text-slate-300 rounded-lg py-1.5 pl-2 pr-6 cursor-pointer focus:ring-0 outline-none"
+                >
+                    <option value="gemini-3-pro-preview">Gemini 3.0 Pro</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                </select>
+
                 {mode === 'MENTOR' && (
                     <button onClick={handleClearChat} className="text-slate-400 hover:text-red-500 p-2" title="Clear History">
                         <TrashIcon className="w-4 h-4" />

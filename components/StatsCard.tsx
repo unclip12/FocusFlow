@@ -1,11 +1,13 @@
+
 import React, { useMemo } from 'react';
-import { StudyPlanItem, getAdjustedDate, KnowledgeBaseEntry } from '../types';
+import { StudyPlanItem, getAdjustedDate, KnowledgeBaseEntry, DayPlan } from '../types';
 import { ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, ChartBarIcon, TrophyIcon, RepeatIcon, ArrowPathIcon } from './Icons';
 
 interface StatsProps {
   knowledgeBase: KnowledgeBaseEntry[];
   studyPlan?: StudyPlanItem[];
   streak?: number;
+  todayPlan?: DayPlan | null; // NEW prop
 }
 
 // Helper for progress bars
@@ -18,7 +20,7 @@ const ProgressBar = ({ current, total, colorClass }: { current: number, total: n
     );
 };
 
-export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan'>> = ({ knowledgeBase, studyPlan = [] }) => {
+export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan' | 'todayPlan'>> = ({ knowledgeBase, studyPlan = [], todayPlan }) => {
     const todayStr = getAdjustedDate(new Date());
     const now = new Date();
 
@@ -27,10 +29,13 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
         const studiedPages = new Set<string>();
         const revisedPages = new Set<string>();
 
+        // 1. Calculate base stats from KnowledgeBase Logs (which now includes syncd data from blocks)
         knowledgeBase.forEach(kb => {
             (kb.logs || []).forEach(log => {
                 if (getAdjustedDate(log.timestamp) === todayStr) {
-                    todayMinutes += log.durationMinutes || 0;
+                    // Only count duration if source is NOT TodaysPlanBlock to avoid double counting if we use block data primarily
+                    // BUT, since we want accurate total time, we can rely on block data for "Study Time" card if available.
+                    // For pages, we use KB.
                     if (log.type === 'STUDY') {
                         studiedPages.add(kb.pageNumber);
                     } else if (log.type === 'REVISION') {
@@ -39,6 +44,24 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                 }
             });
         });
+
+        // 2. Calculate Time from DayPlan Blocks (Primary source for "Study Time")
+        let plannedMinutes = 0;
+        if (todayPlan && todayPlan.blocks) {
+            const executedBlocks = todayPlan.blocks.filter(b => b.status === 'DONE');
+            todayMinutes = executedBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
+            plannedMinutes = todayPlan.totalStudyMinutesPlanned || 0;
+        } else {
+            // Fallback to KB logs if no plan (legacy mode)
+             knowledgeBase.forEach(kb => {
+                (kb.logs || []).forEach(log => {
+                    if (getAdjustedDate(log.timestamp) === todayStr) {
+                         todayMinutes += log.durationMinutes || 0;
+                    }
+                });
+            });
+            plannedMinutes = 240; // Default target 4h
+        }
 
         // Calculate revision goal
         const pagesWithDueRevisions = new Set<string>();
@@ -69,13 +92,14 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
         return { 
             timeString, 
             todayMinutes,
+            plannedMinutes,
             pagesStudiedToday: studiedPages.size,
             pagesRevisedToday: revisedPages.size,
             totalTodayPages,
             revisionGoalTotal,
             revisionGoalCompleted
         };
-    }, [knowledgeBase, todayStr, now]);
+    }, [knowledgeBase, todayStr, now, todayPlan]);
 
     return (
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
@@ -93,9 +117,9 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                     </div>
                     <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.timeString}</p>
                     <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        Total duration logged
+                        of {Math.round(metrics.plannedMinutes / 60)}h planned
                     </div>
-                    <ProgressBar current={metrics.todayMinutes} total={240} colorClass="bg-blue-500" />
+                    <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-blue-500" />
                 </div>
 
                 {/* Pages Studied Card */}

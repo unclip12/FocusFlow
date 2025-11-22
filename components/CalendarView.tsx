@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { StudySession, StudyPlanItem, getAdjustedDate, VideoResource, Attachment, KnowledgeBaseEntry } from '../types';
+import { StudySession, StudyPlanItem, getAdjustedDate, VideoResource, Attachment, KnowledgeBaseEntry, DayPlan, Block } from '../types';
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, CheckCircleIcon, ClockIcon, FireIcon, ListCheckIcon, PlusIcon, XMarkIcon, SparklesIcon } from './Icons';
+import { getDayPlan } from '../services/firebase';
 
 interface CalendarViewProps {
   knowledgeBase: KnowledgeBaseEntry[];
@@ -12,6 +14,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'MONTH' | 'DAY'>('MONTH'); // Toggle right panel view
+  const [selectedDayPlan, setSelectedDayPlan] = useState<DayPlan | null>(null);
 
   // --- QUICK ADD STATE ---
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -39,6 +42,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
     d1.getMonth() === d2.getMonth() && 
     d1.getFullYear() === d2.getFullYear();
 
+  // Fetch Plan for Selected Date
+  useEffect(() => {
+      const fetchPlan = async () => {
+          if (viewMode === 'DAY') {
+              const dateStr = getAdjustedDate(selectedDate);
+              const plan = await getDayPlan(dateStr);
+              setSelectedDayPlan(plan);
+          }
+      };
+      fetchPlan();
+  }, [selectedDate, viewMode]);
+
   // Get data for a specific date
   const getDayData = (date: Date) => {
     const dateStr = getAdjustedDate(date);
@@ -57,7 +72,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
   };
 
   const monthEvents = useMemo(() => {
-    // FIX: Changed `type` to `eventType` to avoid conflict with StudyPlanItem's `type` property.
     const events: { date: Date, eventType: 'PLAN' | 'REVISION', title: string, subtitle: string, id: string }[] = [];
     
     // Plans
@@ -135,16 +149,41 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
       setIsQuickAddOpen(false);
   };
 
+  const formatTime12 = (timeStr: string | undefined) => {
+    if (!timeStr) return "--:--";
+    if (timeStr.toLowerCase().includes('m')) return timeStr;
+    const [hStr, mStr] = timeStr.split(':');
+    const h = parseInt(hStr);
+    const m = parseInt(mStr);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    const d = new Date();
+    d.setHours(h, m);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+};
+
   // Right Panel Content
   const renderRightPanel = () => {
       const dateStr = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-      const { plans, revisions } = getDayData(selectedDate);
       
-      // FIX: Changed `type` to `eventType` to avoid conflict with StudyPlanItem's `type` property.
-      const dayEvents = [
-          ...plans.map(p => ({ ...p, eventType: 'PLAN' as const })), 
-          ...revisions.map(r => ({ ...r, eventType: 'REVISION' as const }))
-      ];
+      // NEW LOGIC: Prioritize DayPlan Blocks if available
+      let dayEvents: any[] = [];
+      
+      if (selectedDayPlan && selectedDayPlan.blocks && selectedDayPlan.blocks.length > 0) {
+          dayEvents = selectedDayPlan.blocks.map(b => ({
+              id: b.id,
+              title: b.title,
+              subtitle: `${formatTime12(b.plannedStartTime)} - ${formatTime12(b.plannedEndTime)}`,
+              eventType: 'BLOCK',
+              status: b.status
+          }));
+      } else {
+          // Fallback to old logic
+          const { plans, revisions } = getDayData(selectedDate);
+          dayEvents = [
+              ...plans.map(p => ({ ...p, eventType: 'PLAN', subtitle: p.type, status: p.isCompleted ? 'DONE' : 'PENDING' })), 
+              ...revisions.map(r => ({ ...r, eventType: 'REVISION', subtitle: 'Revision Due', status: 'PENDING' }))
+          ];
+      }
       
       if (viewMode === 'MONTH') {
           return (
@@ -165,7 +204,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                                 className="group bg-indigo-600 dark:bg-indigo-700 text-white p-4 rounded-[20px] shadow-lg shadow-indigo-200 dark:shadow-none flex items-center gap-3 cursor-pointer hover:bg-indigo-500 transition-all hover:scale-[1.02]"
                             >
                                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0">
-                                    {/* FIX: Use eventType for logic */}
                                     {event.eventType === 'REVISION' ? <FireIcon className="w-5 h-5" /> : <SparklesIcon className="w-5 h-5" />}
                                 </div>
                                 <div className="min-w-0">
@@ -208,24 +246,32 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                     {dayEvents.length > 0 ? (
                         dayEvents.map((item, idx) => (
                             <div 
-                                // FIX: Use eventType for logic and a safe key.
-                                key={`${item.eventType === 'REVISION' ? item.pageNumber : item.id}-${idx}`}
-                                className={`p-4 rounded-[20px] shadow-md flex items-center gap-3 ${
-                                    item.eventType === 'REVISION' 
-                                    ? 'bg-amber-500 text-white shadow-amber-200' 
-                                    : 'bg-indigo-600 text-white shadow-indigo-200'
+                                key={`${item.id}-${idx}`}
+                                className={`p-3 rounded-xl border flex items-center gap-3 ${
+                                    item.status === 'DONE' || item.status === 'COMPLETED'
+                                    ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30'
+                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'
                                 }`}
                             >
-                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0">
-                                    {/* FIX: Use eventType for logic */}
-                                    {item.eventType === 'REVISION' ? <FireIcon className="w-5 h-5" /> : <ListCheckIcon className="w-5 h-5" />}
-                                </div>
-                                <div className="min-w-0">
-                                    {/* FIX: Use eventType for logic and remove incorrect cast */}
-                                    <h4 className="font-bold text-sm leading-tight truncate">{item.eventType === 'REVISION' ? item.title : item.topic}</h4>
-                                    <p className="text-xs opacity-80 mt-0.5">
-                                        {/* FIX: Use eventType and access original `type` for PLAN items */}
-                                        {item.eventType === 'REVISION' ? item.subject : item.type}
+                                {item.status === 'DONE' || item.status === 'COMPLETED' ? (
+                                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                                        <CheckCircleIcon className="w-4 h-4" />
+                                    </div>
+                                ) : (
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                                        <ClockIcon className="w-4 h-4" />
+                                    </div>
+                                )}
+                                
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={`font-bold text-sm truncate ${item.status === 'DONE' ? 'text-slate-500 line-through' : 'text-slate-800 dark:text-white'}`}>
+                                            {item.title}
+                                        </h4>
+                                        {item.status === 'DONE' && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider bg-green-50 px-1.5 py-0.5 rounded border border-green-100">Done</span>}
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                        {item.subtitle}
                                     </p>
                                 </div>
                             </div>

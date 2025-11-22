@@ -1,3 +1,4 @@
+
 export interface UserProfile {
     displayName?: string;
 }
@@ -139,7 +140,7 @@ export interface DayPlanBreak {
   durationMinutes: number;
 }
 
-export type BlockType = "VIDEO" | "REVISION_FA" | "ANKI" | "QBANK" | "BREAK" | "OTHER";
+export type BlockType = "VIDEO" | "REVISION_FA" | "ANKI" | "QBANK" | "BREAK" | "OTHER" | "MIXED";
 
 export interface BlockSegment {
   start: string; // HH:mm or ISO
@@ -152,6 +153,28 @@ export interface BlockInterruption {
   reason: string;
 }
 
+export interface TaskExecution {
+    completed: boolean;
+    note?: string; // Experience if completed, Reason if not
+}
+
+export interface BlockTask {
+    id: string;
+    type: 'FA' | 'VIDEO' | 'ANKI' | 'QBANK' | 'OTHER';
+    detail: string; // e.g. "Page 550", "Cardio Video"
+    completed: boolean;
+    meta?: {
+        pageNumber?: number;
+        count?: number;
+        topic?: string;
+        system?: string;
+        subject?: string;
+        subtopics?: string[];
+        url?: string;
+    };
+    execution?: TaskExecution;
+}
+
 export interface Block {
   id: string;
   index: number;                // order in the day (0,1,2…)
@@ -161,6 +184,10 @@ export interface Block {
   type: BlockType;
   title: string;                // e.g. "Watch Surgery video", "Revise with FA"
   description?: string;         // short description
+  
+  // Granular Tasks within the block
+  tasks?: BlockTask[];
+
   relatedVideoId?: string;      // optional link into videos[] of the dayPlan
   relatedFaPages?: number[];    // list of FA pages used in this block
   relatedAnkiInfo?: { totalCards?: number };
@@ -186,6 +213,9 @@ export interface Block {
   actualPagesCovered?: number[];
   carryForwardPages?: number[];
   reflectionNotes?: string;
+  
+  // Link to where tasks were moved
+  rescheduledTo?: string; // Time string e.g. "09:00 PM" or Block ID
 }
 
 export interface DayPlan {

@@ -1,13 +1,15 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, getRevisionSettings } from './services/firebase';
+import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, getRevisionSettings, getDayPlan } from './services/firebase';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
   getAdjustedDate, VideoResource, Attachment, ToDoItem,
   UserProfile,
   TrackableItem,
   RevisionLog,
-  RevisionSettings
+  RevisionSettings,
+  DayPlan
 } from './types';
 import { getData, saveData } from './services/dbService';
 import { calculateNextRevisionDate } from './services/srsService';
@@ -51,6 +53,8 @@ export default function App() {
   // Data State
   const [studyPlan, setStudyPlan] = useState<StudyPlanItem[]>([]);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseEntry[]>([]);
+  const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null); // Store today's plan for dashboard
+  
   const [settings, setSettings] = useState<AppSettings>({ 
       darkMode: false, 
       primaryColor: 'indigo', 
@@ -107,6 +111,12 @@ export default function App() {
       if (action === 'log') setIsSessionModalOpen(true);
   }, []);
 
+  const loadTodayPlan = async () => {
+      const today = getAdjustedDate(new Date());
+      const plan = await getDayPlan(today);
+      setTodayPlan(plan);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -122,6 +132,9 @@ export default function App() {
         const firestoreKB = await getKnowledgeBase();
         setKnowledgeBase(firestoreKB);
         await saveData('knowledgeBase_v2', firestoreKB);
+
+        // Load Today's Plan for Dashboard Stats
+        await loadTodayPlan();
 
         const loadedSettings = await getData<AppSettings>('settings');
         const loadedRevSettings = await getRevisionSettings();
@@ -146,6 +159,13 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Refresh Today Plan when viewing dashboard
+  useEffect(() => {
+      if (currentView === 'DASHBOARD') {
+          loadTodayPlan();
+      }
+  }, [currentView]);
 
   const streak = useMemo(() => {
     const allStudyDates = new Set<string>();
@@ -436,7 +456,8 @@ export default function App() {
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                          <div className="space-y-6">
-                            <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} />
+                            {/* Pass todayPlan to StatsCard for integration */}
+                            <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} />
                             <ActivityGraphs knowledgeBase={knowledgeBase} />
                             <StatsGrid knowledgeBase={knowledgeBase} streak={streak} />
                          </div>
@@ -509,7 +530,12 @@ export default function App() {
             )}
 
             {currentView === 'TODAYS_PLAN' && (
-                <TodaysPlanView targetDate={targetPlanDate} settings={settings} />
+                <TodaysPlanView 
+                    targetDate={targetPlanDate} 
+                    settings={settings} 
+                    knowledgeBase={knowledgeBase}
+                    onUpdateKnowledgeBase={updateKB} // Pass update function for synchronization
+                />
             )}
 
             {currentView === 'CALENDAR' && (
@@ -613,14 +639,6 @@ export default function App() {
               planContext={planContext}
               knowledgeBase={knowledgeBase}
               onSave={(sessionData) => {
-                  // Logic to save session
-                  // We need to handle KB updates from SessionModal save
-                  // SessionModal returns Partial<StudySession> which roughly maps to KB logic
-                  // But we need to convert it to KB updates
-                  
-                  // NOTE: SessionModal has been updated to handle plan updates too.
-                  // We need to implement the onSave logic here.
-                  
                   const { pageNumber, topic, history, notes, ankiCovered, ankiTotal, planUpdates } = sessionData;
                   const latestLog = history && history.length > 0 ? history[0] : null;
                   

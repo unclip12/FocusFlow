@@ -1,5 +1,8 @@
+
 import { getDayPlan, saveDayPlan } from './firebase';
-import { Block, DayPlan } from '../types';
+import { Block, DayPlan, BlockTask } from '../types';
+
+const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
 /**
  * Helper to get formatted time for logs
@@ -23,6 +26,36 @@ const formatTime = (minutes: number): string => {
     const m = Math.round(minutes % 60);
     if (h >= 24) h -= 24;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Shift subsequent blocks if a block runs overtime.
+ */
+const shiftSchedule = (blocks: Block[], startIndex: number, minutesToShift: number): Block[] => {
+    // Only shift if minutes > 0
+    if (minutesToShift <= 0) return blocks;
+
+    const updatedBlocks = [...blocks];
+    
+    // Iterate through all blocks AFTER the finished one
+    for (let i = startIndex + 1; i < updatedBlocks.length; i++) {
+        const block = updatedBlocks[i];
+        // Do not shift completed blocks or skipped ones (logic choice: shift everything pending)
+        if (block.status === 'DONE' || block.status === 'SKIPPED') continue;
+
+        const oldStart = parseTimeToMinutes(block.plannedStartTime);
+        const oldEnd = parseTimeToMinutes(block.plannedEndTime);
+        
+        const newStart = oldStart + minutesToShift;
+        const newEnd = oldEnd + minutesToShift;
+
+        updatedBlocks[i] = {
+            ...block,
+            plannedStartTime: formatTime(newStart),
+            plannedEndTime: formatTime(newEnd)
+        };
+    }
+    return updatedBlocks;
 };
 
 
@@ -66,6 +99,9 @@ export const updateBlockInPlan = async (date: string, blockId: string, updates: 
             console.warn(`Block ${blockId} not found in plan for ${date}`);
             return null;
         }
+
+        // Ensure chronological order
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
 
         const updatedPlan = { ...plan, blocks: updatedBlocks };
         await saveDayPlan(updatedPlan);
@@ -122,6 +158,9 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
             return b;
         });
 
+        // Ensure chronological order
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+
         const updatedPlan = { ...plan, blocks: updatedBlocks, startTimeActual: plan.startTimeActual || nowTime };
         await saveDayPlan(updatedPlan);
         return updatedPlan;
@@ -132,7 +171,8 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
 };
 
 /**
- * Finish a block with reflection data.
+ * Finish a block with granular task updates.
+ * Automatically shifts future blocks if time overrun occurs.
  */
 export const finishBlock = async (
     date: string, 
@@ -142,7 +182,9 @@ export const finishBlock = async (
         pagesCovered: number[],
         carryForwardPages: number[],
         notes: string,
-        interruptions?: { start: string, end: string, reason: string }[]
+        interruptions?: { start: string, end: string, reason: string }[],
+        tasks?: BlockTask[], // Updated tasks with execution status
+        rescheduledTo?: string // The time or context where tasks were pushed
     }
 ): Promise<DayPlan | null> => {
     try {
@@ -190,7 +232,7 @@ export const finishBlock = async (
         const actualStudyTime = actualDurationMinutes - totalBreakDuration;
         const overrun = actualStudyTime - b.plannedDurationMinutes;
 
-        // Update the block
+        // Update the completed block
         updatedBlocks[currentBlockIndex] = {
             ...b,
             status: 'DONE',
@@ -201,39 +243,18 @@ export const finishBlock = async (
             carryForwardPages: reflection.carryForwardPages,
             actualNotes: reflection.notes,
             segments: finalSegments,
-            interruptions: finalInterruptions
+            interruptions: finalInterruptions,
+            tasks: reflection.tasks || b.tasks,
+            rescheduledTo: reflection.rescheduledTo // Store where it went
         };
 
-        // If overrun, shift subsequent blocks
+        // --- TIME SHIFTING LOGIC ---
         if (overrun > 0) {
-            for (let i = currentBlockIndex + 1; i < updatedBlocks.length; i++) {
-                const nextBlock = updatedBlocks[i];
-                if (nextBlock.status === 'DONE') continue; // Don't shift already completed blocks
-                
-                const newStartTime = formatTime(parseTimeToMinutes(nextBlock.plannedStartTime) + overrun);
-                const newEndTime = formatTime(parseTimeToMinutes(nextBlock.plannedEndTime) + overrun);
-                updatedBlocks[i] = {
-                    ...nextBlock,
-                    plannedStartTime: newStartTime,
-                    plannedEndTime: newEndTime
-                };
-            }
+            updatedBlocks = shiftSchedule(updatedBlocks, currentBlockIndex, overrun);
         }
 
-        if (reflection.carryForwardPages && reflection.carryForwardPages.length > 0) {
-            const nextBlockIndex = updatedBlocks.findIndex((blk, idx) => idx > currentBlockIndex && blk.type !== 'BREAK' && blk.status !== 'DONE');
-            if (nextBlockIndex !== -1) {
-                const nextBlock = updatedBlocks[nextBlockIndex];
-                const carryNote = ` [⚠️ Carried Fwd: Pgs ${reflection.carryForwardPages.join(', ')}]`;
-                if (!nextBlock.description?.includes('Carried Fwd')) {
-                     updatedBlocks[nextBlockIndex] = {
-                        ...nextBlock,
-                        description: (nextBlock.description || '') + carryNote,
-                        title: nextBlock.title.includes('⚠️') ? nextBlock.title : `⚠️ ${nextBlock.title}`
-                    };
-                }
-            }
-        }
+        // Ensure chronological order is maintained
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
 
         const updatedPlan = { ...plan, blocks: updatedBlocks };
 
@@ -247,6 +268,149 @@ export const finishBlock = async (
 
     } catch (e) {
         console.error("planService: finishBlock failed", e);
+        throw e;
+    }
+};
+
+/**
+ * Inserts a new block at a specific time and shifts overlapping/future blocks.
+ */
+export const insertBlockAndShift = async (
+    date: string, 
+    startTimeStr: string, 
+    durationMinutes: number, 
+    tasks: BlockTask[],
+    title: string = 'New Study Block'
+): Promise<DayPlan | null> => {
+    try {
+        const plan = await getDayPlan(date);
+        if (!plan || !plan.blocks) return null;
+
+        const newBlockStart = parseTimeToMinutes(startTimeStr);
+        const newBlockEnd = newBlockStart + durationMinutes;
+        
+        // 1. Create the new block
+        const newBlock: Block = {
+            id: generateId(),
+            index: -1, // Temporary
+            date: date,
+            plannedStartTime: formatTime(newBlockStart),
+            plannedEndTime: formatTime(newBlockEnd),
+            type: 'MIXED',
+            title: title,
+            description: 'Manual Entry',
+            plannedDurationMinutes: durationMinutes,
+            status: 'NOT_STARTED',
+            tasks: tasks
+        };
+
+        let updatedBlocks = [...plan.blocks];
+        
+        // 2. Insert and Shift
+        const doneBlocks = updatedBlocks.filter(b => b.status === 'DONE');
+        const pendingBlocks = updatedBlocks.filter(b => b.status !== 'DONE');
+        
+        // Sort pending blocks by start time
+        pendingBlocks.sort((a,b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+
+        const shiftDelta = durationMinutes;
+        
+        const shiftedPendingBlocks = pendingBlocks.map(b => {
+            const bStart = parseTimeToMinutes(b.plannedStartTime);
+            if (bStart >= newBlockStart) {
+                const bEnd = parseTimeToMinutes(b.plannedEndTime);
+                return {
+                    ...b,
+                    plannedStartTime: formatTime(bStart + shiftDelta),
+                    plannedEndTime: formatTime(bEnd + shiftDelta)
+                };
+            }
+            // If block ends after new start, it overlaps, push it.
+            const bEnd = parseTimeToMinutes(b.plannedEndTime);
+            if (bEnd > newBlockStart) {
+                 return {
+                    ...b,
+                    plannedStartTime: formatTime(bStart + shiftDelta),
+                    plannedEndTime: formatTime(bEnd + shiftDelta)
+                };
+            }
+            return b;
+        });
+
+        // Combine
+        updatedBlocks = [...doneBlocks, newBlock, ...shiftedPendingBlocks];
+        
+        // Re-sort and re-index immediately to ensure chronological order
+        updatedBlocks.sort((a,b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        updatedBlocks.forEach((b, i) => b.index = i);
+
+        const updatedPlan = { ...plan, blocks: updatedBlocks };
+        await saveDayPlan(updatedPlan);
+        return updatedPlan;
+
+    } catch (e) {
+        console.error("insertBlockAndShift failed", e);
+        throw e;
+    }
+};
+
+/**
+ * Moves tasks to the immediately next pending block.
+ */
+export const moveTasksToNextBlock = async (date: string, currentBlockId: string, tasksToMove: BlockTask[]): Promise<DayPlan | null> => {
+    try {
+        const plan = await getDayPlan(date);
+        if (!plan || !plan.blocks) return null;
+
+        const currentIdx = plan.blocks.findIndex(b => b.id === currentBlockId);
+        if (currentIdx === -1) return null;
+
+        // Find next pending block
+        const nextBlockIdx = plan.blocks.findIndex((b, i) => i > currentIdx && b.status !== 'DONE' && b.type !== 'BREAK');
+        
+        if (nextBlockIdx !== -1) {
+            const updatedBlocks = [...plan.blocks];
+            const nextBlock = updatedBlocks[nextBlockIdx];
+            
+            const mergedTasks = [...(nextBlock.tasks || []), ...tasksToMove];
+            
+            updatedBlocks[nextBlockIdx] = {
+                ...nextBlock,
+                tasks: mergedTasks,
+                title: nextBlock.title + (nextBlock.title.includes('Carried') ? '' : ' + Carried Tasks')
+            };
+            
+            // Ensure sorting
+            updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+
+            const updatedPlan = { ...plan, blocks: updatedBlocks };
+            await saveDayPlan(updatedPlan);
+            return updatedPlan;
+        } else {
+            console.warn("No next block found to move tasks to.");
+            return null;
+        }
+
+    } catch (e) {
+        console.error("moveTasksToNextBlock failed", e);
+        throw e;
+    }
+};
+
+export const deleteBlock = async (date: string, blockId: string): Promise<DayPlan | null> => {
+    try {
+        const plan = await getDayPlan(date);
+        if (!plan || !plan.blocks) return null;
+
+        const updatedBlocks = plan.blocks.filter(b => b.id !== blockId);
+        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        updatedBlocks.forEach((b, i) => b.index = i);
+
+        const updatedPlan = { ...plan, blocks: updatedBlocks };
+        await saveDayPlan(updatedPlan);
+        return updatedPlan;
+    } catch (e) {
+        console.error("deleteBlock failed", e);
         throw e;
     }
 };

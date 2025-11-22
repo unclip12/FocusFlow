@@ -798,7 +798,19 @@ const updateUserMemoryTool: FunctionDeclaration = {
             }
         }
     }
-}
+};
+
+const deleteDayPlanTool: FunctionDeclaration = {
+  name: 'deleteDayPlan',
+  description: 'Deletes the entire study plan for a specific date. This is a destructive action and should only be used after getting explicit confirmation from the user.',
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      date: { type: Type.STRING, description: 'The date of the plan to delete in YYYY-MM-DD format. Defaults to today if not specified.' },
+    },
+    required: ['date']
+  }
+};
 
 export const chatWithMentor = async (
     history: { role: 'user' | 'model', text: string }[], 
@@ -911,7 +923,10 @@ export const chatWithMentor = async (
 
         INSTRUCTIONS:
         - Refer to the user by their name if it is provided. Be conversational and motivational based on your personality settings.
-        - Use tools to update plans or block status.
+        - **After calling a tool, ALWAYS provide a brief, conversational confirmation message in the same turn.** For example, after logging a study session, say something like "Great, I've logged page 147 for you. What's next?". Do not just call the tool without a text response.
+        - **PLAN-MODIFYING ACTIONS**: For any request that creates, overwrites, or deletes the daily plan, you MUST ask for user confirmation first. The \`createDayPlan\` tool can overwrite an existing plan, so it requires confirmation.
+          - When creating/overwriting a plan with \`createDayPlan\`: First, present the key details of the plan you've generated (e.g., total study time, number of videos/pages). Then ask, "Does this look good? I can set this as your schedule for today." Wait for a confirmation like "yes," "confirm," or "go ahead" before calling the tool.
+          - When deleting a plan with \`deleteDayPlan\`: Ask, "Are you sure you want to delete the plan for today? This cannot be undone." Wait for confirmation before calling the tool.
         - If the user says they studied a page (e.g., "finished FA 147") but doesn't specify the topic, you MUST ask: "Great, what topics did you cover? Or upload a photo of the page so I can extract it for you."
         - **PARTIAL COMPLETION:** If the user says they only studied some topics from a page, you MUST ask for clarification on which topics were completed and which are pending. Use this to update the log and potentially the backlog.
         - **DATE LOGGING:** If the user mentions a date for their study log (e.g., "yesterday", "on Friday", "Jan 5"), you MUST calculate the date in YYYY-MM-DD format and pass it to the 'date' field in the 'logFAStudy' tool. Today's date is ${getAdjustedDate(new Date())}.
@@ -937,7 +952,7 @@ export const chatWithMentor = async (
         model: 'gemini-3-pro-preview',
         config: {
             systemInstruction: systemInstruction,
-            tools: [{ functionDeclarations: [logFAStudyTool, addStudyTaskTool, createDayPlanTool, controlSessionTool, updateUserMemoryTool] }]
+            tools: [{ functionDeclarations: [logFAStudyTool, addStudyTaskTool, createDayPlanTool, controlSessionTool, updateUserMemoryTool, deleteDayPlanTool] }]
         },
         history: validHistory
     });

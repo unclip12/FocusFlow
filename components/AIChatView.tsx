@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings } from '../types';
 import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
 import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon } from './Icons';
-import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings } from '../services/firebase';
+import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan } from '../services/firebase';
 import { generateBlocks } from '../services/blockGenerator';
 import { startBlock, updateBlockInPlan, finishBlock } from '../services/planService';
 import { processLogEntries } from '../services/faLoggerService';
@@ -118,6 +118,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
           const plan = await getDayPlan(today);
           if (plan && plan.blocks) {
               setTodaysBlocks(plan.blocks);
+          } else {
+              setTodaysBlocks([]);
           }
       } catch (e) {
           console.error("Error loading blocks for context", e);
@@ -465,17 +467,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
 
                            const { results, updatedKB } = processLogEntries(parsedEntries, knowledgeBase, revisionSettings);
                            await onUpdateKnowledgeBase(updatedKB);
-                           
-                           const confirmationTexts = results.map(r => r.confirmationMessage).join('\n');
-                           const sysMsg: MentorMessage = {
-                               id: generateId(),
-                               role: 'model',
-                               text: `✅ Logged FA Study:\n${confirmationTexts}`,
-                               timestamp: new Date().toISOString(),
-                               isSystemAction: true
-                           };
-                           setMentorMessages(prev => [...prev, sysMsg]);
-                           await saveMentorMessage(sysMsg);
                        }
                        else if (call.name === 'addStudyTask') {
                            const args = call.args as any;
@@ -490,16 +481,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                totalMinutesSpent: 0,
                                videoUrl: args.videoUrl
                            });
-                           
-                            const sysMsg: MentorMessage = {
-                                id: generateId(),
-                                role: 'model',
-                                text: `✅ Added to Planner: ${args.topic} (Pg ${args.pageNumber})`,
-                                timestamp: new Date().toISOString(),
-                                isSystemAction: true
-                            };
-                            setMentorMessages(prev => [...prev, sysMsg]);
-                            await saveMentorMessage(sysMsg);
                        }
                        else if (call.name === 'createDayPlan') {
                            const planArgs = call.args as DayPlan;
@@ -522,22 +503,10 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
 
                            await saveDayPlan(planArgs);
                            setTodaysBlocks(planArgs.blocks!);
-
-                           const sysMsg: MentorMessage = {
-                               id: generateId(),
-                               role: 'model',
-                               text: `Created full day plan for ${planArgs.date}. I've also set up your time blocks.`,
-                               timestamp: new Date().toISOString(),
-                               isSystemAction: true,
-                               actionType: 'VIEW_PLAN',
-                               actionPayload: { date: planArgs.date }
-                           };
-                           setMentorMessages(prev => [...prev, sysMsg]);
-                           await saveMentorMessage(sysMsg);
                        }
                        else if (call.name === 'controlSession') {
                            const args = call.args as any;
-                           const success = await executeBlockAction(
+                           await executeBlockAction(
                                args.action, 
                                args.blockIndex, 
                                args.notes, 
@@ -546,37 +515,22 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                Array.isArray(args.pagesCovered) ? args.pagesCovered : [],
                                Array.isArray(args.carryForwardPages) ? args.carryForwardPages : []
                            );
-                           
-                           if (success) {
-                               let statusTxt = args.action;
-                               if(args.completionStatus) statusTxt += ` (${args.completionStatus})`;
-                               
-                               const sysMsg: MentorMessage = {
-                                   id: generateId(),
-                                   role: 'model',
-                                   text: `⏱️ Updated Block #${args.blockIndex + 1}: ${statusTxt}`,
-                                   timestamp: new Date().toISOString(),
-                                   isSystemAction: true
-                               };
-                               setMentorMessages(prev => [...prev, sysMsg]);
-                               await saveMentorMessage(sysMsg);
-                           }
                        }
                        else if (call.name === 'updateUserMemory') {
                            const memArgs = call.args as MentorMemory;
                            const newMemory = { ...mentorMemory, ...memArgs };
                            setMentorMemory(newMemory);
                            await saveMentorMemoryData(newMemory);
+                       }
+                       else if (call.name === 'deleteDayPlan') {
+                           const args = call.args as any;
+                           const dateToDelete = args.date || getAdjustedDate(new Date());
+                           await deleteDayPlan(dateToDelete);
                            
-                           const sysMsg: MentorMessage = {
-                               id: generateId(),
-                               role: 'model',
-                               text: `🧠 Memory Updated: Learning patterns analyzed.`,
-                               timestamp: new Date().toISOString(),
-                               isSystemAction: true
-                           };
-                           setMentorMessages(prev => [...prev, sysMsg]);
-                           await saveMentorMessage(sysMsg);
+                           const today = getAdjustedDate(new Date());
+                           if (dateToDelete === today) {
+                               setTodaysBlocks([]); // Clear local blocks
+                           }
                        }
                   }
               }

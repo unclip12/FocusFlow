@@ -1,3 +1,4 @@
+
 // components/FALoggerView.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { KnowledgeBaseEntry, RevisionLog, getAdjustedDate, Attachment, TimeLogEntry, RevisionSettings } from '../types';
@@ -380,14 +381,32 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             return;
         }
 
-        // 2. Handle Pending Topic Confirmation (From Image Extraction)
+        // 2. Handle Pending Topic/Page Confirmation (From Image Extraction)
         if (pendingLogEntry) {
             if (!input.trim()) { setIsProcessing(false); return; }
             const userMessage: LogMessage = { id: generateId(), role: 'user', text: input };
             setMessages(prev => [...prev, userMessage]);
             
-            const topicsFromReply = input.split(/, | and /).map(t => t.trim()).filter(Boolean);
-            const entryWithTopic: ParsedLogEntry = { ...pendingLogEntry, topics: topicsFromReply };
+            let entryWithTopic: ParsedLogEntry = { ...pendingLogEntry };
+
+            // Check if we were waiting for a page number (because it was 0)
+            if (pendingLogEntry.pageNumber === 0) {
+                // Try to extract page number from input
+                const pageMatch = input.match(/\d+/);
+                if (pageMatch) {
+                    entryWithTopic.pageNumber = parseInt(pageMatch[0]);
+                    // If the input was just the number, we keep the AI extracted topics.
+                    // If input has more text, we could potentially append it, but let's stick to simple correction for now.
+                } else {
+                    setMessages(prev => [...prev, { id: generateId(), role: 'model', text: "I still need a page number. Please type just the number." }]);
+                    setIsProcessing(false);
+                    return;
+                }
+            } else {
+                // We were waiting for topics (page was known, but no topics found)
+                const topicsFromReply = input.split(/, | and /).map(t => t.trim()).filter(Boolean);
+                entryWithTopic.topics = topicsFromReply;
+            }
     
             const { results, updatedKB } = processLogEntries([entryWithTopic], knowledgeBase, revisionSettings);
             await onUpdateKnowledgeBase(updatedKB);
@@ -419,11 +438,13 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     
         if (!input.trim() && !attachedFile) { setIsProcessing(false); return; }
     
-        const userMessage: LogMessage = { id: generateId(), role: 'user', text: input };
+        const displayText = input.trim() ? input : (attachedFile ? `[Attached: ${attachedFile.name}]` : '');
+        const userMessage: LogMessage = { id: generateId(), role: 'user', text: displayText };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
     
         let parsedEntries = parseFALoggerInput(input);
+        // If no text input, but file attached, create a dummy entry to trigger AI processing
         if (parsedEntries.length === 0 && attachedFile) {
             parsedEntries.push({ pageNumber: 0, isExplicitRevision: false, topics: [] });
         }
@@ -450,6 +471,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                     const topics = await summarizeTextToTopics(extractedText);
                     if (topics) {
                         entry.topics = [topics.topic, ...topics.subTopics].filter(Boolean);
+                        // If no page number was provided in text (0), ask for it now
                         if (entry.pageNumber === 0) {
                             setMessages(prev => [...prev, { id: generateId(), role: 'model', text: "Extracted topics from file. What page number is this for?" }]);
                             setPendingLogEntry(entry);
@@ -466,6 +488,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             }
         }
     
+        // If we have page number but no topics (and no attachment provided topics)
         if (entry.topics.length === 0) {
             setPendingLogEntry(entry);
             setMessages(prev => [...prev, { id: generateId(), role: 'model', text: `What topic or section did you study on page ${entry.pageNumber}?` }]);

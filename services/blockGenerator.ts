@@ -1,4 +1,3 @@
-
 import { DayPlan, Block, BlockType } from '../types';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -27,7 +26,7 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
     const videoQueue: { title: string, desc: string, id?: string, type: BlockType }[] = [];
     const faQueue: { title: string, desc: string, pages: number[] }[] = [];
 
-    plan.videos.forEach((video, idx) => {
+    (plan.videos || []).forEach((video, idx) => {
         const duration = Math.round(video.effectiveStudyMinutes);
         const chunks = Math.ceil(duration / blockDurationMinutes);
         
@@ -41,7 +40,6 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
             // Interleave FA Revision logic: 1 Video Block -> 1 FA Block opportunity
             // Distribute pages roughly
             if (plan.faPages && plan.faPages.length > 0) {
-                const pagesPerChunk = Math.ceil(plan.faPages.length / Math.max(1, plan.videos.length * chunks)); // rough distribution
                 // For simplicity, just add a generic revision block that we will populate
                 faQueue.push({
                    title: `Revise FA: ${video.topic || 'Related Pages'}`,
@@ -53,12 +51,20 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
     });
 
     // distribute FA pages into FA queue
-    if (plan.faPages && faQueue.length > 0) {
-        const pages = [...plan.faPages];
+    // FIX: Robust handling for plan.faPages to ensure it's treated as an array
+    // even if AI returns a single number or undefined.
+    let rawPages: any = plan.faPages;
+    if (rawPages !== undefined && rawPages !== null && !Array.isArray(rawPages)) {
+        rawPages = [rawPages]; // Wrap single item
+    }
+    const safePages = Array.isArray(rawPages) ? rawPages : [];
+
+    if (safePages.length > 0 && faQueue.length > 0) {
+        const pages = [...safePages]; // copy
         let qIdx = 0;
         while (pages.length > 0) {
             const p = pages.shift();
-            if (p) faQueue[qIdx % faQueue.length].pages.push(p);
+            if (p) faQueue[qIdx % faQueue.length].pages.push(p as number);
             qIdx++;
         }
     }
@@ -120,11 +126,19 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
     // 4. Generate Blocks with Breaks
     let blockIndex = 0;
     
-    // Sort breaks by time
-    const sortedBreaks = [...plan.breaks].sort((a, b) => {
-        if (!a.startTime || !b.startTime) return 0;
+    // FIX: Robust handling for plan.breaks. Ensure it is an array before sorting.
+    // AI might return a single break object or null.
+    let rawBreaks: any = plan.breaks;
+    if (rawBreaks !== undefined && rawBreaks !== null && !Array.isArray(rawBreaks)) {
+        rawBreaks = [rawBreaks];
+    }
+    const safeBreaks = Array.isArray(rawBreaks) ? rawBreaks : [];
+
+    const sortedBreaks = safeBreaks.sort((a: any, b: any) => {
+        if (!a || !a.startTime || !b || !b.startTime) return 0;
         return parseTime(a.startTime) - parseTime(b.startTime);
     });
+
 
     let queuePtr = 0;
 
@@ -136,7 +150,7 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
         const end = currentTime + blockDurationMinutes;
         
         // Check for Break Intersection
-        const conflictingBreak = sortedBreaks.find(b => {
+        const conflictingBreak = sortedBreaks.find((b: any) => {
             if (!b.startTime || !b.endTime) return false;
             const bStart = parseTime(b.startTime);
             // If break starts within this block or this block overlaps start of break
@@ -201,8 +215,8 @@ export const generateBlocks = (plan: DayPlan, blockDurationMinutes: number = 30)
     }
     
     // Add remaining breaks that might be after all study
-    sortedBreaks.forEach(b => {
-        if (!b.startTime || !b.endTime) return;
+    sortedBreaks.forEach((b: any) => {
+        if (!b || !b.startTime || !b.endTime) return;
         const bStart = parseTime(b.startTime);
         if (bStart >= currentTime) {
              blocks.push({

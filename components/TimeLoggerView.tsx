@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { TimeLogEntry, TimeLogCategory, getAdjustedDate, KnowledgeBaseEntry } from '../types';
-import { getTimeLogs, saveTimeLog, deleteTimeLog, backfillTimeLogs } from '../services/timeLogService';
+import { getTimeLogsForTimeline, saveTimeLog, deleteTimeLog, backfillTimeLogs, getTimeLogsForMonth } from '../services/timeLogService';
 import { parseTimeLogRequest } from '../services/geminiService';
-import { ClockIcon, MoonIcon, TvIcon, MapPinIcon, FireIcon, TrashIcon, ListCheckIcon, CoffeeIcon, PlusCircleIcon, PlusIcon, VideoIcon, BookOpenIcon, PaperAirplaneIcon, PencilSquareIcon, CheckCircleIcon, XMarkIcon } from './Icons';
+import { ClockIcon, MoonIcon, TvIcon, MapPinIcon, FireIcon, TrashIcon, ListCheckIcon, CoffeeIcon, PlusCircleIcon, PlusIcon, VideoIcon, BookOpenIcon, PaperAirplaneIcon, PencilSquareIcon, CheckCircleIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
@@ -53,6 +54,7 @@ const EditLogModal: React.FC<EditModalProps> = ({ isOpen, log, onClose, onSave }
             onSave({
                 ...log,
                 ...formData,
+                date: getAdjustedDate(start),
                 durationMinutes: duration,
                 startTime: formData.startTime,
                 endTime: formData.endTime,
@@ -77,31 +79,55 @@ const EditLogModal: React.FC<EditModalProps> = ({ isOpen, log, onClose, onSave }
                             className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start</label>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-slate-500 uppercase">Start</label>
+                            <input 
+                                type="date" 
+                                value={formData.startTime ? new Date(formData.startTime).toISOString().split('T')[0] : ''}
+                                onChange={e => {
+                                    const newDateStr = e.target.value;
+                                    const oldDate = new Date(formData.startTime!);
+                                    const newDate = new Date(newDateStr + "T00:00:00");
+                                    newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), oldDate.getSeconds(), oldDate.getMilliseconds());
+                                    setFormData({...formData, startTime: newDate.toISOString()});
+                                }}
+                                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm"
+                            />
                             <input 
                                 type="time" 
                                 value={formData.startTime ? new Date(formData.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false}) : ''}
                                 onChange={e => {
-                                    const d = new Date(formData.startTime!);
+                                    const oldDate = new Date(formData.startTime!);
                                     const [h, m] = e.target.value.split(':').map(Number);
-                                    d.setHours(h, m);
-                                    setFormData({...formData, startTime: d.toISOString()});
+                                    oldDate.setHours(h, m, 0, 0);
+                                    setFormData({...formData, startTime: oldDate.toISOString()});
                                 }}
                                 className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm"
                             />
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">End</label>
+                        <div className="space-y-2">
+                            <label className="block text-xs font-bold text-slate-500 uppercase">End</label>
+                            <input 
+                                type="date" 
+                                value={formData.endTime ? new Date(formData.endTime).toISOString().split('T')[0] : ''}
+                                onChange={e => {
+                                    const newDateStr = e.target.value;
+                                    const oldDate = new Date(formData.endTime!);
+                                    const newDate = new Date(newDateStr + "T00:00:00");
+                                    newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), oldDate.getSeconds(), oldDate.getMilliseconds());
+                                    setFormData({...formData, endTime: newDate.toISOString()});
+                                }}
+                                className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm"
+                            />
                             <input 
                                 type="time" 
                                 value={formData.endTime ? new Date(formData.endTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12:false}) : ''}
                                 onChange={e => {
-                                    const d = new Date(formData.endTime!);
+                                    const oldDate = new Date(formData.endTime!);
                                     const [h, m] = e.target.value.split(':').map(Number);
-                                    d.setHours(h, m);
-                                    setFormData({...formData, endTime: d.toISOString()});
+                                    oldDate.setHours(h, m, 0, 0);
+                                    setFormData({...formData, endTime: oldDate.toISOString()});
                                 }}
                                 className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm"
                             />
@@ -128,6 +154,113 @@ const EditLogModal: React.FC<EditModalProps> = ({ isOpen, log, onClose, onSave }
     );
 };
 
+const MonthlySummaryChart = () => {
+    const [chartDate, setChartDate] = useState(new Date());
+    const [chartData, setChartData] = useState<any[]>([]);
+    const [loadingChart, setLoadingChart] = useState(true);
+
+    useEffect(() => {
+        const loadChartData = async () => {
+            setLoadingChart(true);
+            const year = chartDate.getFullYear();
+            const month = chartDate.getMonth() + 1; // 1-based month
+            try {
+                const logs = await getTimeLogsForMonth(year, month);
+                
+                const dataMap = new Map<string, number>();
+                logs.forEach(log => {
+                    const current = dataMap.get(log.category) || 0;
+                    dataMap.set(log.category, current + log.durationMinutes);
+                });
+    
+                const formattedData = Array.from(dataMap.entries()).map(([name, value]) => ({
+                    name,
+                    hours: value / 60,
+                })).sort((a,b) => b.hours - a.hours);
+    
+                setChartData(formattedData);
+            } catch (error) {
+                console.error("Failed to load chart data:", error);
+                setChartData([]);
+            } finally {
+                setLoadingChart(false);
+            }
+        };
+
+        loadChartData();
+    }, [chartDate]);
+    
+    const changeMonth = (offset: number) => {
+        setChartDate(prev => {
+            const newDate = new Date(prev);
+            newDate.setDate(1); // Set to 1st to avoid month skipping issues
+            newDate.setMonth(newDate.getMonth() + offset);
+            return newDate;
+        });
+    };
+
+    const COLORS: Record<string, string> = {
+        'STUDY': '#6366f1',
+        'REVISION': '#38bdf8',
+        'ANKI': '#f59e0b',
+        'QBANK': '#10b981',
+        'VIDEO': '#8b5cf6',
+        'BREAK': '#14b8a6',
+        'SLEEP': '#3b82f6',
+        'LIFE': '#f97316',
+        'ENTERTAINMENT': '#ec4899',
+        'NOTE_TAKING': '#f43f5e',
+        'OUTING': '#a855f7',
+        'PERSONAL': '#84cc16',
+        'OTHER': '#64748b'
+    };
+
+    return (
+        <div className="mt-8 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-slate-700 dark:text-slate-200">Monthly Summary</h3>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => changeMonth(-1)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronLeftIcon className="w-5 h-5 text-slate-500"/></button>
+                    <span className="text-sm font-bold text-slate-500 w-28 text-center">
+                        {chartDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button onClick={() => changeMonth(1)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700"><ChevronRightIcon className="w-5 h-5 text-slate-500"/></button>
+                </div>
+            </div>
+            <div className="h-64">
+                {loadingChart ? <div className="flex items-center justify-center h-full text-slate-400">Loading chart...</div> :
+                chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
+                            <XAxis type="number" tick={{ fontSize: 10 }} unit="h" />
+                            <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 10 }} interval={0} />
+                            <Tooltip 
+                                formatter={(value) => `${(value as number).toFixed(1)} hours`} 
+                                cursor={{fill: 'rgba(239, 246, 255, 0.5)'}}
+                                contentStyle={{
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    background: 'rgba(255, 255, 255, 0.9)',
+                                    backdropFilter: 'blur(4px)',
+                                    fontSize: '12px'
+                                }}
+                            />
+                            <Bar dataKey="hours" radius={[0, 4, 4, 0]}>
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#8884d8'} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                ) : <div className="flex items-center justify-center h-full text-slate-400">No data for this month.</div>
+                }
+            </div>
+        </div>
+    );
+};
+
+
 export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = [], onViewPage }) => {
     const [logs, setLogs] = useState<TimeLogEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -142,7 +275,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
     // Auto-refresh on mount and date change
     useEffect(() => {
         loadData(selectedDate);
-    }, [selectedDate]);
+    }, [selectedDate, knowledgeBase]);
 
     // Scroll to bottom on initial load
     useEffect(() => {
@@ -153,11 +286,30 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
 
     const loadData = async (date: string) => {
         setLoading(true);
-        // Auto-sync from other parts of the app
         await backfillTimeLogs(knowledgeBase, date);
-        const data = await getTimeLogs(date);
-        setLogs(data);
+        const allLogs = await getTimeLogsForTimeline(date);
+        
+        const calendarDayStart = new Date(date + 'T00:00:00').getTime();
+        const calendarDayEnd = new Date(date + 'T23:59:59.999').getTime();
+
+        const timelineLogs = allLogs.filter(log => {
+            const logStart = new Date(log.startTime).getTime();
+            const logEnd = new Date(log.endTime).getTime();
+            
+            // Overlap check
+            return logStart <= calendarDayEnd && logEnd >= calendarDayStart;
+        });
+
+        timelineLogs.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+        setLogs(timelineLogs);
         setLoading(false);
+    };
+
+    const handleDateChange = (offset: number) => {
+        const d = new Date(selectedDate + 'T12:00:00'); // Use noon to avoid timezone day shifts
+        d.setDate(d.getDate() + offset);
+        setSelectedDate(getAdjustedDate(d));
     };
 
     const handleChatSubmit = async (e?: React.FormEvent) => {
@@ -178,10 +330,10 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
                 }
             }
 
-            let pageNumber: number | undefined;
+            let pageNumber: string | undefined;
             const pgMatch = originalInput.toLowerCase().match(/(?:pg|page|p\.?)\s*(\d+)/);
             if (pgMatch) {
-                pageNumber = parseInt(pgMatch[1]);
+                pageNumber = pgMatch[1];
             }
 
             const newLog: TimeLogEntry = {
@@ -225,7 +377,10 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
     // Stats
     const totalMinutes = logs.reduce((acc, l) => acc + l.durationMinutes, 0);
     const studyMinutes = logs.filter(l => ['STUDY', 'REVISION', 'ANKI', 'QBANK', 'VIDEO'].includes(l.category)).reduce((acc, l) => acc + l.durationMinutes, 0);
-    const focusScore = totalMinutes > 0 ? Math.round((studyMinutes / totalMinutes) * 100) : 0;
+    const sleepMinutes = logs.filter(l => l.category === 'SLEEP').reduce((acc, l) => acc + l.durationMinutes, 0);
+    const totalWakingMinutes = totalMinutes - sleepMinutes;
+    const focusScore = totalWakingMinutes > 0 ? Math.round((studyMinutes / totalWakingMinutes) * 100) : 0;
+
 
     // --- RENDER HELPERS ---
 
@@ -277,8 +432,15 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
             const durationStr = log.durationMinutes >= 60 
                 ? `${Math.floor(log.durationMinutes/60)}h ${log.durationMinutes%60}m` 
                 : `${Math.round(log.durationMinutes)}m`;
+            
+            const calendarDayStart = new Date(selectedDate + 'T00:00:00');
+            const logStart = new Date(log.startTime);
+            const isContinuation = logStart < calendarDayStart;
 
-            const startTimeStr = new Date(log.startTime).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+            const displayStartTime = isContinuation ? calendarDayStart : logStart;
+            const startTimeStr = displayStartTime.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+
+            const originalStartTimeStr = logStart.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
             const endTimeStr = new Date(log.endTime).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
 
             timelineItems.push(
@@ -302,12 +464,19 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
                             <div className="flex justify-between items-start">
                                 <div className="min-w-0">
                                     <h4 className="text-sm font-bold text-slate-800 dark:text-white truncate leading-tight">{log.activity}</h4>
-                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${theme.bg} ${theme.text} mt-1 inline-block`}>{log.category}</span>
-                                    {log.pageNumber && (
-                                        <span className="ml-2 text-[9px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 cursor-pointer hover:text-indigo-500" onClick={() => onViewPage?.(String(log.pageNumber))}>
-                                            PG {log.pageNumber}
-                                        </span>
-                                    )}
+                                     <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${theme.bg} ${theme.text} mt-1 inline-block`}>{log.category}</span>
+                                        {isContinuation && (
+                                            <div className="text-[9px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 inline-block mt-1">
+                                                Continued
+                                            </div>
+                                        )}
+                                        {log.pageNumber && (
+                                            <span className="text-[9px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 cursor-pointer hover:text-indigo-500 mt-1" onClick={() => onViewPage?.(String(log.pageNumber))}>
+                                                PG {log.pageNumber}
+                                            </span>
+                                        )}
+                                     </div>
                                 </div>
                                 
                                 {/* Actions */}
@@ -322,7 +491,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
                             </div>
                             
                             <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-50 dark:border-slate-700/50 text-[10px] text-slate-400">
-                                <span>{startTimeStr} – {endTimeStr}</span>
+                                <span>{originalStartTimeStr} – {endTimeStr}</span>
                                 <span className="font-mono font-bold text-slate-500 dark:text-slate-400">{durationStr}</span>
                             </div>
                         </div>
@@ -330,32 +499,6 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
                 </div>
             );
         }
-
-        // Current Time Indicator if today
-        if (isToday) {
-            // Simple implementation: Just appending at the bottom if it's the latest, or relies on natural sort. 
-            // A true intersecting line requires complex height calc. 
-            // For simplicity in this iteration, we just show a "Now" marker at the end if logs are up to date
-            // or if there's a gap.
-            const lastLog = logs[logs.length - 1];
-            if (lastLog) {
-                const lastEnd = new Date(lastLog.endTime);
-                const nowTime = new Date();
-                if (nowTime > lastEnd) {
-                     const gap = (nowTime.getTime() - lastEnd.getTime()) / 60000;
-                     if (gap > 1) {
-                         timelineItems.push(
-                            <div key="now-indicator" className="flex items-center my-4 pl-[4.5rem] relative animate-pulse">
-                                <div className="absolute left-[3.5rem] top-1/2 -translate-y-1/2 w-0.5 h-4 bg-red-500"></div>
-                                <div className="absolute left-[3.35rem] top-1/2 -translate-y-1/2 w-2 h-2 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.6)]"></div>
-                                <span className="ml-4 text-xs font-bold text-red-500 uppercase tracking-widest">Now</span>
-                            </div>
-                         );
-                     }
-                }
-            }
-        }
-
         return timelineItems;
     };
 
@@ -394,12 +537,20 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
             {/* Date Picker */}
             <div className="flex justify-between items-center px-4 mb-2">
                 <h3 className="font-bold text-slate-700 dark:text-slate-200">Timeline</h3>
-                <input 
-                    type="date" 
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="bg-transparent text-xs font-bold text-slate-500 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none focus:border-indigo-500"
-                />
+                <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1">
+                    <button onClick={() => handleDateChange(-1)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <ChevronLeftIcon className="w-5 h-5 text-slate-500" />
+                    </button>
+                    <input 
+                        type="date" 
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="bg-transparent text-xs font-bold text-slate-500 dark:text-slate-400 border-none outline-none focus:ring-0 p-1 text-center"
+                    />
+                    <button onClick={() => handleDateChange(1)} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <ChevronRightIcon className="w-5 h-5 text-slate-500" />
+                    </button>
+                </div>
             </div>
 
             {/* Timeline Scroll Area */}
@@ -415,11 +566,11 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase = 
                 ) : (
                     <div className="pb-8 pl-2">
                         {renderTimeline()}
-                        
-                        {/* Bottom Space */}
-                        <div className="h-8"></div>
                     </div>
                 )}
+                
+                {!loading && <MonthlySummaryChart />}
+
             </div>
 
             {/* Chat Input Area - Fixed Bottom */}

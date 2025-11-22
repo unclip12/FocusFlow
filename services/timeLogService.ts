@@ -8,6 +8,7 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 export const getTimeLogs = async (date: string): Promise<TimeLogEntry[]> => {
     if (!auth.currentUser) return [];
     const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
+    // Query specifically for the "study day" date
     const q = query(colRef, where('date', '==', date));
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
@@ -24,6 +25,35 @@ export const deleteTimeLog = async (id: string) => {
     const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', id);
     await deleteDoc(docRef);
 };
+
+export const getTimeLogsForTimeline = async (date: string): Promise<TimeLogEntry[]> => {
+    if (!auth.currentUser) return [];
+
+    const d = new Date(date + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    const prevDateStr = getAdjustedDate(d);
+
+    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
+    const q = query(colRef, where('date', 'in', [date, prevDateStr]));
+    const snap = await getDocs(q);
+    
+    return snap.docs.map(d => d.data() as TimeLogEntry);
+};
+
+export const getTimeLogsForMonth = async (year: number, month: number): Promise<TimeLogEntry[]> => {
+    if (!auth.currentUser) return [];
+
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
+    const q = query(colRef, where('date', '>=', startDate), where('date', '<=', endDate));
+    
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as TimeLogEntry);
+};
+
 
 // Backfill logic to sync FA logs and DayPlans into timeLogs
 export const backfillTimeLogs = async (knowledgeBase: KnowledgeBaseEntry[], date: string) => {

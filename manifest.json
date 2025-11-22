@@ -1,0 +1,67 @@
+{
+  "name": "FocusFlow - AI Study Tracker",
+  "short_name": "FocusFlow",
+  "id": "focusflow-ai-tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "description": "A smart study tracking application with progress monitoring, revision flagging, and AI-powered study plan generation.",
+  "categories": ["education", "productivity", "medical"],
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log Session",
+      "short_name": "Log",
+      "description": "Quickly log a new study session",
+      "url": "/?action=log",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Today's Plan",
+      "short_name": "Plan",
+      "description": "View your study targets for today",
+      "url": "/?action=planner",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/2907/2907253.png", "sizes": "192x192" }]
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url"
+    }
+  },
+  "display_override": ["window-controls-overlay"],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
+}

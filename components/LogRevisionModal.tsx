@@ -1,6 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { ClockIcon, BookOpenIcon, ListCheckIcon } from './Icons';
 import { StudySession, ToDoItem } from '../types';
+
+// Robust ID generator
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 interface LogRevisionModalProps {
   isOpen: boolean;
@@ -37,7 +46,7 @@ const LogRevisionModal: React.FC<LogRevisionModalProps> = ({ isOpen, onClose, on
 
   const handleAddToDo = () => {
     if (!newToDo.trim()) return;
-    setToDoList(prev => [...prev, { id: crypto.randomUUID(), text: newToDo, done: false }]);
+    setToDoList(prev => [...prev, { id: generateId(), text: newToDo, done: false }]);
     setNewToDo('');
   };
 

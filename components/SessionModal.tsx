@@ -1,7 +1,19 @@
+
+
 import React, { useState, useEffect } from 'react';
-import { StudySession, CATEGORIES, DEFAULT_INTERVALS, ToDoItem, SYSTEMS, KnowledgeBaseEntry, StudyLog, getAdjustedDate, Attachment } from '../types';
+// FIX: Replaced DEFAULT_INTERVALS with REVISION_SCHEDULE
+import { StudySession, CATEGORIES, ToDoItem, SYSTEMS, KnowledgeBaseEntry, StudyLog, getAdjustedDate, Attachment } from '../types';
 import { SparklesIcon, BookOpenIcon, ListCheckIcon, XMarkIcon, PlusIcon, DatabaseIcon, CheckCircleIcon, HistoryIcon, PencilSquareIcon, TrashIcon, PaperClipIcon, PhotoIcon, DocumentIcon } from './Icons';
 import { generateStudyChecklist } from '../services/geminiService';
+import { uploadFile } from '../services/firebase';
+
+// Robust ID generator
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -37,6 +49,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
   const [sessionNotes, setSessionNotes] = useState('');
   const [ankiSessionDelta, setAnkiSessionDelta] = useState<number>(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   
   // Anki Stats (Global)
   const [ankiCovered, setAnkiCovered] = useState<number>(0);
@@ -51,7 +64,8 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
   const [markPlanComplete, setMarkPlanComplete] = useState(false);
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [revisionIntervals, setRevisionIntervals] = useState<number[]>(DEFAULT_INTERVALS);
+  // FIX: Use REVISION_SCHEDULE instead of DEFAULT_INTERVALS
+  const [revisionIntervals, setRevisionIntervals] = useState<number[]>([]);
 
   // History Editing State
   const [localHistory, setLocalHistory] = useState<StudyLog[]>([]);
@@ -112,7 +126,8 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
         setToDoList([]);
         setNewToDo('');
         setNotes('');
-        setRevisionIntervals(DEFAULT_INTERVALS);
+        // FIX: Use REVISION_SCHEDULE instead of DEFAULT_INTERVALS
+        setRevisionIntervals([]);
         setLocalHistory([]);
         
         // Time handling
@@ -145,31 +160,45 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
       return d;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
+          setIsUploading(true);
           
-          // No file size limit
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-              const result = ev.target?.result as string;
-              
-              let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
-              if (file.type.startsWith('image/')) {
-                  type = 'IMAGE';
-              } else if (file.type === 'application/pdf') {
-                  type = 'PDF';
-              }
+          let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
+          if (file.type.startsWith('image/')) {
+              type = 'IMAGE';
+          } else if (file.type === 'application/pdf') {
+              type = 'PDF';
+          }
 
-              const newAttachment: Attachment = {
-                  id: crypto.randomUUID(),
-                  name: file.name,
-                  type: type,
-                  data: result
-              };
-              setAttachments(prev => [...prev, newAttachment]);
-          };
-          reader.readAsDataURL(file);
+          try {
+             const url = await uploadFile(file);
+             const newAttachment: Attachment = {
+                id: generateId(),
+                name: file.name,
+                type: type,
+                data: url
+            };
+            setAttachments(prev => [...prev, newAttachment]);
+          } catch (error) {
+             console.warn("Upload failed, falling back to base64", error);
+             // No file size limit fallback
+             const reader = new FileReader();
+             reader.onload = (ev) => {
+                 const result = ev.target?.result as string;
+                 const newAttachment: Attachment = {
+                     id: generateId(),
+                     name: file.name,
+                     type: type,
+                     data: result
+                 };
+                 setAttachments(prev => [...prev, newAttachment]);
+             };
+             reader.readAsDataURL(file);
+          } finally {
+             setIsUploading(false);
+          }
       }
   };
 
@@ -211,7 +240,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
       
       const checklist = await generateStudyChecklist(`${topic} (FA Page ${pageNumber})`, duration);
       const newItems: ToDoItem[] = checklist.map(item => ({
-          id: crypto.randomUUID(),
+          id: generateId(),
           text: item,
           done: false
       }));
@@ -226,7 +255,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
 
   const handleAddToDo = () => {
     if (!newToDo.trim()) return;
-    setToDoList(prev => [...prev, { id: crypto.randomUUID(), text: newToDo, done: false }]);
+    setToDoList(prev => [...prev, { id: generateId(), text: newToDo, done: false }]);
     setNewToDo('');
   };
 
@@ -290,6 +319,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
   // Handle Form Submission
   const handleSubmit = (e: React.FormEvent, forceComplete = false) => {
     if (e) e.preventDefault();
+    if (isUploading) return; // Prevent saving while uploading
     
     const startObj = constructDateTime(date, startTime);
     let endObj = constructDateTime(date, endTime);
@@ -314,7 +344,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
     }
 
     const newHistoryLog: StudyLog = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         date: startObj.toISOString(), 
         startTime: startObj.toISOString(),
         endTime: endObj.toISOString(),
@@ -517,9 +547,13 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
                                 <button type="button" onClick={() => removeAttachment(att.id)} className="absolute top-0 right-0 bg-red-500 text-white w-4 h-4 flex items-center justify-center text-[10px] rounded-bl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
                             </div>
                         ))}
-                        <label className="w-16 h-16 rounded border-2 border-dashed border-slate-300 dark:border-slate-500 flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors">
-                            <PaperClipIcon className="w-5 h-5 text-slate-400 dark:text-slate-300" />
-                            <input type="file" onChange={handleFileChange} className="hidden" />
+                        <label className={`w-16 h-16 rounded border-2 border-dashed border-slate-300 dark:border-slate-500 flex items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            {isUploading ? (
+                                <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <PaperClipIcon className="w-5 h-5 text-slate-400 dark:text-slate-300" />
+                            )}
+                            <input type="file" onChange={handleFileChange} className="hidden" disabled={isUploading} />
                         </label>
                     </div>
                 </div>
@@ -535,8 +569,13 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
             {activeTab === 'CURRENT' && (
                 <>
                     {/* Standard Save */}
-                    <button type="submit" form="session-form" className="flex-1 px-4 py-2 rounded-lg bg-white border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-sm">
-                        Save Progress
+                    <button 
+                        type="submit" 
+                        form="session-form" 
+                        disabled={isUploading}
+                        className="flex-1 px-4 py-2 rounded-lg bg-white border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isUploading ? 'Uploading...' : 'Save Progress'}
                     </button>
 
                     {/* Complete Target Button (Only for Planned Items) */}
@@ -544,9 +583,10 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
                         <button 
                             type="button" 
                             onClick={(e) => handleSubmit(e, true)} 
-                            className="flex-[2] px-4 py-2 rounded-lg bg-primary text-white hover:bg-indigo-600 shadow-lg shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 text-sm font-bold"
+                            disabled={isUploading}
+                            className="flex-[2] px-4 py-2 rounded-lg bg-primary text-white hover:bg-indigo-600 shadow-lg shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <CheckCircleIcon className="w-4 h-4" /> Complete Target
+                            <CheckCircleIcon className="w-4 h-4" /> {isUploading ? 'Uploading...' : 'Complete Target'}
                         </button>
                     )}
                 </>

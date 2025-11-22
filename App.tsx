@@ -1,997 +1,742 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { StudySession, FilterType, StudyLog, ToDoItem, KnowledgeBaseEntry, StudyPlanItem, VideoResource, CATEGORIES, SYSTEMS, PlanLog, getAdjustedDate, DEFAULT_INTERVALS, AppSettings, ThemeColor, Attachment } from './types';
-import { PlusIcon, ChartBarIcon, CalendarIcon, ListCheckIcon, DatabaseIcon, CalendarPlusIcon, Bars3Icon, FireIcon, XMarkIcon, ArrowPathIcon, Cog6ToothIcon, TrophyIcon, ChatBubbleLeftRightIcon } from './components/Icons';
-import SessionModal from './components/SessionModal';
-import SessionRow from './components/SessionRow';
-import StatsCard from './components/StatsCard';
-import RevisionForecast from './components/RevisionForecast';
-import LogRevisionModal from './components/LogRevisionModal';
-import DailyViewModal from './components/DailyViewModal';
-import GlobalTaskList from './components/GlobalTaskList';
-import KnowledgeBaseView from './components/KnowledgeBaseView';
-import PlannerView from './components/PlannerView';
-import TimerModal from './components/TimerModal';
-import PageAnalysisModal from './components/PageAnalysisModal';
-import RevisionView from './components/RevisionView';
-import SettingsView from './components/SettingsView';
-import { PageDetailModal } from './components/PageDetailModal'; 
-import { CalendarView } from './components/CalendarView';
-import { DashboardAIWidget } from './components/DashboardAIWidget';
-import { AIChatView } from './components/AIChatView';
-import { analyzeProgress } from './services/geminiService';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, getRevisionSettings } from './services/firebase';
+import { 
+  StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
+  getAdjustedDate, VideoResource, Attachment, ToDoItem,
+  UserProfile,
+  TrackableItem,
+  RevisionLog,
+  RevisionSettings
+} from './types';
 import { getData, saveData } from './services/dbService';
+import { calculateNextRevisionDate } from './services/srsService';
 
-type ViewMode = 'DASHBOARD' | 'TASKS' | 'DATABASE' | 'PLANNER' | 'CALENDAR' | 'REVISION' | 'SETTINGS' | 'AI_CHAT';
 
-const COLORS_RGB: Record<ThemeColor, string> = {
-    indigo: '79 70 229',
-    emerald: '16 185 129',
-    rose: '244 63 94',
-    amber: '245 158 11',
-    sky: '14 165 233',
-    violet: '139 92 246'
-};
+// Components
+import { LoginView } from './components/LoginView';
+import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon } from './components/Icons';
+import { TodayGlance, StatsGrid } from './components/StatsCard';
+import { ActivityGraphs } from './components/ActivityGraphs';
+import SessionModal from './components/SessionModal';
+import LogRevisionModal from './components/LogRevisionModal';
+import { PageDetailModal } from './components/PageDetailModal';
+import TimerModal from './components/TimerModal';
+import { InstallPrompt } from './components/InstallPrompt';
 
-const App: React.FC = () => {
-  const [sessions, setSessions] = useState<StudySession[]>([]);
-  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseEntry[]>([]);
+// Views
+import { CalendarView } from './components/CalendarView';
+import PlannerView from './components/PlannerView';
+import RevisionView from './components/RevisionView';
+import KnowledgeBaseView from './components/KnowledgeBaseView';
+import { DataView } from './components/DataView';
+import { AIChatView } from './components/AIChatView';
+import { SettingsView } from './components/SettingsView';
+import { TodaysPlanView } from './components/TodaysPlanView';
+import { AIMemoryView } from './components/AIMemoryView'; 
+import { FALoggerView } from './components/FALoggerView';
+import { TimeLoggerView } from './components/TimeLoggerView';
+import { DailyTrackerView } from './components/DailyTrackerView';
+import { toggleMaterialActive } from './services/firebase';
+
+// Services
+import { requestNotificationPermission } from './services/notificationService';
+
+export default function App() {
+  // Auth
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [displayName, setDisplayName] = useState<string>('');
+
+  // Data State
   const [studyPlan, setStudyPlan] = useState<StudyPlanItem[]>([]);
-  
-  // Settings State
-  const [settings, setSettings] = useState<AppSettings>({
-      darkMode: false,
-      primaryColor: 'indigo',
-      fontSize: 'medium'
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseEntry[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({ 
+      darkMode: false, 
+      primaryColor: 'indigo', 
+      fontSize: 'medium',
+      notifications: {
+          enabled: true,
+          mode: 'strict', // Default to strict C-mode
+          types: {
+              blockTimers: true,
+              breaks: true,
+              mentorNudges: true,
+              dailySummary: true
+          }
+      },
+      quietHours: {
+          enabled: true,
+          start: '23:00',
+          end: '07:00'
+      }
   });
-
-  const [filter, setFilter] = useState<FilterType>(FilterType.ALL);
-  
-  // Navigation State
-  const [viewMode, setViewMode] = useState<ViewMode>('DASHBOARD');
-  const [previousViewMode, setPreviousViewMode] = useState<ViewMode>('DASHBOARD'); 
-  
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({ mode: 'balanced', targetCount: 7 });
   const [examDate, setExamDate] = useState<string | null>(null);
-  const [isExamDateModalOpen, setIsExamDateModalOpen] = useState(false);
+
+  // UI State
+  const [currentView, setCurrentView] = useState<'DASHBOARD' | 'PLANNER' | 'CALENDAR' | 'REVISION' | 'KNOWLEDGE_BASE' | 'DATA' | 'CHAT' | 'SETTINGS' | 'TODAYS_PLAN' | 'AI_MEMORY' | 'FA_LOGGER' | 'TIME_LOGGER' | 'DAILY_TRACKER'>('DASHBOARD');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false); 
+  const [targetPlanDate, setTargetPlanDate] = useState<string | undefined>(undefined);
 
   // Modals
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
-  const [isPageAnalysisOpen, setIsPageAnalysisOpen] = useState(false);
-  const [dailyViewDate, setDailyViewDate] = useState<Date | null>(null);
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState<StudySession | null>(null);
+  const [sessionPrefill, setSessionPrefill] = useState<any>(null);
+  const [planContext, setPlanContext] = useState<any>(null);
   
-  // Page Detail Modal State
-  const [selectedPageDetail, setSelectedPageDetail] = useState<string | null>(null);
+  const [isLogRevisionOpen, setIsLogRevisionOpen] = useState(false);
+  const [revisionTarget, setRevisionTarget] = useState<StudySession | null>(null);
+  
+  const [viewingPage, setViewingPage] = useState<string | null>(null);
+  const [isPageDetailOpen, setIsPageDetailOpen] = useState(false);
 
   // Timer
-  const [isTimerOpen, setIsTimerOpen] = useState(false);
-  const [activePlanItem, setActivePlanItem] = useState<StudyPlanItem | null>(null);
+  const [activeTimerTopic, setActiveTimerTopic] = useState<string | null>(null);
+  const [timerTargetMinutes, setTimerTargetMinutes] = useState<number | undefined>(undefined);
 
-  const [editingSession, setEditingSession] = useState<StudySession | null>(null);
-  const [revisingSession, setRevisingSession] = useState<StudySession | null>(null);
-  
-  // Prefill State
-  const [sessionPrefill, setSessionPrefill] = useState<(Partial<StudySession> & { startTime?: string; endTime?: string }) | null>(null);
+  // PWA Shared Content
+  const [sharedContent, setSharedContent] = useState<string | null>(null);
 
-  // Load Data (Async from IndexedDB)
   useEffect(() => {
-    const initializeData = async () => {
-        try {
-            // 1. Try loading from IndexedDB
-            const dbSessions = await getData<StudySession[]>('sessions');
-            const dbKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase');
-            const dbPlan = await getData<StudyPlanItem[]>('studyPlan');
-            const dbSettings = await getData<AppSettings>('settings');
-            const dbExamDate = await getData<string>('examDate');
-
-            // If data exists, load it
-            if (dbSessions) setSessions(dbSessions);
-            if (dbKB) setKnowledgeBase(dbKB);
-            if (dbPlan) setStudyPlan(dbPlan);
-            if (dbSettings) setSettings(dbSettings);
-            if (dbExamDate) setExamDate(dbExamDate);
-
-            // 2. Check if we need to Seed Data (First Run or Empty DB)
-            // If sessions are empty/null, we assume it's a fresh start and populate seed data
-            if (!dbSessions || dbSessions.length === 0) {
-                // Check local storage for migration before seeding
-                const lsSessions = localStorage.getItem('focusflow_sessions_v2');
-                if (lsSessions) {
-                     // Migration path
-                     const parsed = JSON.parse(lsSessions);
-                     setSessions(parsed);
-                     await saveData('sessions', parsed);
-                     // Load other LS items...
-                     const lsKB = localStorage.getItem('focusflow_kb_v1');
-                     if (lsKB) {
-                         const parsedKB = JSON.parse(lsKB);
-                         setKnowledgeBase(parsedKB);
-                         await saveData('knowledgeBase', parsedKB);
-                     }
-                } else {
-                    // Total fresh start -> Seed
-                    await generateSeedData();
-                }
-            }
-
-        } catch (e) {
-            console.error("Failed to initialize data:", e);
-        }
-    };
-
-    initializeData();
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      if (action === 'today') setCurrentView('TODAYS_PLAN');
+      if (action === 'planner') setCurrentView('PLANNER');
+      if (action === 'log') setIsSessionModalOpen(true);
   }, []);
 
-  // Apply Settings Effect
   useEffect(() => {
-      const root = document.documentElement;
-      
-      // Dark Mode
-      if (settings.darkMode) {
-          root.classList.add('dark');
-      } else {
-          root.classList.remove('dark');
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      setAuthLoading(false);
+      if (u) {
+        // Load from IndexedDB first for speed, then sync with Firestore
+        const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
+        setStudyPlan(localPlan);
+        
+        const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
+        setKnowledgeBase(localKB);
+
+        const firestoreKB = await getKnowledgeBase();
+        setKnowledgeBase(firestoreKB);
+        await saveData('knowledgeBase_v2', firestoreKB);
+
+        const loadedSettings = await getData<AppSettings>('settings');
+        const loadedRevSettings = await getRevisionSettings();
+        if (loadedRevSettings) setRevisionSettings(loadedRevSettings);
+
+        const loadedExamDate = await getData<string>('examDate');
+        const loadedProfile = await getFirebaseUserProfile();
+
+        if (loadedProfile?.displayName) {
+            setDisplayName(loadedProfile.displayName);
+        }
+        
+        if (loadedSettings) {
+            setSettings(prev => ({ ...prev, ...loadedSettings, notifications: { ...prev.notifications, ...loadedSettings.notifications }, quietHours: { ...prev.quietHours, ...loadedSettings.quietHours } }));
+        }
+        if (loadedExamDate) setExamDate(loadedExamDate);
+        
+        if (loadedSettings?.notifications?.enabled) {
+            requestNotificationPermission();
+        }
       }
-
-      // Primary Color
-      const rgb = COLORS_RGB[settings.primaryColor] || COLORS_RGB['indigo'];
-      root.style.setProperty('--color-primary', rgb);
-
-      // Font Size
-      let scale = '100%';
-      if (settings.fontSize === 'small') scale = '87.5%';
-      if (settings.fontSize === 'large') scale = '112.5%';
-      root.style.fontSize = scale;
-
-      saveData('settings', settings);
-  }, [settings]);
-
-  const generateSeedData = async () => {
-      const systemsMap: Record<string, string[]> = {
-        'Cardiovascular': ['Heart Failure', 'Hypertension', 'Shock Types', 'EKG Basics', 'Valvular Diseases', 'Cardiomyopathy'],
-        'Respiratory': ['Pneumonia', 'Asthma vs COPD', 'Lung Cancer', 'ARDS', 'Pulmonary Embolism'],
-        'Neurology': ['Stroke Syndromes', 'Seizures', 'Headache Types', 'Neurodegenerative Diseases', 'Cranial Nerves'],
-        'Renal': ['AKI vs CKD', 'Glomerulonephritis', 'Acid-Base Balance', 'Electrolyte Disorders'],
-        'Gastrointestinal': ['IBD: Crohn\'s vs UC', 'Liver Cirrhosis', 'Pancreatitis', 'Malabsorption'],
-        'Endocrine': ['Diabetes Mellitus', 'Thyroid Disorders', 'Adrenal Disorders', 'Calcium Homeostasis'],
-        'Hematology/Oncology': ['Anemias', 'Leukemias', 'Coagulation Cascade', 'Lymphomas'],
-        'Infectious Disease': ['Antibiotics Classes', 'HIV/AIDS', 'Tuberculosis', 'Sepsis Guidelines']
-      };
-
-      const sessionsMap = new Map<string, StudySession>();
-      const kbMap = new Map<string, KnowledgeBaseEntry>();
-
-      const startDate = new Date();
-      startDate.setFullYear(startDate.getFullYear() - 2); // 2 Years ago
-      const today = new Date();
-      
-      let currentDate = new Date(startDate);
-      
-      // Iterate day by day
-      while (currentDate <= today) {
-          // 40% chance to study on any given day
-          if (Math.random() > 0.4) {
-              const dailySessionsCount = Math.floor(Math.random() * 3) + 1; // 1-3 topics
-              
-              for (let i = 0; i < dailySessionsCount; i++) {
-                  const sysKeys = Object.keys(systemsMap);
-                  const system = sysKeys[Math.floor(Math.random() * sysKeys.length)];
-                  const topics = systemsMap[system];
-                  const topic = topics[Math.floor(Math.random() * topics.length)];
-                  
-                  // Consistent page number for topic
-                  let pageNum = (100 + topics.indexOf(topic) * 15 + sysKeys.indexOf(system) * 50).toString(); 
-
-                  const duration = 20 + Math.floor(Math.random() * 100);
-                  const startTime = new Date(currentDate);
-                  startTime.setHours(9 + Math.floor(Math.random() * 12), Math.floor(Math.random() * 60)); // 9AM - 9PM
-                  const endTime = new Date(startTime.getTime() + duration * 60000);
-                  const startISO = startTime.toISOString();
-                  const endISO = endTime.toISOString();
-
-                  const log: StudyLog = {
-                      id: crypto.randomUUID(),
-                      date: startISO,
-                      startTime: startISO,
-                      endTime: endISO,
-                      durationMinutes: duration,
-                      type: 'INITIAL',
-                      notes: Math.random() > 0.8 ? "Key concepts revised." : undefined,
-                      ankiDelta: Math.floor(Math.random() * 15)
-                  };
-
-                  if (sessionsMap.has(topic)) {
-                      // Revision
-                      const s = sessionsMap.get(topic)!;
-                      log.type = 'REVISION';
-                      
-                      // Update Interval
-                      let nextIdx = s.currentIntervalIndex + 1;
-                      if (nextIdx >= s.revisionIntervals.length) nextIdx = s.revisionIntervals.length - 1;
-                      
-                      // Next revision date relative to THIS log's end time
-                      const hours = s.revisionIntervals[nextIdx];
-                      const nextRev = new Date(endTime.getTime() + hours * 60 * 60 * 1000).toISOString();
-
-                      sessionsMap.set(topic, {
-                          ...s,
-                          history: [log, ...s.history],
-                          currentIntervalIndex: nextIdx,
-                          nextRevisionDate: nextRev,
-                          lastStudied: startISO,
-                          ankiCovered: Math.min(s.ankiTotal || 50, (s.ankiCovered || 0) + (log.ankiDelta || 0))
-                      });
-                  } else {
-                      // New
-                      const newSession: StudySession = {
-                          id: crypto.randomUUID(),
-                          topic: topic,
-                          pageNumber: pageNum,
-                          category: 'Pathology',
-                          system: system,
-                          revisionIntervals: DEFAULT_INTERVALS,
-                          currentIntervalIndex: 0,
-                          nextRevisionDate: new Date(endTime.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-                          ankiDone: false,
-                          ankiTotal: 30 + Math.floor(Math.random() * 20),
-                          ankiCovered: log.ankiDelta || 0,
-                          history: [log],
-                          lastStudied: startISO,
-                          notes: `Study notes for ${topic}`
-                      };
-                      sessionsMap.set(topic, newSession);
-                  }
-              }
-          }
-          currentDate.setDate(currentDate.getDate() + 1);
-      }
-
-      const finalSessions = Array.from(sessionsMap.values());
-      
-      // Build Knowledge Base
-      finalSessions.forEach(s => {
-          kbMap.set(s.pageNumber, {
-              pageNumber: s.pageNumber,
-              topic: s.topic,
-              subject: s.category,
-              system: s.system || 'General',
-              ankiTotal: s.ankiTotal || 0,
-              videoLinks: [],
-              tags: [s.system || ''],
-              notes: s.notes || '',
-              attachments: []
-          });
-      });
-      
-      const finalKB = Array.from(kbMap.values());
-
-      // Update State & DB
-      setSessions(finalSessions);
-      setKnowledgeBase(finalKB);
-      
-      await saveData('sessions', finalSessions);
-      await saveData('knowledgeBase', finalKB);
-      console.log(`Seeded ${finalSessions.length} sessions over 2 years.`);
-  };
-
-  // Save Data (Async) - Use effects to trigger saves on state change
-  useEffect(() => { saveData('sessions', sessions); }, [sessions]);
-  useEffect(() => { saveData('knowledgeBase', knowledgeBase); }, [knowledgeBase]);
-  useEffect(() => { saveData('studyPlan', studyPlan); }, [studyPlan]);
-  useEffect(() => { 
-      if (examDate) {
-          saveData('examDate', examDate); 
-      } else {
-          saveData('examDate', null);
-      }
-  }, [examDate]);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const streak = useMemo(() => {
-    const dates = new Set<string>();
-    sessions.forEach(s => {
-        s.history.forEach(h => {
-            dates.add(getAdjustedDate(h.startTime));
+    const allStudyDates = new Set<string>();
+    
+    const gatherDates = (items: TrackableItem[]) => {
+        items.forEach(item => {
+            item.logs.forEach(log => {
+                allStudyDates.add(getAdjustedDate(log.timestamp));
+            });
+            if (item.subTopics) {
+                gatherDates(item.subTopics);
+            }
         });
+    };
+
+    knowledgeBase.forEach(kbEntry => {
+        kbEntry.logs.forEach(log => {
+            allStudyDates.add(getAdjustedDate(log.timestamp));
+        });
+        gatherDates(kbEntry.topics);
     });
 
-    const sortedDates = Array.from(dates).sort().reverse();
-    if (sortedDates.length === 0) return 0;
-    
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const todayStr = getAdjustedDate(new Date());
-    const yesterdayStr = getAdjustedDate(yesterdayDate);
-
-    if (!dates.has(todayStr) && !dates.has(yesterdayStr)) return 0;
+    if (allStudyDates.size === 0) {
+        return 0;
+    }
 
     let currentStreak = 0;
     let checkDate = new Date();
-    if (checkDate.getHours() < 4) checkDate.setDate(checkDate.getDate() - 1);
-
-    const checkDateStr = getAdjustedDate(checkDate);
-    if (!dates.has(checkDateStr)) {
+    const todayStr = getAdjustedDate(checkDate);
+    
+    // If no study today, start checking from yesterday to get current streak.
+    if (!allStudyDates.has(todayStr)) {
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    while (true) {
-        const dateStr = getAdjustedDate(checkDate);
-        if (dates.has(dateStr)) {
-            currentStreak++;
-            checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-            break;
-        }
+    // Loop backwards from either today or yesterday.
+    while (allStudyDates.has(getAdjustedDate(checkDate))) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
     }
+
     return currentStreak;
-  }, [sessions]);
+  }, [knowledgeBase]);
 
-  const bestStreakInfo = useMemo(() => {
-      const dates = new Set<string>();
-      sessions.forEach(s => {
-          s.history.forEach(h => {
-              dates.add(getAdjustedDate(h.startTime));
-          });
-      });
-
-      const sortedDates = Array.from(dates).sort();
-      if (sortedDates.length === 0) return { count: 0, endDate: null };
-
-      let maxStreak = 0;
-      let currentStreak = 0;
-      let maxStreakEndDate = sortedDates[0];
-      
-      // Using simple consecutive day check on sorted ISO strings
-      let prevDateVal: number | null = null;
-
-      for (const dateStr of sortedDates) {
-          const d = new Date(dateStr);
-          // Set to midnight to avoid DST issues, although ISO string parsing usually works for YYYY-MM-DD
-          // Using getTime() on the date part ensures safe math
-          const currentVal = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
-          if (prevDateVal === null) {
-              currentStreak = 1;
-          } else {
-              // 86400000 ms in a day
-              const diff = (currentVal - prevDateVal) / 86400000;
-              if (Math.round(diff) === 1) {
-                  currentStreak++;
-              } else {
-                  currentStreak = 1;
-              }
-          }
-
-          if (currentStreak >= maxStreak) {
-              maxStreak = currentStreak;
-              maxStreakEndDate = dateStr;
-          }
-          prevDateVal = currentVal;
-      }
-
-      return { count: maxStreak, endDate: maxStreakEndDate };
-  }, [sessions]);
-
-  const daysLeft = useMemo(() => {
-      if (!examDate) return null;
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const [y, m, d] = examDate.split('-').map(Number);
-      const target = new Date(y, m - 1, d);
-      const diffTime = target.getTime() - today.getTime();
-      const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return days >= 0 ? days : 0;
-  }, [examDate]);
-
-  const todayDateDisplay = useMemo(() => {
-      const adjString = getAdjustedDate(new Date());
-      const [y, m, d] = adjString.split('-').map(Number);
-      const dateObj = new Date(y, m - 1, d);
-      return {
-          month: dateObj.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
-          day: dateObj.getDate()
-      };
-  }, []);
-
-  const toggleCalendarView = () => {
-      if (viewMode === 'CALENDAR') {
-          setViewMode(previousViewMode);
-      } else {
-          setPreviousViewMode(viewMode);
-          setViewMode('CALENDAR');
-      }
-  };
-
-  const handleViewPageDetail = (pageNumber: string) => {
-      setSelectedPageDetail(pageNumber);
-  };
-
-  const handleSaveSession = (data: any) => {
-    const existingIndex = sessions.findIndex(s => s.pageNumber === data.pageNumber);
-    let updatedSessions = [...sessions];
-    const latestLog = data.history[0]; 
-    if (!latestLog) return;
-
-    if (existingIndex >= 0) {
-        const existing = sessions[existingIndex];
-        const isDue = existing.nextRevisionDate && new Date(existing.nextRevisionDate) <= new Date();
-        let nextIndex = existing.currentIntervalIndex;
-        let nextRevision = existing.nextRevisionDate;
-        
-        if (isDue || latestLog.type === 'REVISION') {
-             nextIndex = Math.min(existing.currentIntervalIndex + 1, existing.revisionIntervals.length - 1);
-             const hours = existing.revisionIntervals[nextIndex];
-             nextRevision = new Date(new Date(latestLog.endTime).getTime() + hours * 60 * 60 * 1000).toISOString();
-        }
-
-        updatedSessions[existingIndex] = {
-            ...existing,
-            topic: data.topic,
-            notes: data.notes,
-            ankiCovered: data.ankiCovered,
-            ankiTotal: data.ankiTotal,
-            ankiDone: data.ankiDone,
-            toDoList: data.toDoList, 
-            history: data.history,
-            currentIntervalIndex: nextIndex,
-            nextRevisionDate: nextRevision,
-            lastStudied: latestLog.startTime
-        };
-        setSessions(updatedSessions);
+  useEffect(() => {
+    if (settings.darkMode) {
+      document.documentElement.classList.add('dark');
     } else {
-        const intervalHours = data.revisionIntervals[0] || 24;
-        const nextDue = new Date(new Date(latestLog.endTime).getTime() + intervalHours * 60 * 60 * 1000).toISOString();
-
-        const newSession: StudySession = {
-            id: crypto.randomUUID(),
-            topic: data.topic,
-            pageNumber: data.pageNumber,
-            category: data.category,
-            system: data.system,
-            ankiDone: data.ankiDone,
-            ankiTotal: data.ankiTotal,
-            ankiCovered: data.ankiCovered,
-            toDoList: data.toDoList,
-            revisionIntervals: data.revisionIntervals,
-            currentIntervalIndex: 0,
-            nextRevisionDate: nextDue,
-            history: data.history,
-            notes: data.notes,
-            lastStudied: latestLog.startTime
-        };
-        setSessions([newSession, ...sessions]);
+      document.documentElement.classList.remove('dark');
     }
+  }, [settings.darkMode]);
 
-    updateKnowledgeBase(data);
-    
-    if (activePlanItem) {
-        const planUpdates = data.planUpdates;
-        setStudyPlan(prev => prev.map(p => {
-            if (p.id !== activePlanItem.id) return p;
-            const planLog: PlanLog = {
-                id: crypto.randomUUID(),
-                date: latestLog.date,
-                startTime: latestLog.startTime,
-                endTime: latestLog.endTime,
-                durationMinutes: latestLog.durationMinutes,
-                notes: latestLog.notes
-            };
-            let updatedSubTasks = p.subTasks;
-            if (planUpdates && planUpdates.completedSubTaskIds) {
-                updatedSubTasks = p.subTasks?.map(t => ({
-                    ...t,
-                    done: planUpdates.completedSubTaskIds.includes(t.id)
-                }));
-            }
-            
-            const isFinished = planUpdates ? planUpdates.isFinished : p.isCompleted;
-            
-            return {
-                ...p,
-                logs: [...(p.logs || []), planLog],
-                totalMinutesSpent: (p.totalMinutesSpent || 0) + latestLog.durationMinutes,
-                subTasks: updatedSubTasks,
-                isCompleted: isFinished,
-                // Set completedAt timestamp if finishing now
-                completedAt: isFinished && !p.isCompleted ? new Date().toISOString() : p.completedAt
-            };
-        }));
-        setActivePlanItem(null);
-    }
+  const handleUpdateDisplayName = async (newName: string) => {
+      setDisplayName(newName);
+      await saveFirebaseUserProfile({ displayName: newName });
   };
 
-  const updateKnowledgeBase = (data: any) => {
-    setKnowledgeBase(prev => {
-        const existingIndex = prev.findIndex(k => k.pageNumber === data.pageNumber);
-        if (existingIndex >= 0) {
-            const updated = [...prev];
-            updated[existingIndex] = {
-                ...updated[existingIndex],
-                topic: data.topic,
-                subject: data.category || data.subject,
-                system: data.system,
-                ankiTotal: data.ankiTotal || updated[existingIndex].ankiTotal,
-                notes: data.notes ? data.notes : updated[existingIndex].notes,
-                attachments: data.attachments !== undefined ? data.attachments : updated[existingIndex].attachments
-            };
-            return updated;
-        } else {
-            return [...prev, {
-                pageNumber: data.pageNumber,
-                topic: data.topic,
-                subject: data.category || data.subject || 'Other',
-                system: data.system || 'General Principles',
-                ankiTotal: data.ankiTotal || 0,
-                videoLinks: [],
-                tags: [],
-                notes: data.notes || '',
-                attachments: data.attachments || []
-            }];
-        }
-    });
+  const updatePlan = async (newPlan: StudyPlanItem[]) => {
+      setStudyPlan(newPlan);
+      await saveData('studyPlan', newPlan);
+  };
+
+  const updateKB = async (newKB: KnowledgeBaseEntry[]) => {
+      setKnowledgeBase(newKB);
+      await saveKnowledgeBase(newKB); // Save to Firestore
+      await saveData('knowledgeBase_v2', newKB); // Also save to local IndexedDB
   };
 
   const handleAddToPlan = (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
-    // 1. Update Plan State
-    setStudyPlan(prev => [...prev, { 
-        ...item, 
-        id: crypto.randomUUID(), 
-        attachments,
-        createdAt: new Date().toISOString() // Add creation timestamp
-    }]);
+      const newItem: StudyPlanItem = {
+          ...item,
+          id: Date.now().toString(36),
+          createdAt: new Date().toISOString()
+      };
+      updatePlan([...studyPlan, newItem]);
+      
+      if ((newVideo || (attachments && attachments.length > 0))) {
+          const existingKB = knowledgeBase.find(k => k.pageNumber === item.pageNumber);
+          let updatedKB = [...knowledgeBase];
+          if (existingKB) {
+               updatedKB = updatedKB.map(k => k.pageNumber === item.pageNumber ? {
+                   ...k,
+                   videoLinks: newVideo ? [...k.videoLinks, newVideo] : k.videoLinks,
+                   attachments: attachments ? [...(k.attachments || []), ...attachments] : k.attachments
+               } : k);
+          } else {
+              updatedKB.push({
+                  pageNumber: item.pageNumber,
+                  title: item.topic,
+                  subject: 'General', 
+                  system: 'General Principles',
+                  revisionCount: 0,
+                  firstStudiedAt: null, 
+                  lastStudiedAt: null, 
+                  nextRevisionAt: null, 
+                  currentRevisionIndex: 0,
+                  ankiTotal: item.ankiCount || 0, ankiCovered: 0,
+                  videoLinks: newVideo ? [newVideo] : [],
+                  attachments: attachments || [],
+                  tags: [],
+                  notes: '',
+                  logs: [],
+                  topics: []
+              });
+          }
+          updateKB(updatedKB);
+      }
+  };
 
-    // 2. Update Knowledge Base (Sync Resources)
-    if (item.pageNumber) {
-        setKnowledgeBase(prev => {
-            const existingIndex = prev.findIndex(k => k.pageNumber === item.pageNumber);
-            
-            if (existingIndex >= 0) {
-                const entry = prev[existingIndex];
-                const updatedVideoLinks = [...entry.videoLinks];
-                
-                if (newVideo && !updatedVideoLinks.some(v => v.url === newVideo.url)) {
-                    updatedVideoLinks.push(newVideo);
-                }
+  const todayFormatted = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  
+  const handleViewPage = (page: string) => {
+      setViewingPage(page);
+      setIsPageDetailOpen(true);
+  };
 
-                const updatedAttachments = [...(entry.attachments || [])];
-                if (attachments) {
-                    updatedAttachments.push(...attachments);
-                }
+  const handleViewDayPlan = (date: string) => {
+      setTargetPlanDate(date);
+      setCurrentView('TODAYS_PLAN');
+  };
 
-                const updatedKB = [...prev];
-                updatedKB[existingIndex] = {
-                    ...entry,
-                    videoLinks: updatedVideoLinks,
-                    attachments: updatedAttachments
-                };
-                return updatedKB;
-            } else {
-                // Create new entry if it doesn't exist
-                return [...prev, {
-                    pageNumber: item.pageNumber,
-                    topic: item.topic,
-                    subject: 'Other',
-                    system: 'General Principles',
-                    ankiTotal: item.ankiCount || 0,
-                    videoLinks: newVideo ? [newVideo] : [],
-                    tags: [],
-                    notes: '',
-                    attachments: attachments || []
-                }];
+  const dueNowItems = useMemo(() => {
+    const items: { id: string, title: string, subtitle: string, type: 'REVISION' | 'TASK', urgent: boolean }[] = [];
+    
+    // This needs to be updated to scan new KB structure
+    knowledgeBase.forEach(kb => {
+        if (kb.nextRevisionAt && new Date(kb.nextRevisionAt) <= new Date()) {
+            items.push({ id: kb.pageNumber, title: `Revise: ${kb.title}`, subtitle: `Page ${kb.pageNumber}`, type: 'REVISION', urgent: true });
+        }
+        kb.topics.forEach(t => {
+            if (t.nextRevisionAt && new Date(t.nextRevisionAt) <= new Date()) {
+                items.push({ id: t.id, title: `Revise: ${t.name}`, subtitle: `Topic on Page ${kb.pageNumber}`, type: 'REVISION', urgent: true });
             }
         });
-    }
-  };
+    });
 
-  const handleUpdatePlanItem = (item: StudyPlanItem) => {
-      setStudyPlan(prev => prev.map(p => p.id === item.id ? item : p));
-  };
+    return items;
+  }, [knowledgeBase]);
 
-  const handleTogglePlanSubTask = (planId: string, subTaskId: string) => {
-      setStudyPlan(prev => prev.map(p => {
-          if (p.id !== planId) return p;
-          return {
-              ...p,
-              subTasks: p.subTasks?.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t)
-          };
-      }));
-  };
+  if (authLoading) return <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-slate-900"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (!user) return <LoginView />;
 
-  const handleDeletePlanLog = (planId: string, logId: string) => {
-      if(!confirm("Delete this history entry from the plan?")) return;
-      setStudyPlan(prev => prev.map(p => {
-          if (p.id !== planId) return p;
-          const log = p.logs?.find(l => l.id === logId);
-          const duration = log ? log.durationMinutes : 0;
-          return {
-              ...p,
-              logs: p.logs?.filter(l => l.id !== logId),
-              totalMinutesSpent: Math.max(0, (p.totalMinutesSpent || 0) - duration)
-          };
-      }));
-  };
-
-  const handleStartTask = (item: StudyPlanItem) => {
-      setActivePlanItem(item);
-      setIsTimerOpen(true);
-  };
-
-  const handleCompletePlanItem = (item: StudyPlanItem) => {
-      setActivePlanItem(item);
-      setSessionPrefill({
-          topic: item.topic,
-          pageNumber: item.pageNumber,
-          ankiTotal: item.ankiCount || 0,
-      });
-      setEditingSession(null);
-      setIsModalOpen(true);
-  };
-
-  const handleManageSession = (session: StudySession) => {
-      setEditingSession(session);
-      setIsModalOpen(true);
-  }
-
-  const handleTimerFinish = (startTime: string, endTime: string) => {
-      setIsTimerOpen(false);
-      setSessionPrefill({
-          topic: activePlanItem?.topic || '',
-          pageNumber: activePlanItem?.pageNumber || '',
-          ankiTotal: activePlanItem?.ankiCount || 0,
-          startTime: startTime, 
-          endTime: endTime      
-      });
-      setEditingSession(null);
-      setIsModalOpen(true);
-  };
-
-  const handleDeleteSession = (id: string) => {
-      if (confirm('Delete study history?')) setSessions(prev => prev.filter(s => s.id !== id));
-  };
-  
-  const handleRevisionComplete = (startISO: string, endISO: string, updatedNotes?: string, updatedTodos?: ToDoItem[]) => {
-     if (!revisingSession) return;
-     const start = new Date(startISO);
-     const end = new Date(endISO);
-     const duration = Math.round((end.getTime() - start.getTime()) / 60000);
-
-     const newLog: StudyLog = {
-         id: crypto.randomUUID(),
-         date: startISO,
-         startTime: startISO,
-         endTime: endISO,
-         durationMinutes: duration,
-         type: 'REVISION'
-     };
-
-     const nextIndex = revisingSession.currentIntervalIndex + 1;
-     let nextDate: string | null = null;
-     if (nextIndex < revisingSession.revisionIntervals.length) {
-         const hoursToAdd = revisingSession.revisionIntervals[nextIndex];
-         nextDate = new Date(end.getTime() + hoursToAdd * 60 * 60 * 1000).toISOString();
-     }
-
-     const updatedSession: StudySession = {
-         ...revisingSession,
-         history: [newLog, ...revisingSession.history],
-         currentIntervalIndex: nextIndex,
-         nextRevisionDate: nextDate,
-         lastStudied: endISO,
-         notes: updatedNotes !== undefined ? updatedNotes : revisingSession.notes,
-         toDoList: updatedTodos !== undefined ? updatedTodos : revisingSession.toDoList
-     };
-
-     setSessions(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
-     setRevisingSession(null);
-     
-     if (updatedNotes) {
-         setKnowledgeBase(prev => prev.map(k => k.pageNumber === revisingSession.pageNumber ? { ...k, notes: updatedNotes } : k));
-     }
-  };
-
-  const filteredSessions = useMemo(() => {
-    let result = [...sessions];
-    result.sort((a, b) => (a.nextRevisionDate ? new Date(a.nextRevisionDate).getTime() : Number.MAX_VALUE) - (b.nextRevisionDate ? new Date(b.nextRevisionDate).getTime() : Number.MAX_VALUE));
-    
-    if (filter === FilterType.DUE_TODAY) {
-        const now = new Date();
-        return result.filter(s => s.nextRevisionDate && new Date(s.nextRevisionDate) <= now);
-    }
-    if (filter === FilterType.MASTERED) return result.filter(s => !s.nextRevisionDate && s.currentIntervalIndex > 0);
-    if (filter === FilterType.UPCOMING) return result.filter(s => s.nextRevisionDate);
-    return result;
-  }, [sessions, filter]);
+  const secretId = user?.email?.split('@')[0];
 
   return (
-    <div className="min-h-screen bg-background dark:bg-dark-bg text-slate-800 dark:text-dark-text font-sans selection:bg-primary/20 transition-colors duration-200">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-30 bg-white/90 dark:bg-dark-surface/90 backdrop-blur-md border-b border-slate-200 dark:border-dark-border transition-all">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between">
-          <button 
-            onClick={() => setIsSidebarOpen(true)} 
-            className="p-2 flex-shrink-0 rounded-lg bg-primary text-white shadow-md shadow-indigo-200/50 hover:bg-indigo-600 transition-all active:scale-95"
-          >
-            <Bars3Icon className="w-6 h-6" />
-          </button>
-
-          {/* Mobile Optimized Widget Area */}
-          <div className="flex items-center gap-2 sm:gap-5 overflow-x-auto hide-scrollbar mask-linear-fade pl-2 py-1 max-w-[calc(100%-3rem)]">
-            
-            {/* Calendar Widget */}
-            <div 
-                onClick={toggleCalendarView}
-                className={`flex flex-col flex-shrink-0 items-center bg-white dark:bg-dark-surface rounded-lg border shadow-sm w-10 sm:w-12 overflow-hidden cursor-pointer transition-all ${viewMode === 'CALENDAR' ? 'ring-2 ring-primary border-primary' : 'border-slate-200 dark:border-dark-border hover:ring-2 hover:ring-primary/30'}`}
-                title={viewMode === 'CALENDAR' ? "Close Calendar" : "Open Calendar"}
-            >
-                <div className="bg-red-500 text-white text-[9px] sm:text-[10px] font-bold w-full text-center py-0.5 truncate">
-                    {todayDateDisplay.month}
-                </div>
-                <div className="text-base sm:text-xl font-bold text-slate-800 dark:text-slate-200 pb-0.5">
-                    {todayDateDisplay.day}
-                </div>
-            </div>
-
-            {/* Exam Countdown */}
-            <div 
-                className="relative flex flex-shrink-0 items-center gap-2 cursor-pointer group"
-                onClick={() => setIsExamDateModalOpen(true)}
-            >
-                <div className="relative w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                        <path className="text-slate-100 dark:text-slate-700" strokeDasharray="100, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeWidth="3" />
-                        <path className="text-primary" strokeDasharray={`${Math.min(100, (daysLeft || 0))}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeWidth="3" />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                         <span className="text-xs sm:text-sm font-bold text-primary leading-none">{daysLeft !== null ? daysLeft : '?'}</span>
-                         <span className="text-[7px] sm:text-[8px] text-slate-400 font-bold uppercase">Days</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Streak & Best Streak */}
-            <div className="flex flex-shrink-0 items-center gap-2">
-                {/* Current Streak */}
-                <div className={`flex flex-col items-center justify-center rounded-xl w-12 h-12 sm:w-14 sm:h-14 shadow-sm transition-all transform hover:scale-105 ${streak > 0 ? 'bg-gradient-to-br from-orange-500 to-red-600 text-white ring-1 ring-orange-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                    <FireIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${streak > 0 ? 'text-yellow-300 fill-yellow-300 animate-pulse' : 'text-slate-300 dark:text-slate-600'}`} />
-                    <span className={`text-xs sm:text-sm font-extrabold ${streak > 0 ? 'text-white' : 'text-slate-500 dark:text-slate-500'}`}>{streak}</span>
-                </div>
-
-                {/* Best Streak (New) */}
-                {bestStreakInfo.count > 0 && (
-                    <div className="flex flex-col items-start justify-center h-12 sm:h-14 px-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm min-w-[70px]">
-                        <div className="flex items-center gap-1 text-yellow-500">
-                            <TrophyIcon className="w-3 h-3" />
-                            <span className="text-[9px] sm:text-[10px] font-bold uppercase truncate">Best</span>
-                        </div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 leading-tight">
-                            {bestStreakInfo.count} d
-                        </div>
-                    </div>
-                )}
-            </div>
-
-          </div>
-        </div>
-      </nav>
-
-      {/* Sidebar */}
-      <div className={`fixed inset-0 z-40 transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
-          <div className={`absolute inset-y-0 left-0 w-64 bg-white dark:bg-dark-surface shadow-2xl transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-               <div className="p-6 border-b border-slate-100 dark:border-dark-border flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                            <CalendarIcon className="text-white w-5 h-5" />
-                        </div>
-                        <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">FocusFlow</span>
-                    </div>
-                    <button onClick={() => setIsSidebarOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                        <XMarkIcon className="w-6 h-6" />
-                    </button>
-               </div>
-               <div className="p-4 space-y-2 flex-grow overflow-y-auto">
-                    {[
-                        { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
-                        { id: 'AI_CHAT', label: 'AI Mentor Chat', icon: ChatBubbleLeftRightIcon },
-                        { id: 'CALENDAR', label: 'Calendar', icon: CalendarIcon },
-                        { id: 'REVISION', label: 'Revision', icon: ArrowPathIcon },
-                        { id: 'PLANNER', label: 'Planner', icon: CalendarPlusIcon },
-                        { id: 'TASKS', label: 'Global Tasks', icon: ListCheckIcon },
-                        { id: 'DATABASE', label: 'Database', icon: DatabaseIcon },
-                        { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
-                    ].map(item => (
-                         <button 
-                            key={item.id}
-                            onClick={() => { setViewMode(item.id as ViewMode); setIsSidebarOpen(false); }} 
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${viewMode === item.id ? 'bg-indigo-50 dark:bg-primary/10 text-primary' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                        >
-                            <item.icon className="w-5 h-5" /> {item.label}
-                        </button>
-                    ))}
-               </div>
-          </div>
+    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden bg-slate-50 dark:bg-slate-900">
+      <InstallPrompt />
+      
+      {/* Background Blobs */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-purple-400/20 blur-[120px] animate-pulse"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-teal-400/20 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+         <div className="absolute top-[40%] left-[30%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" style={{ animationDelay: '4s' }}></div>
       </div>
 
-      {/* Exam Date Input Modal */}
-      {isExamDateModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 w-full max-w-sm shadow-xl animate-fade-in-up border border-slate-100 dark:border-dark-border">
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Set Exam Target Date</h3>
-                  <input 
-                    type="date" 
-                    value={examDate || ''} 
-                    onChange={(e) => setExamDate(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-slate-200 dark:border-dark-border dark:bg-slate-800 dark:text-white mb-4 text-slate-700 font-medium"
-                  />
-                  <div className="flex gap-3">
-                      {examDate && (
-                          <button onClick={() => { setExamDate(null); setIsExamDateModalOpen(false); }} className="px-4 py-2 rounded-lg border border-red-100 dark:border-red-900 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 font-medium">Clear</button>
-                      )}
-                      <button onClick={() => setIsExamDateModalOpen(false)} className="flex-1 py-2 rounded-lg bg-primary text-white font-bold shadow-md hover:bg-indigo-600 transition-all">Save Date</button>
-                  </div>
+      {/* SIDEBAR */}
+      <aside className="hidden md:flex w-64 flex-col bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-r border-white/20 dark:border-slate-700/50 h-screen sticky top-0 overflow-y-auto z-20 shadow-lg">
+          <div className="p-6 flex items-center gap-3">
+              <div className="w-10 h-10 flex items-center justify-center shadow-md rounded-2xl bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm">
+                   <AppLogo className="w-full h-full" />
               </div>
+              <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</h1>
+          </div>
+          <nav className="flex-1 px-4 space-y-2">
+              {[
+                  { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
+                  { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
+                  { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
+                  { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
+                  { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
+                  { id: 'FA_LOGGER', label: 'FA Logger', icon: ListCheckIcon },
+                  { id: 'REVISION', label: 'Revision Hub', icon: ArrowPathIcon },
+                  { id: 'KNOWLEDGE_BASE', label: 'Knowledge Base', icon: BookOpenIcon },
+                  { id: 'DATA', label: 'Info Files', icon: DocumentTextIcon },
+                  { id: 'CHAT', label: 'AI Mentor', icon: ChatBubbleLeftRightIcon },
+                  { id: 'AI_MEMORY', label: 'My AI Memory', icon: BrainIcon },
+                  { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
+              ].map((item) => (
+                  <button
+                      key={item.id}
+                      onClick={() => {
+                          if (item.id === 'TODAYS_PLAN') {
+                              setTargetPlanDate(undefined);
+                          }
+                          setCurrentView(item.id as any);
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm ${currentView === item.id ? 'bg-indigo-100/60 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-200 shadow-sm border border-indigo-200/50 dark:border-indigo-800/50' : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                  >
+                      <item.icon className="w-5 h-5" />
+                      {item.label}
+                  </button>
+              ))}
+          </nav>
+      </aside>
+
+      {/* MOBILE HEADER */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200/50 dark:border-slate-700/50 p-3 z-30 flex justify-between items-center shadow-sm">
+           <div className="flex items-center gap-2">
+               <div className="w-8 h-8">
+                   <AppLogo className="w-full h-full" />
+               </div>
+               <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</span>
+           </div>
+           
+           <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 rounded-full border border-orange-200/50 dark:border-orange-900/30" title="Current Streak">
+                    <FireIcon className="w-4 h-4 text-orange-500" />
+                    <span className="text-xs font-bold text-orange-600 dark:text-orange-400">{streak}</span>
+                </div>
+                
+                <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 whitespace-nowrap">
+                    {todayFormatted}
+                </div>
+
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300">
+                    <Bars3Icon className="w-6 h-6" />
+                </button>
+           </div>
+      </div>
+
+      {/* MOBILE MENU */}
+      {isSidebarOpen && (
+          <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)}>
+              <aside className="w-64 h-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl shadow-2xl p-4 animate-slide-in-left border-r border-white/20" onClick={e => e.stopPropagation()}>
+                   <div className="flex justify-between items-center mb-8">
+                       <div className="flex items-center gap-2">
+                           <div className="w-8 h-8">
+                               <AppLogo className="w-full h-full" />
+                           </div>
+                           <span className="font-bold text-lg">FocusFlow</span>
+                       </div>
+                       <button onClick={() => setIsSidebarOpen(false)}><XMarkIcon className="w-6 h-6 text-slate-400" /></button>
+                   </div>
+                   <nav className="space-y-2">
+                      {[
+                          { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
+                          { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
+                          { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
+                          { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
+                          { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
+                          { id: 'FA_LOGGER', label: 'FA Logger', icon: ListCheckIcon },
+                          { id: 'REVISION', label: 'Revision Hub', icon: ArrowPathIcon },
+                          { id: 'KNOWLEDGE_BASE', label: 'Knowledge Base', icon: BookOpenIcon },
+                          { id: 'DATA', label: 'Info Files', icon: DocumentTextIcon },
+                          { id: 'CHAT', label: 'AI Mentor', icon: ChatBubbleLeftRightIcon },
+                          { id: 'AI_MEMORY', label: 'My AI Memory', icon: BrainIcon },
+                          { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
+                      ].map((item) => (
+                          <button
+                              key={item.id}
+                              onClick={() => { 
+                                  if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined);
+                                  setCurrentView(item.id as any); 
+                                  setIsSidebarOpen(false); 
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm ${currentView === item.id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-primary' : 'text-slate-500 dark:text-slate-400'}`}
+                          >
+                              <item.icon className="w-5 h-5" />
+                              {item.label}
+                          </button>
+                      ))}
+                  </nav>
+              </aside>
           </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
-        {viewMode === 'SETTINGS' && (
-            <SettingsView settings={settings} onUpdateSettings={setSettings} />
-        )}
-
-        {viewMode === 'AI_CHAT' && (
-            <AIChatView 
-                sessions={sessions} 
-                studyPlan={studyPlan} 
-                streak={streak}
-                onAddToPlan={handleAddToPlan} 
-            />
-        )}
-
-        {viewMode === 'DASHBOARD' && (
-            <>
-                <DashboardAIWidget 
-                    sessions={sessions} 
-                    studyPlan={studyPlan} 
-                    streak={streak} 
-                    onOpenChat={() => setViewMode('AI_CHAT')}
-                />
-                <StatsCard 
-                    sessions={sessions} 
-                    studyPlan={studyPlan} 
-                    onNavigateToPlanner={() => setViewMode('PLANNER')}
-                    onViewAllPages={() => setIsPageAnalysisOpen(true)}
-                    onNavigateToRevision={() => setViewMode('REVISION')}
-                />
-                <RevisionForecast sessions={sessions} onSelectDay={(d) => setDailyViewDate(d)} />
-                
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                    <div className="flex gap-2 overflow-x-auto pb-1 max-w-full hide-scrollbar">
-                        {[{ label: 'All', val: FilterType.ALL }, { label: 'Due', val: FilterType.DUE_TODAY }, { label: 'Upcoming', val: FilterType.UPCOMING }, { label: 'Mastered', val: FilterType.MASTERED }].map((opt) => (
-                            <button key={opt.val} onClick={() => setFilter(opt.val as FilterType)} className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${filter === opt.val ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-800' : 'bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border text-slate-500 dark:text-slate-400'}`}>{opt.label}</button>
-                        ))}
+      {/* MAIN AREA */}
+      <main className="flex-1 pt-20 md:pt-0 p-4 md:p-8 overflow-y-auto h-screen custom-scrollbar relative z-10">
+          <div className="max-w-6xl mx-auto h-full">
+            
+            {currentView === 'DASHBOARD' && (
+                <>
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Hello, {displayName || 'Doctor'} 👋</h1>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Ready for today's session?</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }}
+                                className="bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2"
+                            >
+                                <CalendarIcon className="w-4 h-4" />
+                                Today's Plan
+                            </button>
+                        </div>
                     </div>
-                    <button 
-                        onClick={() => { setEditingSession(null); setSessionPrefill(null); setIsModalOpen(true); }}
-                        className="w-full sm:w-auto bg-primary hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 active:scale-95"
-                    >
-                    <PlusIcon className="w-4 h-4" /> Log Session
-                    </button>
-                </div>
 
-                <div className="space-y-3">
-                {filteredSessions.map(session => (
-                    <SessionRow
-                        key={session.id}
-                        session={session}
-                        knowledgeBase={knowledgeBase}
-                        onDelete={handleDeleteSession}
-                        onEdit={(s) => { setEditingSession(s); setSessionPrefill(null); setIsModalOpen(true); }}
-                        onLogRevision={(s) => { setRevisingSession(s); setIsRevisionModalOpen(true); }}
-                        onViewPage={(p) => handleViewPageDetail(p)}
-                    />
-                ))}
-                </div>
-            </>
-        )}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                         <div className="space-y-6">
+                            <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} />
+                            <ActivityGraphs knowledgeBase={knowledgeBase} />
+                            <StatsGrid knowledgeBase={knowledgeBase} streak={streak} />
+                         </div>
+                         <div className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-white/50 dark:border-slate-700/50 shadow-sm">
+                             <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                                <ListCheckIcon className="w-5 h-5 text-indigo-500" />
+                                Due Now
+                             </h3>
+                             <div className="space-y-3">
+                                {dueNowItems.length > 0 ? dueNowItems.map(item => (
+                                     <div key={item.id} className={`p-3 rounded-lg flex items-center justify-between transition-all ${item.urgent ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50' : 'bg-slate-50 dark:bg-slate-900/30 border border-slate-100 dark:border-slate-700'}`}>
+                                         <div>
+                                             <p className="font-bold text-sm text-slate-700 dark:text-slate-200">{item.title}</p>
+                                             <p className="text-xs text-slate-500 dark:text-slate-400">{item.subtitle}</p>
+                                         </div>
+                                         <button className="text-primary hover:underline text-xs font-bold">View</button>
+                                     </div>
+                                )) : <p className="text-sm text-slate-400 italic text-center py-8">All caught up!</p>}
+                             </div>
+                         </div>
+                    </div>
+                </>
+            )}
 
-        {viewMode === 'CALENDAR' && (
-            <CalendarView sessions={sessions} studyPlan={studyPlan} onSelectDate={(date) => setDailyViewDate(date)} />
-        )}
+            {currentView === 'PLANNER' && (
+                <PlannerView 
+                    plan={studyPlan} 
+                    knowledgeBase={knowledgeBase}
+                    sessions={[]}
+                    onAddToPlan={handleAddToPlan}
+                    onUpdatePlanItem={(item) => updatePlan(studyPlan.map(p => p.id === item.id ? item : p))}
+                    onCompleteTask={(item) => {
+                        const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined };
+                        updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p));
+                    }}
+                    onStartTask={(item) => {
+                        setSessionPrefill({
+                            topic: item.topic,
+                            pageNumber: item.pageNumber,
+                            ankiTotal: item.ankiCount
+                        });
+                        setPlanContext({
+                            planId: item.id,
+                            subTasks: item.subTasks || []
+                        });
+                        setIsSessionModalOpen(true);
+                    }}
+                    onManageSession={(session) => {
+                        if(session && session.pageNumber) handleViewPage(session.pageNumber);
+                    }}
+                    onToggleSubTask={(planId, subTaskId) => {
+                        const planItem = studyPlan.find(p => p.id === planId);
+                        if (planItem && planItem.subTasks) {
+                            const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t);
+                            const updatedItem = { ...planItem, subTasks: updatedSubTasks };
+                            updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
+                        }
+                    }}
+                    onDeleteLog={(planId, logId) => {
+                        const planItem = studyPlan.find(p => p.id === planId);
+                        if (planItem && planItem.logs) {
+                            const updatedLogs = planItem.logs.filter(l => l.id !== logId);
+                            const updatedItem = { ...planItem, logs: updatedLogs };
+                            updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
+                        }
+                    }}
+                    onViewPage={handleViewPage}
+                    sharedContent={sharedContent}
+                />
+            )}
 
-        {viewMode === 'PLANNER' && (
-            <PlannerView 
-                plan={studyPlan} 
-                sessions={sessions}
-                knowledgeBase={knowledgeBase} 
-                onAddToPlan={handleAddToPlan}
-                onUpdatePlanItem={handleUpdatePlanItem}
-                onCompleteTask={handleCompletePlanItem}
-                onStartTask={handleStartTask}
-                onManageSession={handleManageSession}
-                onToggleSubTask={handleTogglePlanSubTask}
-                onDeleteLog={handleDeletePlanLog}
-                onViewPage={(p) => handleViewPageDetail(p)}
-            />
-        )}
+            {currentView === 'TODAYS_PLAN' && (
+                <TodaysPlanView targetDate={targetPlanDate} settings={settings} />
+            )}
 
-        {viewMode === 'REVISION' && (
-            <RevisionView 
-                sessions={sessions} 
-                knowledgeBase={knowledgeBase}
-                onEditSession={(s) => { setEditingSession(s); setIsModalOpen(true); }}
-                onLogRevision={(s) => { setRevisingSession(s); setIsRevisionModalOpen(true); }}
-                onDeleteSession={handleDeleteSession}
-                onViewPage={(p) => handleViewPageDetail(p)}
-            />
-        )}
+            {currentView === 'CALENDAR' && (
+                <CalendarView 
+                    knowledgeBase={knowledgeBase} 
+                    studyPlan={studyPlan} 
+                    onAddToPlan={handleAddToPlan} 
+                />
+            )}
 
-        {viewMode === 'DATABASE' && (
-            <KnowledgeBaseView 
-                data={knowledgeBase} 
-                sessions={sessions}
-                onUpdateEntry={(entry) => setKnowledgeBase(prev => prev.map(k => k.pageNumber === entry.pageNumber ? entry : k))} 
-                onViewPage={(p) => handleViewPageDetail(p)}
-            />
-        )}
+            {currentView === 'TIME_LOGGER' && (
+                <TimeLoggerView 
+                    knowledgeBase={knowledgeBase}
+                    onViewPage={handleViewPage}
+                />
+            )}
 
-        {viewMode === 'TASKS' && <GlobalTaskList sessions={sessions} onToggleTask={(sid, tid) => {
-             setSessions(prev => prev.map(s => s.id !== sid ? s : { ...s, toDoList: s.toDoList?.map(t => t.id === tid ? { ...t, done: !t.done } : t) }));
-        }} />}
+            {currentView === 'DAILY_TRACKER' && (
+                <DailyTrackerView />
+            )}
+
+            {currentView === 'FA_LOGGER' && (
+                <FALoggerView 
+                    knowledgeBase={knowledgeBase}
+                    onUpdateKnowledgeBase={updateKB}
+                    onViewPage={handleViewPage}
+                />
+            )}
+
+            {currentView === 'REVISION' && (
+                <RevisionView 
+                    knowledgeBase={knowledgeBase}
+                    onLogRevision={(item) => {
+                        setSessionPrefill({
+                            topic: item.title,
+                            pageNumber: item.pageNumber,
+                            category: item.kbEntry.subject,
+                            system: item.kbEntry.system,
+                            ankiTotal: item.kbEntry.ankiTotal,
+                            ankiCovered: item.kbEntry.ankiCovered
+                        });
+                        setIsSessionModalOpen(true);
+                    }}
+                    onDeleteSession={() => {}}
+                    onViewPage={handleViewPage}
+                />
+            )}
+
+            {currentView === 'KNOWLEDGE_BASE' && (
+                <KnowledgeBaseView 
+                    data={knowledgeBase}
+                    onUpdateEntry={(entry) => {
+                        updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k));
+                    }}
+                    onViewPage={handleViewPage}
+                />
+            )}
+
+            {currentView === 'DATA' && <DataView />}
+
+            {currentView === 'CHAT' && (
+                <AIChatView 
+                    sessions={[]} // deprecated
+                    studyPlan={studyPlan}
+                    streak={streak}
+                    onAddToPlan={handleAddToPlan}
+                    onViewDayPlan={handleViewDayPlan}
+                    displayName={displayName}
+                    knowledgeBase={knowledgeBase}
+                    onUpdateKnowledgeBase={updateKB}
+                />
+            )}
+
+            {currentView === 'AI_MEMORY' && (
+                <AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />
+            )}
+
+            {currentView === 'SETTINGS' && (
+                <SettingsView 
+                    settings={settings} 
+                    onUpdateSettings={async (newSettings) => {
+                        setSettings(newSettings);
+                        await saveData('settings', newSettings);
+                    }} 
+                    secretId={secretId}
+                    displayName={displayName}
+                    onUpdateDisplayName={handleUpdateDisplayName}
+                />
+            )}
+
+          </div>
       </main>
 
       {/* Modals */}
-      <SessionModal
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setTimeout(() => { setEditingSession(null); setSessionPrefill(null); setActivePlanItem(null); }, 300); }}
-        onSave={(data) => handleSaveSession(data)}
-        initialData={editingSession}
-        prefillData={sessionPrefill}
-        knowledgeBase={knowledgeBase}
-        planContext={activePlanItem ? { planId: activePlanItem.id, subTasks: activePlanItem.subTasks || [] } : null}
-      />
+      {isSessionModalOpen && (
+          <SessionModal
+              isOpen={isSessionModalOpen}
+              onClose={() => { setIsSessionModalOpen(false); setEditingSession(null); setSessionPrefill(null); setPlanContext(null); }}
+              initialData={editingSession}
+              prefillData={sessionPrefill}
+              planContext={planContext}
+              knowledgeBase={knowledgeBase}
+              onSave={(sessionData) => {
+                  // Logic to save session
+                  // We need to handle KB updates from SessionModal save
+                  // SessionModal returns Partial<StudySession> which roughly maps to KB logic
+                  // But we need to convert it to KB updates
+                  
+                  // NOTE: SessionModal has been updated to handle plan updates too.
+                  // We need to implement the onSave logic here.
+                  
+                  const { pageNumber, topic, history, notes, ankiCovered, ankiTotal, planUpdates } = sessionData;
+                  const latestLog = history && history.length > 0 ? history[0] : null;
+                  
+                  if (latestLog) {
+                      // Update KB
+                      let kbEntry = knowledgeBase.find(k => k.pageNumber === pageNumber);
+                      if (!kbEntry) {
+                          // Create new
+                          kbEntry = {
+                              pageNumber,
+                              title: topic || `Page ${pageNumber}`,
+                              subject: sessionData.category || 'Uncategorized',
+                              system: sessionData.system || 'General',
+                              revisionCount: 0,
+                              firstStudiedAt: null,
+                              lastStudiedAt: null,
+                              nextRevisionAt: null,
+                              currentRevisionIndex: 0,
+                              ankiTotal: ankiTotal || 0,
+                              ankiCovered: ankiCovered || 0,
+                              videoLinks: [],
+                              tags: [],
+                              notes: notes || '',
+                              logs: [],
+                              topics: []
+                          };
+                      } else {
+                          // Update existing
+                          kbEntry = { ...kbEntry, notes: notes || kbEntry.notes, ankiCovered: ankiCovered || kbEntry.ankiCovered, ankiTotal: ankiTotal || kbEntry.ankiTotal };
+                      }
 
-      <TimerModal 
-          isOpen={isTimerOpen}
-          onClose={() => setIsTimerOpen(false)}
-          onFinish={handleTimerFinish}
-          topic={activePlanItem?.topic || 'Study Session'}
-      />
+                      // Append Log
+                      const newLog: RevisionLog = {
+                          id: latestLog.id,
+                          timestamp: latestLog.startTime,
+                          durationMinutes: latestLog.durationMinutes,
+                          revisionIndex: latestLog.type === 'INITIAL' ? 0 : kbEntry.revisionCount + 1,
+                          type: latestLog.type === 'INITIAL' ? 'STUDY' : 'REVISION',
+                          notes: latestLog.notes,
+                          source: 'MODAL',
+                          // Map subtasks to topics if needed, or just use topic
+                          topics: [topic].filter(Boolean),
+                          attachments: latestLog.attachments
+                      };
+                      
+                      // Recalculate SRS
+                      const isRevision = newLog.type === 'REVISION';
+                      const newRevCount = isRevision ? kbEntry.revisionCount + 1 : kbEntry.revisionCount;
+                      const newRevIndex = isRevision ? kbEntry.currentRevisionIndex + 1 : 0;
+                      
+                      const nextDate = calculateNextRevisionDate(new Date(latestLog.startTime), newRevIndex, revisionSettings);
+                      
+                      const updatedKBEntry = {
+                          ...kbEntry,
+                          logs: [...kbEntry.logs, newLog],
+                          revisionCount: newRevCount,
+                          currentRevisionIndex: newRevIndex,
+                          lastStudiedAt: latestLog.startTime,
+                          firstStudiedAt: kbEntry.firstStudiedAt || latestLog.startTime,
+                          nextRevisionAt: nextDate ? nextDate.toISOString() : null
+                      };
+                      
+                      const newKB = knowledgeBase.filter(k => k.pageNumber !== pageNumber).concat(updatedKBEntry);
+                      updateKB(newKB);
+                  }
 
-      <PageAnalysisModal 
-          isOpen={isPageAnalysisOpen}
-          onClose={() => setIsPageAnalysisOpen(false)}
-          sessions={sessions}
-          knowledgeBase={knowledgeBase}
-          onViewPage={(p) => handleViewPageDetail(p)}
-      />
+                  // Update Plan if contextual
+                  if (planContext && planUpdates && planUpdates.completedSubTaskIds) {
+                      const planItem = studyPlan.find(p => p.id === planContext.planId);
+                      if (planItem) {
+                          let updatedSubTasks = planItem.subTasks || [];
+                          updatedSubTasks = updatedSubTasks.map(t => planUpdates.completedSubTaskIds.includes(t.id) ? { ...t, done: true } : t);
+                          
+                          let updatedItem = { ...planItem, subTasks: updatedSubTasks };
+                          if (planUpdates.isFinished) {
+                              updatedItem.isCompleted = true;
+                              updatedItem.completedAt = new Date().toISOString();
+                          }
+                          
+                          // Also append log to planItem logs for visibility
+                          if (latestLog) {
+                              const planLog = {
+                                  id: latestLog.id,
+                                  date: latestLog.date,
+                                  durationMinutes: latestLog.durationMinutes,
+                                  startTime: latestLog.startTime,
+                                  endTime: latestLog.endTime,
+                                  notes: latestLog.notes
+                              };
+                              updatedItem.logs = [...(updatedItem.logs || []), planLog];
+                              updatedItem.totalMinutesSpent = (updatedItem.totalMinutesSpent || 0) + latestLog.durationMinutes;
+                          }
 
-      {/* The Ultimate Page Detail Modal */}
-      <PageDetailModal
-        isOpen={!!selectedPageDetail}
-        onClose={() => setSelectedPageDetail(null)}
-        pageNumber={selectedPageDetail}
-        knowledgeBase={knowledgeBase}
-        sessions={sessions}
-      />
-
-      {revisingSession && (
-          <LogRevisionModal
-            isOpen={isRevisionModalOpen}
-            onClose={() => { setIsRevisionModalOpen(false); setRevisingSession(null); }}
-            onConfirm={handleRevisionComplete}
-            session={revisingSession}
+                          updatePlan(studyPlan.map(p => p.id === planItem.id ? updatedItem : p));
+                      }
+                  }
+                  
+                  setIsSessionModalOpen(false);
+                  setEditingSession(null);
+                  setSessionPrefill(null);
+                  setPlanContext(null);
+              }}
           />
       )}
 
-      <DailyViewModal
-          isOpen={!!dailyViewDate}
-          date={dailyViewDate}
-          onClose={() => setDailyViewDate(null)}
-          sessions={sessions}
-          studyPlan={studyPlan}
-          onEditSession={(s) => { setEditingSession(s); setIsModalOpen(true); }}
+      <PageDetailModal 
+          isOpen={isPageDetailOpen}
+          onClose={() => setIsPageDetailOpen(false)}
+          pageNumber={viewingPage}
+          knowledgeBase={knowledgeBase}
+          sessions={[]} // deprecated
+          onUpdateEntry={(entry) => {
+              updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k));
+          }}
       />
+
     </div>
   );
-};
-
-export default App;
+}

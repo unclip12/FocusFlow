@@ -1,0 +1,31 @@
+
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: "AIzaSyCpASx-JIkZr88rJLhpfeqI_11oVnbOLNI", // Using provided API Key
+  authDomain: "arsh-projects.firebaseapp.com",
+  projectId: "arsh-projects",
+  storageBucket: "arsh-projects.firebasestorage.app",
+  messagingSenderId: "666347925472",
+  appId: "1:666347925472:web:a5e8177c0e886178c44585",
+});
+
+// Safely attempt to initialize messaging in SW
+try {
+    const messaging = firebase.messaging();
+
+    messaging.onBackgroundMessage((payload) => {
+      console.log('[firebase-messaging-sw.js] Received background message ', payload);
+      const notificationTitle = payload.notification.title;
+      const notificationOptions = {
+        body: payload.notification.body,
+        icon: '/icon.png'
+      };
+
+      self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+} catch (e) {
+    // Messaging not supported in this SW environment
+    console.debug('Firebase Messaging SW not supported');
+}

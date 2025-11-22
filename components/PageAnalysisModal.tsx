@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { StudySession, getAdjustedDate, KnowledgeBaseEntry } from '../types';
 import { 
@@ -55,7 +56,9 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
                     cmp = a.topic.localeCompare(b.topic);
                     break;
                 case 'REVISIONS':
-                    cmp = a.history.length - b.history.length;
+                    const revA = knowledgeBase.find(k => k.pageNumber === a.pageNumber)?.revisionCount || 0;
+                    const revB = knowledgeBase.find(k => k.pageNumber === b.pageNumber)?.revisionCount || 0;
+                    cmp = revA - revB;
                     break;
                 case 'TIME_SPENT':
                     const timeA = a.history.reduce((acc, h) => acc + h.durationMinutes, 0);
@@ -70,7 +73,7 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
         });
 
         return result;
-    }, [sessions, searchTerm, sortBy, sortOrder]);
+    }, [sessions, searchTerm, sortBy, sortOrder, knowledgeBase]);
 
     // --- DETAIL VIEW LOGIC ---
     const chartData = useMemo(() => {
@@ -165,9 +168,9 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
                             <div className="flex-1 overflow-y-auto p-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {filteredSessions.map(session => {
-                                        const totalRevisions = session.history.length;
-                                        const totalTime = session.history.reduce((acc, h) => acc + h.durationMinutes, 0);
                                         const kbEntry = knowledgeBase.find(k => k.pageNumber === session.pageNumber);
+                                        const totalRevisions = kbEntry?.revisionCount || 0;
+                                        const totalTime = session.history.reduce((acc, h) => acc + h.durationMinutes, 0);
                                         
                                         return (
                                             <div 
@@ -233,7 +236,7 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
                                     <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 text-center">
                                         <p className="text-xs text-amber-500 dark:text-amber-400 font-bold uppercase mb-1">Revisions</p>
                                         <p className="text-xl font-bold text-amber-700 dark:text-amber-300">
-                                            {selectedSession.history.length}
+                                            {knowledgeBase.find(k => k.pageNumber === selectedSession.pageNumber)?.revisionCount || 0}
                                         </p>
                                     </div>
                                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 text-center">

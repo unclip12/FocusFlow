@@ -1,19 +1,122 @@
 
-
 import React, { useState, useMemo } from 'react';
-import { StudySession, getAdjustedDate, KnowledgeBaseEntry } from '../types';
-import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon } from './Icons';
+import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, RevisionLog } from '../types';
+import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon, FireIcon } from './Icons';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine 
 } from 'recharts';
-import SessionRow from './SessionRow';
 import { PageBadge } from './PageBadge';
 
+interface RevisionItem {
+    type: 'PAGE' | 'TOPIC' | 'SUBTOPIC';
+    pageNumber: string;
+    title: string;
+    parentTitle: string;
+    nextRevisionAt: string;
+    currentRevisionIndex: number;
+    id: string; // a unique ID like pageNumber-topicId
+    kbEntry: KnowledgeBaseEntry;
+    topic?: TrackableItem;
+    subTopic?: TrackableItem;
+}
+
+interface RevisionItemCardProps {
+    item: RevisionItem;
+    knowledgeBase: KnowledgeBaseEntry[];
+    onLogRevision: (item: RevisionItem) => void;
+    onViewPage: (pageNumber: string) => void;
+}
+
+const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase, onLogRevision, onViewPage }) => {
+    const { pageNumber, title, parentTitle, nextRevisionAt, currentRevisionIndex, type } = item;
+    const isDue = new Date(nextRevisionAt) <= new Date();
+
+    return (
+        <div className={`group relative bg-white dark:bg-dark-surface border rounded-xl p-4 transition-all duration-200 hover:shadow-md ${isDue ? 'border-l-4 border-l-amber-400 border-slate-200 dark:border-dark-border bg-amber-50/10 dark:bg-amber-900/10' : 'border-slate-100 dark:border-dark-border'}`}>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="flex-shrink-0">
+                    <PageBadge
+                        pageNumber={pageNumber}
+                        attachments={item.kbEntry.attachments}
+                        revisionCount={item.kbEntry.revisionCount}
+                        onClick={() => onViewPage(pageNumber)}
+                    />
+                </div>
+                <div className="flex-grow min-w-0 w-full" onClick={() => onViewPage(pageNumber)}>
+                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate text-base sm:text-lg">
+                        {title}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {type !== 'PAGE' ? `From: ${parentTitle}` : item.kbEntry.system}
+                    </p>
+                    <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        <span className="font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">R{currentRevisionIndex}</span>
+                        <span>Due: {new Date(nextRevisionAt).toLocaleString([], {
+                            year: '2-digit', month: 'numeric', day: 'numeric',
+                            hour: 'numeric', minute: '2-digit', hour12: true
+                        })}</span>
+                        {isDue && <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse text-[10px]">DUE</span>}
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0 justify-end">
+                    <button
+                        onClick={() => onLogRevision(item)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isDue ? 'bg-primary text-white shadow-md' : 'bg-white dark:bg-slate-800 border'}`}
+                    >
+                        <ArrowPathIcon className="w-4 h-4" />
+                        Revise
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+interface PastLogItem {
+    log: RevisionLog;
+    kbEntry: KnowledgeBaseEntry;
+}
+
+const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) => void }> = ({ item, onViewPage }) => {
+    const { log, kbEntry } = item;
+    const isStudy = log.type === 'STUDY';
+
+    return (
+        <div className={`group relative bg-white dark:bg-dark-surface border rounded-xl p-4 transition-all duration-200 hover:shadow-md ${isStudy ? 'border-slate-100 dark:border-dark-border' : 'border-green-100 dark:border-green-800/30'}`}>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="flex-shrink-0">
+                    <PageBadge
+                        pageNumber={kbEntry.pageNumber}
+                        attachments={kbEntry.attachments}
+                        revisionCount={kbEntry.revisionCount}
+                        onClick={() => onViewPage(kbEntry.pageNumber)}
+                    />
+                </div>
+                <div className="flex-grow min-w-0 w-full cursor-pointer" onClick={() => onViewPage(kbEntry.pageNumber)}>
+                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate text-base sm:text-lg">
+                        {kbEntry.title}
+                    </h4>
+                    <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        <span className={`font-bold px-2 py-1 rounded ${isStudy ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'}`}>
+                            {isStudy ? 'First Study' : `Revision #${log.revisionIndex}`}
+                        </span>
+                        <span>
+                            {new Date(log.timestamp).toLocaleString([], {
+                                year: '2-digit', month: 'numeric', day: 'numeric',
+                                hour: 'numeric', minute: '2-digit', hour12: true
+                            })}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 interface RevisionViewProps {
-  sessions: StudySession[];
   knowledgeBase: KnowledgeBaseEntry[];
-  onEditSession: (s: StudySession) => void;
-  onLogRevision: (s: StudySession) => void;
+  onLogRevision: (item: RevisionItem) => void;
   onDeleteSession: (id: string) => void;
   onViewPage: (page: string) => void;
 }
@@ -21,187 +124,170 @@ interface RevisionViewProps {
 type SortOption = 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
 type SortOrder = 'ASC' | 'DESC';
 
-const RevisionView: React.FC<RevisionViewProps> = ({ sessions, knowledgeBase, onEditSession, onLogRevision, onDeleteSession, onViewPage }) => {
+const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevision, onDeleteSession, onViewPage }) => {
   const [activeTab, setActiveTab] = useState<'DUE' | 'UPCOMING' | 'HISTORY'>('DUE');
   const [sortBy, setSortBy] = useState<SortOption>('TIME');
   const [sortOrder, setSortOrder] = useState<SortOrder>('ASC');
 
-  // --- METRICS CALCULATION ---
   const now = new Date();
-
-  // Total Historical Revisions (Sum of all revision logs across all sessions)
-  const totalRevisionsCount = useMemo(() => {
-      return sessions.reduce((acc, s) => acc + s.history.filter(h => h.type === 'REVISION').length, 0);
-  }, [sessions]);
-
-  // Base Lists (Unsorted)
-  const rawDueSessions = useMemo(() => {
-      return sessions.filter(s => s.nextRevisionDate && new Date(s.nextRevisionDate) <= now);
-  }, [sessions, now]);
-
-  const rawUpcomingSessions = useMemo(() => {
-      return sessions.filter(s => s.nextRevisionDate && new Date(s.nextRevisionDate) > now);
-  }, [sessions, now]);
-
-  const rawHistoryLogs = useMemo(() => {
-      return sessions.flatMap(s => 
-          s.history
-            .filter(h => h.type === 'REVISION')
-            .map(h => ({ 
-                ...h, 
-                topic: s.topic, 
-                pageNumber: s.pageNumber, 
-                system: s.system, 
-                category: s.category 
-            }))
-      );
-  }, [sessions]);
-
-  // --- SORTING LOGIC ---
-  const sortSessions = (list: StudySession[]) => {
-      return [...list].sort((a, b) => {
-          let cmp = 0;
-          switch (sortBy) {
-              case 'TIME':
-                  // Default for sessions is Next Revision Date
-                  cmp = (new Date(a.nextRevisionDate!).getTime() || 0) - (new Date(b.nextRevisionDate!).getTime() || 0);
-                  break;
-              case 'PAGE':
-                  cmp = a.pageNumber.localeCompare(b.pageNumber, undefined, { numeric: true });
-                  break;
-              case 'TOPIC':
-                  cmp = a.topic.localeCompare(b.topic);
-                  break;
-              case 'SYSTEM':
-                  cmp = (a.system || '').localeCompare(b.system || '');
-                  break;
-          }
-          return sortOrder === 'ASC' ? cmp : -cmp;
-      });
-  };
-
-  const sortHistory = (list: typeof rawHistoryLogs) => {
-      return [...list].sort((a, b) => {
-          let cmp = 0;
-          switch (sortBy) {
-              case 'TIME':
-                  // Default for history is Log Start Time
-                  cmp = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-                  break;
-              case 'PAGE':
-                  cmp = a.pageNumber.localeCompare(b.pageNumber, undefined, { numeric: true });
-                  break;
-              case 'TOPIC':
-                  cmp = a.topic.localeCompare(b.topic);
-                  break;
-              case 'SYSTEM':
-                  cmp = (a.system || '').localeCompare(b.system || '');
-                  break;
-          }
-          return sortOrder === 'ASC' ? cmp : -cmp;
-      });
-  };
-
-  const dueSessions = useMemo(() => sortSessions(rawDueSessions), [rawDueSessions, sortBy, sortOrder]);
-  const upcomingSessions = useMemo(() => sortSessions(rawUpcomingSessions), [rawUpcomingSessions, sortBy, sortOrder]);
-  const historyLogs = useMemo(() => sortHistory(rawHistoryLogs), [rawHistoryLogs, sortBy, sortOrder]);
-
-  // Current Page Due (First in the due list)
-  const currentPageDue = useMemo(() => {
-      const sortedByTime = [...rawDueSessions].sort((a,b) => new Date(a.nextRevisionDate!).getTime() - new Date(b.nextRevisionDate!).getTime());
-      return sortedByTime.length > 0 ? sortedByTime[0] : null;
-  }, [rawDueSessions]);
-
-  // --- DYNAMIC GRAPH DATA GENERATION ---
-  const graphData = useMemo(() => {
-      if (sessions.length === 0) return [];
-
-      // 1. Find Min Date (Earliest Log)
-      let minTime = new Date().getTime();
-      sessions.forEach(s => {
-          s.history.forEach(h => {
-              const t = new Date(h.startTime).getTime();
-              if (t < minTime) minTime = t;
-          });
-      });
-
-      // 2. Find Max Date (Latest Due)
-      let maxTime = new Date().getTime() + (14 * 24 * 60 * 60 * 1000); // Default at least T+14
-      sessions.forEach(s => {
-          if (s.nextRevisionDate) {
-              const t = new Date(s.nextRevisionDate).getTime();
-              if (t > maxTime) maxTime = t;
-          }
-      });
-
-      // Buffer dates slightly
-      const startDate = new Date(minTime);
-      startDate.setDate(startDate.getDate() - 1);
-      const endDate = new Date(maxTime);
-      
-      // Normalize to midnight
-      startDate.setHours(0,0,0,0);
-      endDate.setHours(0,0,0,0);
-
-      const data = [];
-      const iter = new Date(startDate);
-      const todayStr = getAdjustedDate(new Date());
-
-      while (iter <= endDate) {
-          const dateStr = getAdjustedDate(iter);
-          
-          let count = 0;
-          let type = 'future';
-
-          // Logic:
-          // Past: Revisions completed on that day
-          // Today: Revisions due today (rawDueSessions)
-          // Future: Revisions due on that day
-
-          const iterMidnight = new Date(iter);
-          iterMidnight.setHours(0,0,0,0);
-          const todayMidnight = new Date();
-          todayMidnight.setHours(0,0,0,0);
-
-          if (iterMidnight < todayMidnight) {
-              type = 'past';
-              count = sessions.reduce((acc, s) => {
-                  return acc + s.history.filter(h => getAdjustedDate(h.startTime) === dateStr && h.type === 'REVISION').length;
-              }, 0);
-          } else if (dateStr === todayStr) {
-              type = 'today';
-              count = rawDueSessions.length;
-          } else {
-              type = 'future';
-              count = sessions.filter(s => {
-                  if (!s.nextRevisionDate) return false;
-                  return getAdjustedDate(new Date(s.nextRevisionDate)) === dateStr;
-              }).length;
-          }
-
-          data.push({
-              day: iter.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-              rawDate: new Date(iter),
-              count,
-              type
-          });
-
-          // Increment day
-          iter.setDate(iter.getDate() + 1);
+  
+  const handleTabClick = (tab: 'DUE' | 'UPCOMING' | 'HISTORY') => {
+      setActiveTab(tab);
+      setSortBy('TIME');
+      if (tab === 'HISTORY') {
+          setSortOrder('DESC'); // Newest first for history
+      } else {
+          setSortOrder('ASC'); // Soonest first for due/upcoming
       }
-      
-      return data;
-  }, [sessions, rawDueSessions]);
+  };
 
-  // Calculate chart width for scrolling
-  const chartWidth = Math.max(1000, graphData.length * 50); // Min 1000px or 50px per bar
+  const todaysLogs = useMemo(() => {
+    const todayStr = getAdjustedDate(new Date());
+    const studied = new Set<string>();
+    const revised = new Map<string, number>();
+
+    knowledgeBase.forEach(kb => {
+        (kb.logs || []).forEach(log => {
+            if (getAdjustedDate(log.timestamp) === todayStr) {
+                if (log.type === 'STUDY') {
+                    studied.add(kb.pageNumber);
+                } else {
+                    revised.set(kb.pageNumber, log.revisionIndex);
+                }
+            }
+        });
+    });
+    return { studied: Array.from(studied), revised: Array.from(revised.entries()) };
+  }, [knowledgeBase]);
+
+  const allRevisionItems = useMemo((): RevisionItem[] => {
+    const items: RevisionItem[] = [];
+    knowledgeBase.forEach(kb => {
+        // 1. Page Level
+        if(kb.nextRevisionAt) {
+            items.push({
+                type: 'PAGE',
+                pageNumber: kb.pageNumber,
+                title: kb.title,
+                parentTitle: kb.system,
+                nextRevisionAt: kb.nextRevisionAt,
+                currentRevisionIndex: kb.currentRevisionIndex,
+                id: kb.pageNumber,
+                kbEntry: kb,
+            });
+        }
+        // 2. Topic Level
+        kb.topics.forEach(topic => {
+            if (topic.nextRevisionAt) {
+                items.push({
+                    type: 'TOPIC',
+                    pageNumber: kb.pageNumber,
+                    title: topic.name,
+                    parentTitle: kb.title,
+                    nextRevisionAt: topic.nextRevisionAt,
+                    currentRevisionIndex: topic.currentRevisionIndex,
+                    id: `${kb.pageNumber}-${topic.id}`,
+                    kbEntry: kb,
+                    topic: topic
+                });
+            }
+            // 3. Subtopic Level
+            (topic.subTopics || []).forEach(subTopic => {
+                if (subTopic.nextRevisionAt) {
+                    items.push({
+                        type: 'SUBTOPIC',
+                        pageNumber: kb.pageNumber,
+                        title: subTopic.name,
+                        parentTitle: topic.name,
+                        nextRevisionAt: subTopic.nextRevisionAt,
+                        currentRevisionIndex: subTopic.currentRevisionIndex,
+                        id: `${kb.pageNumber}-${topic.id}-${subTopic.id}`,
+                        kbEntry: kb,
+                        topic: topic,
+                        subTopic: subTopic
+                    });
+                }
+            });
+        });
+    });
+    return items;
+  }, [knowledgeBase]);
+
+  // Helper to consolidate multiple items for the same page
+  // Returns the item with the highest revision index or earliest due date if tied
+  const consolidateItems = (items: RevisionItem[]) => {
+      const map = new Map<string, RevisionItem>();
+      
+      items.forEach(item => {
+          const existing = map.get(item.pageNumber);
+          if (!existing) {
+              map.set(item.pageNumber, item);
+          } else {
+              // Preference Logic:
+              // 1. Prefer PAGE type over TOPIC/SUBTOPIC to represent the whole page
+              if (item.type === 'PAGE' && existing.type !== 'PAGE') {
+                  map.set(item.pageNumber, item);
+              } 
+              // 2. If same type or both not PAGE, pick highest revision index (most progress)
+              else if (item.currentRevisionIndex > existing.currentRevisionIndex) {
+                  map.set(item.pageNumber, item);
+              }
+          }
+      });
+      return Array.from(map.values());
+  };
+
+  const dueItems = useMemo(() => {
+      const rawDue = allRevisionItems.filter(item => new Date(item.nextRevisionAt) <= now);
+      return consolidateItems(rawDue);
+  }, [allRevisionItems, now]);
+
+  const upcomingItems = useMemo(() => {
+      const rawUpcoming = allRevisionItems.filter(item => new Date(item.nextRevisionAt) > now);
+      return consolidateItems(rawUpcoming);
+  }, [allRevisionItems, now]);
+
+  const sortedDue = useMemo(() => {
+    return [...dueItems].sort((a,b) => sortOrder === 'ASC' ? new Date(a.nextRevisionAt).getTime() - new Date(b.nextRevisionAt).getTime() : new Date(b.nextRevisionAt).getTime() - new Date(a.nextRevisionAt).getTime());
+  }, [dueItems, sortBy, sortOrder]);
+
+  const sortedUpcoming = useMemo(() => {
+    return [...upcomingItems].sort((a,b) => sortOrder === 'ASC' ? new Date(a.nextRevisionAt).getTime() - new Date(b.nextRevisionAt).getTime() : new Date(b.nextRevisionAt).getTime() - new Date(a.nextRevisionAt).getTime());
+  }, [upcomingItems, sortBy, sortOrder]);
+  
+  const pastLogs = useMemo((): PastLogItem[] => {
+    return knowledgeBase.flatMap(kb => kb.logs.map(log => ({ log, kbEntry: kb })));
+  }, [knowledgeBase]);
+
+  const sortedPastLogs = useMemo(() => {
+      return [...pastLogs].sort((a,b) => {
+          let comparison = 0;
+          switch(sortBy) {
+              case 'PAGE':
+                  comparison = a.kbEntry.pageNumber.localeCompare(b.kbEntry.pageNumber, undefined, { numeric: true });
+                  break;
+              case 'TOPIC':
+                  comparison = a.kbEntry.title.localeCompare(b.kbEntry.title);
+                  break;
+              case 'SYSTEM':
+                   comparison = a.kbEntry.system.localeCompare(b.kbEntry.system);
+                   break;
+              case 'TIME':
+              default:
+                  // asc should be oldest, desc should be newest
+                  comparison = new Date(a.log.timestamp).getTime() - new Date(b.log.timestamp).getTime();
+          }
+          return sortOrder === 'ASC' ? comparison : -comparison;
+      });
+  }, [pastLogs, sortBy, sortOrder]);
+
+
+  const totalRevisionsCount = knowledgeBase.reduce((sum, page) => sum + page.revisionCount, 0);
 
   return (
     <div className="animate-fade-in space-y-8">
-        
-        {/* Header Section with Scrollable Graph */}
         <div className="bg-white dark:bg-dark-surface rounded-2xl border border-slate-200 dark:border-dark-border p-6 shadow-sm">
-            <div className="flex justify-between items-start mb-6">
+             <div className="flex justify-between items-start mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                         <ArrowPathIcon className="w-6 h-6 text-primary" />
@@ -211,227 +297,129 @@ const RevisionView: React.FC<RevisionViewProps> = ({ sessions, knowledgeBase, on
                 </div>
                 <div className="flex gap-4 text-sm">
                      <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-center hidden sm:block">
-                         <span className="block text-xs font-bold text-indigo-400 uppercase">Total Revised</span>
+                         <span className="block text-xs font-bold text-indigo-400 uppercase">Total Revisions</span>
                          <span className="block text-xl font-bold text-indigo-700 dark:text-indigo-300">{totalRevisionsCount}</span>
                      </div>
                      <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-900/50 text-center">
                          <span className="block text-xs font-bold text-amber-400 uppercase">Due Now</span>
-                         <span className="block text-xl font-bold text-amber-700 dark:text-amber-400">{rawDueSessions.length}</span>
+                         <span className="block text-xl font-bold text-amber-700 dark:text-amber-400">{dueItems.length}</span>
                      </div>
                 </div>
             </div>
-
-            {/* Scrollable Graph Container */}
-            <div className="mt-4">
-                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-4">Full Timeline</h3>
-                <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
-                    <div style={{ width: `${chartWidth}px`, height: '300px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={graphData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.1} />
-                                <XAxis 
-                                    dataKey="day" 
-                                    tick={{ fontSize: 10, fill: '#94a3b8' }} 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    interval={0} 
-                                    angle={-45}
-                                    textAnchor="end"
-                                />
-                                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                                <Tooltip 
-                                    cursor={{ fill: 'transparent' }}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.9)' }}
-                                />
-                                <ReferenceLine x={graphData.find(d => d.type === 'today')?.day} stroke="#f59e0b" strokeDasharray="3 3" label="Today" />
-                                <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={30}>
-                                    {graphData.map((entry, index) => (
-                                        <Cell 
-                                            key={`cell-${index}`} 
-                                            fill={
-                                                entry.type === 'past' ? '#cbd5e1' : 
-                                                entry.type === 'today' ? '#f59e0b' : 
-                                                '#6366f1'
-                                            } 
-                                        />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+             { (todaysLogs.studied.length > 0 || todaysLogs.revised.length > 0) &&
+                <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Today's Log</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Studied (First Time):</p>
+                            <p className="text-slate-600 dark:text-slate-400">{todaysLogs.studied.length > 0 ? `Pg ${todaysLogs.studied.join(', ')}` : 'None'}</p>
+                        </div>
+                        <div>
+                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Revised:</p>
+                            <p className="text-slate-600 dark:text-slate-400">{todaysLogs.revised.length > 0 ? todaysLogs.revised.map(([pg, idx]) => `Pg ${pg} (R${idx})`).join(', ') : 'None'}</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            }
         </div>
-
-        {/* Priority Card */}
-        {currentPageDue && (
-            <div className="p-4 bg-gradient-to-r from-amber-50 to-white dark:from-amber-900/20 dark:to-slate-800 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-4">
-                        <PageBadge 
-                        pageNumber={currentPageDue.pageNumber}
-                        revisionCount={currentPageDue.history.filter(h => h.type === 'REVISION').length}
-                        attachments={knowledgeBase.find(k => k.pageNumber === currentPageDue.pageNumber)?.attachments}
-                        onClick={() => onViewPage(currentPageDue.pageNumber)}
-                        />
-                    <div>
-                        <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-0.5">Priority Revision</p>
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">{currentPageDue.topic}</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Due since {new Date(currentPageDue.nextRevisionDate!).toLocaleString()}</p>
-                    </div>
-                </div>
-                <button 
-                    onClick={() => onLogRevision(currentPageDue)}
-                    className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg shadow-md hover:bg-amber-600 transition-all flex items-center gap-2"
-                >
-                    Revise Now <ChevronRightIcon className="w-4 h-4" />
-                </button>
-            </div>
-        )}
-
-        {/* Tabs & List */}
+        
         <div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 dark:border-dark-border mb-4 gap-4">
                 <div className="flex overflow-x-auto max-w-full">
                     <button 
-                        onClick={() => setActiveTab('DUE')}
+                        onClick={() => handleTabClick('DUE')}
                         className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'DUE' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
-                        Due Now ({rawDueSessions.length})
+                        Due Now ({dueItems.length})
                     </button>
                     <button 
-                        onClick={() => setActiveTab('UPCOMING')}
+                        onClick={() => handleTabClick('UPCOMING')}
                         className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'UPCOMING' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
-                        Upcoming ({rawUpcomingSessions.length})
+                        Upcoming ({upcomingItems.length})
                     </button>
                     <button 
-                        onClick={() => setActiveTab('HISTORY')}
+                        onClick={() => handleTabClick('HISTORY')}
                         className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
                     >
                         Past Logs
                     </button>
-                </div>
-
-                {/* SORT CONTROLS */}
-                <div className="flex items-center gap-2 pb-2">
-                    <span className="text-xs font-bold text-slate-400 uppercase hidden sm:inline">Sort By:</span>
-                    <select 
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="text-xs p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                        <option value="TIME">Time / Date</option>
-                        <option value="PAGE">Page Number</option>
-                        <option value="TOPIC">Alphabetical</option>
-                        <option value="SYSTEM">System</option>
-                    </select>
-                    <button 
-                        onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
-                        className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                        title={sortOrder === 'ASC' ? "Ascending" : "Descending"}
-                    >
-                        {sortOrder === 'ASC' ? <BarsArrowDownIcon className="w-4 h-4" /> : <BarsArrowUpIcon className="w-4 h-4" />}
-                    </button>
+                    {activeTab === 'HISTORY' && (
+                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                            <select
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value as SortOption)}
+                                className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-xs font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                aria-label="Sort by"
+                            >
+                                <option value="TIME">Date</option>
+                                <option value="PAGE">Page</option>
+                                <option value="TOPIC">Topic</option>
+                            </select>
+                            <button
+                                onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
+                                className="p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-500 dark:text-slate-400"
+                                aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
+                            >
+                                {sortOrder === 'ASC' ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
-
             <div className="space-y-3">
                 {activeTab === 'DUE' && (
-                    dueSessions.length > 0 ? (
-                        dueSessions.map(session => (
-                            <SessionRow 
-                                key={session.id}
-                                session={session}
+                    sortedDue.length > 0 ? (
+                        sortedDue.map(item => (
+                            <RevisionItemCard 
+                                key={item.id}
+                                item={item}
                                 knowledgeBase={knowledgeBase}
-                                onDelete={onDeleteSession}
-                                onEdit={onEditSession}
                                 onLogRevision={onLogRevision}
                                 onViewPage={onViewPage}
                             />
                         ))
                     ) : (
-                        <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
+                         <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
                             <CheckCircleIcon className="w-10 h-10 text-green-300 dark:text-green-600 mx-auto mb-3" />
                             <p className="text-slate-500 dark:text-slate-400">No revisions due right now. You're all caught up!</p>
                         </div>
                     )
                 )}
 
-                {activeTab === 'UPCOMING' && (
-                    upcomingSessions.length > 0 ? (
-                        upcomingSessions.map(session => (
-                            <div key={session.id} className="bg-white dark:bg-dark-surface p-4 rounded-xl border border-slate-200 dark:border-dark-border flex justify-between items-center hover:shadow-sm transition-all">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg flex flex-col items-center justify-center border border-indigo-100 dark:border-indigo-900/50">
-                                        <span className="text-[10px] font-bold uppercase">Due</span>
-                                        <span className="text-sm font-bold">
-                                            {new Date(session.nextRevisionDate!).getDate()}
-                                        </span>
-                                        <span className="text-[8px] font-bold uppercase">
-                                            {new Date(session.nextRevisionDate!).toLocaleDateString('en-US', { month: 'short' })}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-slate-800 dark:text-slate-200">{session.topic}</h4>
-                                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                            <span className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/50 hover:text-indigo-600" onClick={() => onViewPage(session.pageNumber)}>
-                                                Pg {session.pageNumber}
-                                            </span>
-                                            <span>{session.category}</span>
-                                            {session.system && <span>• {session.system}</span>}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <span className="block text-xs font-bold text-slate-400 uppercase">Due Time</span>
-                                    <span className="text-sm font-mono text-slate-600 dark:text-slate-300">
-                                        {new Date(session.nextRevisionDate!).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </span>
-                                </div>
-                            </div>
+                 {activeTab === 'UPCOMING' && (
+                    sortedUpcoming.length > 0 ? (
+                        sortedUpcoming.map(item => (
+                            <RevisionItemCard 
+                                key={item.id}
+                                item={item}
+                                knowledgeBase={knowledgeBase}
+                                onLogRevision={onLogRevision}
+                                onViewPage={onViewPage}
+                            />
                         ))
                     ) : (
-                        <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
+                         <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
                             <p className="text-slate-500 dark:text-slate-400">No upcoming revisions scheduled.</p>
                         </div>
                     )
                 )}
 
-                {activeTab === 'HISTORY' && (
-                     <div className="bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border overflow-hidden">
-                         {historyLogs.length > 0 ? (
-                             historyLogs
-                                .slice(0, 50) // Limit to 50 for performance
-                                .map((log, idx) => (
-                                    <div key={`${log.id}-${idx}`} className="p-4 border-b border-slate-100 dark:border-slate-700 last:border-0 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-full">
-                                                <ArrowPathIcon className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-sm text-slate-800 dark:text-slate-200">{log.topic}</p>
-                                                <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                                    <span>{new Date(log.startTime).toLocaleDateString()} {new Date(log.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                                                    <span>• {log.durationMinutes} min</span>
-                                                    {log.system && <span>• {log.system}</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <span 
-                                            onClick={() => onViewPage(log.pageNumber)}
-                                            className="text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-2 py-1 rounded cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-                                        >
-                                            Pg {log.pageNumber}
-                                        </span>
-                                    </div>
-                                ))
-                         ) : (
-                             <div className="p-8 text-center">
-                                 <p className="text-slate-500 dark:text-slate-400 text-sm">No revision history found.</p>
-                             </div>
-                         )}
-                     </div>
-                )}
+                 {activeTab === 'HISTORY' && (
+                     sortedPastLogs.length > 0 ? (
+                        sortedPastLogs.map(item => (
+                            <PastLogItemCard 
+                                key={item.log.id}
+                                item={item}
+                                onViewPage={onViewPage}
+                            />
+                        ))
+                    ) : (
+                        <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
+                            <p className="text-slate-500 dark:text-slate-400">No past logs found.</p>
+                        </div>
+                    )
+                 )}
             </div>
         </div>
     </div>

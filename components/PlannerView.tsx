@@ -1,21 +1,34 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { StudyPlanItem, KnowledgeBaseEntry, VideoResource, ToDoItem, StudySession, getAdjustedDate, Attachment } from '../types';
-import { CalendarPlusIcon, VideoIcon, BookOpenIcon, LinkIcon, CheckCircleIcon, PlusIcon, FireIcon, PlayIcon, PencilSquareIcon, HistoryIcon, ChevronDownIcon, RepeatIcon, ListCheckIcon, TrashIcon, SparklesIcon, PaperClipIcon, DocumentIcon } from './Icons';
-import { parseStudyRequest } from '../services/geminiService';
+
+
+import React, { useState, useEffect } from 'react';
+import { StudyPlanItem, KnowledgeBaseEntry, VideoResource, ToDoItem, getAdjustedDate, Attachment } from '../types';
+import { CalendarPlusIcon, VideoIcon, LinkIcon, CheckCircleIcon, PlusIcon, FireIcon, PlayIcon, PencilSquareIcon, HistoryIcon, ChevronDownIcon, ListCheckIcon, TrashIcon, SparklesIcon, PaperClipIcon, DocumentIcon, BookOpenIcon, RepeatIcon, SpeakerWaveIcon, StopCircleIcon } from './Icons';
+import { parseStudyRequest, speakText } from '../services/geminiService';
 import { PageBadge } from './PageBadge';
+import { uploadFile } from '../services/firebase';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+
+// Robust ID generator fallback
+const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
 
 interface PlannerViewProps {
   plan: StudyPlanItem[];
   knowledgeBase: KnowledgeBaseEntry[];
-  sessions: StudySession[];
+  sessions: any[];
   onAddToPlan: (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => void;
   onUpdatePlanItem: (item: StudyPlanItem) => void;
   onCompleteTask: (item: StudyPlanItem) => void;
   onStartTask: (item: StudyPlanItem) => void;
-  onManageSession: (session: StudySession) => void;
+  onManageSession: (session: any) => void;
   onToggleSubTask: (planId: string, subTaskId: string) => void;
   onDeleteLog: (planId: string, logId: string) => void;
   onViewPage: (page: string) => void;
+  sharedContent?: string | null; // New prop for PWA shared content
 }
 
 const formatMinutes = (minutes: number) => {
@@ -25,9 +38,23 @@ const formatMinutes = (minutes: number) => {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
-const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions, onAddToPlan, onUpdatePlanItem, onCompleteTask, onStartTask, onManageSession, onToggleSubTask, onDeleteLog, onViewPage }) => {
-  // ... (Previous logic remains mostly same, just adding UI for timestamps in PlanItemCard)
-  // Component state management...
+interface PlanItemCardProps {
+    item: StudyPlanItem;
+    onComplete: () => void;
+    onEdit: () => void;
+    onStart: () => void;
+    onManageSession: () => void;
+    onToggleSubTask: (subTaskId: string) => void;
+    onDeleteLog: (logId: string) => void;
+    isOverdue?: boolean;
+    linkedSession?: KnowledgeBaseEntry;
+    onViewPage: (page: string) => void;
+    knowledgeBase: KnowledgeBaseEntry[];
+}
+
+const PlannerView: React.FC<PlannerViewProps> = ({ 
+    plan, knowledgeBase, sessions, onAddToPlan, onUpdatePlanItem, onCompleteTask, onStartTask, onManageSession, onToggleSubTask, onDeleteLog, onViewPage, sharedContent 
+}) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<StudyPlanItem | null>(null);
   
@@ -48,20 +75,40 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
 
   // Attachments
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // UI State
+  const [isResourcesExpanded, setIsResourcesExpanded] = useState(false);
 
   // AI Input State
   const [aiInput, setAiInput] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
-  const inputBaseClass = "w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-white text-slate-900 dark:text-slate-900 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all";
+  const inputBaseClass = "w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-white text-slate-900 dark:text-slate-900 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-base sm:text-sm";
+
+  // Handle Shared Content from PWA
+  useEffect(() => {
+      if (sharedContent) {
+          setEditingItem(null);
+          setIsFormOpen(true);
+          // Simple heuristic: check if it looks like a URL
+          if (sharedContent.startsWith('http')) {
+              setVideoUrl(sharedContent);
+              setVideoTitle('Shared Link');
+              setIsResourcesExpanded(true);
+          } else {
+              setTopic(sharedContent);
+          }
+      }
+  }, [sharedContent]);
 
   // Auto-fill effect
   useEffect(() => {
     if (!editingItem) {
         const kbEntry = knowledgeBase.find(k => k.pageNumber === pageNumber);
         if (kbEntry) {
-            if (!topic) setTopic(kbEntry.topic);
+            if (!topic) setTopic(kbEntry.title);
             if (ankiCount === 0 && kbEntry.ankiTotal) setAnkiCount(kbEntry.ankiTotal);
         }
     }
@@ -77,24 +124,31 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
           setVideoUrl(editingItem.videoUrl || '');
           setSubTasks(editingItem.subTasks || []);
           setAttachments(editingItem.attachments || []);
+          // Expand resources if there are any
+          if (editingItem.videoUrl || (editingItem.attachments && editingItem.attachments.length > 0)) {
+              setIsResourcesExpanded(true);
+          } else {
+              setIsResourcesExpanded(false);
+          }
       } else {
           // Reset
           setDate(getAdjustedDate(new Date()));
           setPageNumber('');
-          setTopic('');
+          setTopic(sharedContent && !sharedContent.startsWith('http') ? sharedContent : ''); // Preserve shared topic if any
           setEstimatedMinutes(60);
           setAnkiCount(0);
-          setVideoUrl('');
-          setVideoTitle('');
+          setVideoUrl(sharedContent && sharedContent.startsWith('http') ? sharedContent : '');
+          setVideoTitle(sharedContent && sharedContent.startsWith('http') ? 'Shared Link' : '');
           setSubTasks([]);
           setNewSubTask('');
           setAttachments([]);
+          setIsResourcesExpanded(false);
       }
-  }, [editingItem]);
+  }, [editingItem, sharedContent]);
 
   const handleAddSubTask = () => {
       if (!newSubTask.trim()) return;
-      setSubTasks(prev => [...prev, { id: crypto.randomUUID(), text: newSubTask, done: false }]);
+      setSubTasks(prev => [...prev, { id: generateId(), text: newSubTask, done: false }]);
       setNewSubTask('');
   };
 
@@ -102,30 +156,48 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
       setSubTasks(prev => prev.filter(t => t.id !== id));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
-          // No file size limit
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-              const result = ev.target?.result as string;
-              
-              let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
-              if (file.type.startsWith('image/')) {
-                  type = 'IMAGE';
-              } else if (file.type === 'application/pdf') {
-                  type = 'PDF';
-              }
+          setIsUploading(true);
 
+          let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
+          if (file.type.startsWith('image/')) {
+              type = 'IMAGE';
+          } else if (file.type === 'application/pdf') {
+              type = 'PDF';
+          }
+
+          try {
+              // Attempt upload to Cloud Storage
+              const url = await uploadFile(file);
+              
               const newAttachment: Attachment = {
-                  id: crypto.randomUUID(),
+                  id: generateId(),
                   name: file.name,
                   type: type,
-                  data: result
+                  data: url // Store URL
               };
               setAttachments(prev => [...prev, newAttachment]);
-          };
-          reader.readAsDataURL(file);
+
+          } catch (error) {
+              console.warn("Cloud upload failed, falling back to local base64", error);
+              // Fallback to FileReader (Base64)
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                  const result = ev.target?.result as string;
+                  const newAttachment: Attachment = {
+                      id: generateId(),
+                      name: file.name,
+                      type: type,
+                      data: result
+                  };
+                  setAttachments(prev => [...prev, newAttachment]);
+              };
+              reader.readAsDataURL(file);
+          } finally {
+              setIsUploading(false);
+          }
       }
   };
 
@@ -176,8 +248,8 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
               if (result.ankiCount) setAnkiCount(result.ankiCount);
               if (result.videoUrl) {
                   setVideoUrl(result.videoUrl);
-                  // Try to guess title from topic or generic
                   setVideoTitle(result.topic ? `Video: ${result.topic}` : "Study Video");
+                  setIsResourcesExpanded(true);
               }
           }
       } catch (e) {
@@ -190,6 +262,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploading) return; // Prevent submit while uploading
     
     if (editingItem) {
         onUpdatePlanItem({
@@ -209,7 +282,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
         let newVideo: VideoResource | undefined = undefined;
         if (videoUrl) {
             newVideo = {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 title: videoTitle || `Video for Pg ${pageNumber}`,
                 url: videoUrl
             };
@@ -233,10 +306,8 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
     setIsFormOpen(false);
   };
 
-  // USE 4AM RULE for "Today"
   const todayStr = getAdjustedDate(new Date());
 
-  // 1. Planned Items for Today
   const todaysTargets = plan.filter(p => {
       if (p.isCompleted && p.date < todayStr) return false; 
       if (p.date === todayStr) return true; 
@@ -247,8 +318,8 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
       return a.pageNumber.localeCompare(b.pageNumber);
   });
 
-  const revisionsDue = sessions.filter(s => 
-      s.nextRevisionDate && new Date(s.nextRevisionDate).toLocaleDateString('en-CA') <= todayStr
+  const revisionsDue = knowledgeBase.filter(s => 
+      s.nextRevisionAt && new Date(s.nextRevisionAt).toLocaleDateString('en-CA') <= todayStr
   );
 
   const upcomingPlan = plan.filter(p => p.date > todayStr);
@@ -256,7 +327,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
   return (
     <div className="animate-fade-in space-y-8">
         
-        {/* AI Assistant Section - Unchanged */}
+        {/* AI Assistant Section */}
         <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-6 shadow-lg text-white">
              <div className="flex items-center gap-2 mb-3">
                  <SparklesIcon className="w-5 h-5 text-yellow-300" />
@@ -271,7 +342,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                     onChange={e => setAiInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleAiProcess()}
                     placeholder="Type your plan here..."
-                    className="w-full p-4 pr-24 rounded-xl bg-white/10 border border-white/20 placeholder-indigo-200 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm transition-all"
+                    className="w-full p-4 pr-24 rounded-xl bg-white/10 border border-white/20 placeholder-indigo-200 text-white focus:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30 backdrop-blur-sm transition-all text-base sm:text-sm"
                  />
                  <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-2">
                      <button 
@@ -313,124 +384,155 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
             </button>
         </div>
 
-        {/* Add/Edit Modal UI code remains same ... */}
+        {/* Add/Edit Modal */}
         {isFormOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg p-6 animate-fade-in-up max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
-                    <div className="flex justify-between items-center mb-4">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg animate-fade-in-up max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-700">
+                    
+                    <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700 shrink-0">
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white">{editingItem ? 'Edit Target' : 'Add New Target'}</h3>
-                        <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl">&times;</button>
+                        <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl leading-none">&times;</button>
                     </div>
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* ... Form inputs ... */}
-                        {/* Reuse existing form inputs structure */}
-                        <div className="grid grid-cols-2 gap-4">
-                             <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Date</label>
-                                <input 
-                                    type="date" 
-                                    value={date} 
-                                    onChange={e => setDate(e.target.value)} 
-                                    className={inputBaseClass}
-                                    required 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Page #</label>
-                                <input 
-                                    type="text" 
-                                    value={pageNumber} 
-                                    onChange={e => setPageNumber(e.target.value)} 
-                                    className={`${inputBaseClass} font-bold`} 
-                                    placeholder="450"
-                                    required 
-                                />
-                            </div>
-                        </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Topic / Title</label>
-                            <input 
-                                type="text" 
-                                value={topic} 
-                                onChange={e => setTopic(e.target.value)} 
-                                className={inputBaseClass} 
-                                placeholder="Cardio Physiology..."
-                            />
-                        </div>
-
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-700 pb-2">Resources & Sync</h4>
-                            
-                            <div className="space-y-2">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1"><VideoIcon className="w-3 h-3"/> Video Link (Optional)</label>
-                                <input type="url" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className={inputBaseClass} placeholder="https://..." />
-                                {videoUrl && (
-                                    <input type="text" value={videoTitle} onChange={e => setVideoTitle(e.target.value)} className={inputBaseClass} placeholder="Video Title" />
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2"><PaperClipIcon className="w-3 h-3"/> Attachments (Synced to DB)</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {attachments.map(att => (
-                                        <div key={att.id} className="relative w-12 h-12 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 flex items-center justify-center group">
-                                            {att.type === 'IMAGE' ? <img src={att.data} alt="" className="w-full h-full object-cover rounded" /> : <DocumentIcon className="w-5 h-5 text-red-400" />}
-                                            <button type="button" onClick={() => removeAttachment(att.id)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px]">&times;</button>
-                                        </div>
-                                    ))}
-                                    <label className="w-12 h-12 rounded border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer hover:border-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
-                                        <PlusIcon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                                        <input type="file" onChange={handleFileChange} className="hidden" />
-                                    </label>
+                    <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-6">
+                        {/* ... (Form fields remain unchanged) ... */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Core Details</h4>
+                            <div className="grid grid-cols-3 gap-3">
+                                 <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={date} 
+                                        onChange={e => setDate(e.target.value)} 
+                                        className={inputBaseClass}
+                                        required 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Page #</label>
+                                    <input 
+                                        type="text" 
+                                        value={pageNumber} 
+                                        onChange={e => setPageNumber(e.target.value)} 
+                                        className={`${inputBaseClass} font-bold`} 
+                                        placeholder="455"
+                                        required 
+                                    />
                                 </div>
                             </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Topic / Title</label>
+                                <input 
+                                    type="text" 
+                                    value={topic} 
+                                    onChange={e => setTopic(e.target.value)} 
+                                    className={inputBaseClass} 
+                                    placeholder="e.g., Cardio Physiology – preload & afterload"
+                                />
+                            </div>
                         </div>
 
-                        <div>
-                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Sub-tasks</label>
-                             <div className="flex gap-2 mb-2">
+                        <div className="space-y-3">
+                             <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Sub-tasks</label>
+                             <div className="space-y-2">
+                                 {subTasks.map(t => (
+                                     <div key={t.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700/50 px-3 py-2 rounded-lg border border-slate-100 dark:border-slate-700 text-sm">
+                                         <span className="text-slate-800 dark:text-slate-200 truncate">{t.text}</span>
+                                         <button type="button" onClick={() => removeSubTask(t.id)} className="text-slate-400 hover:text-red-500 ml-2">&times;</button>
+                                     </div>
+                                 ))}
+                             </div>
+                             <div className="flex gap-2">
                                  <input 
                                     type="text" 
                                     value={newSubTask} 
                                     onChange={e => setNewSubTask(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddSubTask())}
                                     className={inputBaseClass}
-                                    placeholder="Specific task..." 
+                                    placeholder="e.g. Read FA p.455 once, then do questions" 
                                 />
                                 <button type="button" onClick={handleAddSubTask} className="px-3 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-bold hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200">+</button>
                              </div>
-                             <div className="space-y-1">
-                                 {subTasks.map(t => (
-                                     <div key={t.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-700/50 px-2 py-1.5 rounded border border-slate-100 dark:border-slate-700 text-sm">
-                                         <span className="text-slate-800 dark:text-slate-200">{t.text}</span>
-                                         <button type="button" onClick={() => removeSubTask(t.id)} className="text-slate-400 hover:text-red-500">&times;</button>
-                                     </div>
-                                 ))}
-                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Est. Duration (Min)</label>
-                                <input type="number" value={estimatedMinutes} onChange={e => setEstimatedMinutes(parseInt(e.target.value))} className={inputBaseClass} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Anki Cards</label>
-                                <input type="number" value={ankiCount} onChange={e => setAnkiCount(parseInt(e.target.value))} className={inputBaseClass} placeholder="0" />
-                            </div>
+                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                            <button 
+                                type="button"
+                                onClick={() => setIsResourcesExpanded(!isResourcesExpanded)} 
+                                className="w-full flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 font-bold text-xs uppercase text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            >
+                                <span>Resources & Sync</span>
+                                <ChevronDownIcon className={`w-4 h-4 transition-transform ${isResourcesExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {isResourcesExpanded && (
+                                <div className="p-4 space-y-4 bg-white dark:bg-slate-900/20 border-t border-slate-200 dark:border-slate-700">
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1"><VideoIcon className="w-3 h-3"/> Video Link</label>
+                                        <input type="url" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className={inputBaseClass} placeholder="https://..." />
+                                        {videoUrl && (
+                                            <input type="text" value={videoTitle} onChange={e => setVideoTitle(e.target.value)} className={inputBaseClass} placeholder="Video Title" />
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2"><PaperClipIcon className="w-3 h-3"/> Attachments (Synced to DB)</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {attachments.map(att => (
+                                                <div key={att.id} className="relative w-12 h-12 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 flex items-center justify-center group overflow-hidden">
+                                                    {att.type === 'IMAGE' ? <img src={att.data} alt="" className="w-full h-full object-cover rounded" /> : <DocumentIcon className="w-6 h-6 text-red-400" />}
+                                                    <button type="button" onClick={() => removeAttachment(att.id)} className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">&times;</button>
+                                                </div>
+                                            ))}
+                                            <label className={`w-full sm:w-auto px-4 py-3 rounded border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center gap-2 cursor-pointer hover:border-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                {isUploading ? (
+                                                    <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <PlusIcon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                                                )}
+                                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Add PDF / Images</span>
+                                                <input type="file" onChange={handleFileChange} className="hidden" disabled={isUploading} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        <div className="flex gap-3 pt-2">
-                            <button type="button" onClick={() => { setIsFormOpen(false); setEditingItem(null); }} className="flex-1 p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg font-bold border border-slate-200 dark:border-slate-600">Cancel</button>
-                            <button type="submit" className="flex-1 p-2 bg-primary text-white rounded-lg font-bold shadow-md hover:bg-indigo-600">{editingItem ? 'Update' : 'Add Target'}</button>
+                        <div className="space-y-3">
+                             <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Progress Tracking</h4>
+                             <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Est. Duration (Min)</label>
+                                    <input type="number" value={estimatedMinutes} onChange={e => setEstimatedMinutes(parseInt(e.target.value))} className={inputBaseClass} />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Anki Cards</label>
+                                    <input type="number" value={ankiCount} onChange={e => setAnkiCount(parseInt(e.target.value))} className={inputBaseClass} placeholder="0" />
+                                </div>
+                            </div>
                         </div>
                     </form>
+
+                    <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-3 bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                        <button type="button" onClick={() => { setIsFormOpen(false); setEditingItem(null); }} className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold text-sm hover:bg-white dark:hover:bg-slate-700 transition-colors">
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={handleSubmit} 
+                            disabled={isUploading}
+                            className="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold text-sm shadow-md hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {isUploading ? 'Uploading...' : (editingItem ? 'Update Target' : 'Add Target')}
+                        </button>
+                    </div>
                 </div>
             </div>
         )}
 
-        {/* SPLIT VIEW: NEW STUDY vs REVISION - Optimized for Large Screens */}
+        {/* SPLIT VIEW: NEW STUDY vs REVISION */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* COLUMN 1: NEW STUDY TARGETS */}
@@ -445,7 +547,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                 
                 <div className="space-y-3">
                     {todaysTargets.length > 0 ? todaysTargets.map(item => {
-                         const linkedSession = sessions.find(s => s.pageNumber === item.pageNumber);
+                         const linkedSession = knowledgeBase.find(s => s.pageNumber === item.pageNumber);
                          return (
                             <PlanItemCard 
                                 key={item.id} 
@@ -482,8 +584,8 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                                 onEdit={() => { setEditingItem(item); setIsFormOpen(true); }}
                                 onStart={() => onStartTask(item)}
                                 onManageSession={() => {}}
-                                onToggleSubTask={() => {}}
-                                onDeleteLog={() => {}}
+                                onToggleSubTask={(subTaskId) => {}}
+                                onDeleteLog={(logId) => {}}
                                 onViewPage={onViewPage}
                                 knowledgeBase={knowledgeBase}
                             />
@@ -494,7 +596,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                 </div>
             </div>
 
-            {/* COLUMN 2: DUE REVISIONS - Unchanged */}
+            {/* COLUMN 2: DUE REVISIONS */}
             <div className="space-y-4">
                 <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-lg border-b border-slate-100 dark:border-slate-700 pb-2">
                     <span className="w-2 h-6 bg-amber-500 rounded-full"></span>
@@ -503,10 +605,10 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                         {revisionsDue.length} Due
                     </span>
                 </h3>
-                {/* Revision Cards Rendering Logic - Unchanged */}
+                {/* Revision Cards Rendering Logic */}
                 <div className="space-y-3">
                     {revisionsDue.length > 0 ? revisionsDue.map(session => (
-                        <div key={session.id} className="bg-white dark:bg-slate-800 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-sm p-4 relative hover:shadow-md transition-shadow">
+                        <div key={session.pageNumber} className="bg-white dark:bg-slate-800 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-sm p-4 relative hover:shadow-md transition-shadow group">
                             <div className="absolute top-0 left-0 w-1 h-full bg-amber-400 rounded-l-xl"></div>
                             <div className="pl-2">
                                 <div className="flex justify-between items-start">
@@ -514,12 +616,12 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                                          <PageBadge 
                                             pageNumber={session.pageNumber} 
                                             attachments={knowledgeBase.find(k => k.pageNumber === session.pageNumber)?.attachments} 
-                                            revisionCount={session.history.filter(h => h.type === 'REVISION').length}
+                                            revisionCount={session.revisionCount}
                                             onClick={() => onViewPage(session.pageNumber)}
                                          />
-                                        <div>
-                                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{session.topic}</h4>
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase">{session.category}</span>
+                                        <div onClick={() => onViewPage(session.pageNumber)} className="cursor-pointer">
+                                            <h4 className="font-bold text-slate-800 dark:text-slate-200">{session.title}</h4>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">{session.subject}</span>
                                         </div>
                                     </div>
                                     <button 
@@ -528,7 +630,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                                             date: todayStr,
                                             type: 'PAGE',
                                             pageNumber: session.pageNumber,
-                                            topic: `Revise: ${session.topic}`,
+                                            topic: `Revise: ${session.title}`,
                                             estimatedMinutes: 30, // default revision time
                                             isCompleted: false
                                         })}
@@ -548,7 +650,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
                                     )}
                                     <div className="flex items-center gap-1">
                                         <HistoryIcon className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                                        <span>Studied {new Date(session.lastStudied).toLocaleDateString()}</span>
+                                        <span>Studied {session.lastStudiedAt ? new Date(session.lastStudiedAt).toLocaleDateString() : 'N/A'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -566,7 +668,7 @@ const PlannerView: React.FC<PlannerViewProps> = ({ plan, knowledgeBase, sessions
   );
 };
 
-const PlanItemCard = ({ 
+const PlanItemCard: React.FC<PlanItemCardProps> = ({ 
     item, 
     onComplete, 
     onEdit, 
@@ -578,20 +680,13 @@ const PlanItemCard = ({
     linkedSession,
     onViewPage,
     knowledgeBase
-}: { 
-    item: StudyPlanItem, 
-    onComplete: () => void, 
-    onEdit: () => void, 
-    onStart: () => void, 
-    onManageSession: () => void, 
-    onToggleSubTask: (subTaskId: string) => void,
-    onDeleteLog: (logId: string) => void,
-    isOverdue?: boolean, 
-    linkedSession?: StudySession,
-    onViewPage: (page: string) => void,
-    knowledgeBase: KnowledgeBaseEntry[]
 }) => {
     const [expanded, setExpanded] = useState(false);
+    const [logToDelete, setLogToDelete] = useState<string | null>(null);
+    
+    // TTS State
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [stopAudio, setStopAudio] = useState<(() => void) | null>(null);
 
     // Stats
     const completedSubTasks = item.subTasks?.filter(t => t.done).length || 0;
@@ -607,7 +702,21 @@ const PlanItemCard = ({
     // Resolve attachments for badge (from item + KB merge if needed, using KB as source of truth for general view)
     const kbEntry = knowledgeBase.find(k => k.pageNumber === item.pageNumber);
     const displayAttachments = item.attachments?.length ? item.attachments : (kbEntry?.attachments || []);
-    const revisionCount = linkedSession?.history.filter(h => h.type === 'REVISION').length || 0;
+    const revisionCount = linkedSession?.revisionCount || 0;
+    
+    const handleSpeak = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isSpeaking) {
+            if (stopAudio) stopAudio();
+            setIsSpeaking(false);
+            setStopAudio(null);
+        } else {
+            setIsSpeaking(true);
+            const text = `Plan: ${item.topic}. Page ${item.pageNumber}. ${totalSubTasks} tasks pending.`;
+            const stopFn = await speakText(text);
+            setStopAudio(() => stopFn);
+        }
+    };
 
     return (
         <div className={`rounded-xl border transition-all ${
@@ -617,6 +726,16 @@ const PlanItemCard = ({
                 ? 'bg-amber-50/30 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30 shadow-sm hover:shadow-md' 
                 : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md'
         }`}>
+            <DeleteConfirmationModal 
+                isOpen={!!logToDelete}
+                onClose={() => setLogToDelete(null)}
+                onConfirm={() => {
+                    if (logToDelete) onDeleteLog(logToDelete);
+                    setLogToDelete(null);
+                }}
+                title="Delete Session Log?"
+            />
+
             {isOverdue && <div className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 text-[10px] font-bold px-3 py-1 uppercase tracking-wide rounded-t-xl border-b border-amber-200 dark:border-amber-900/50">Carried Forward (Due {item.date})</div>}
             
             <div className="p-4">
@@ -631,7 +750,7 @@ const PlanItemCard = ({
                         />
                     </div>
                     
-                    <div className="flex-grow min-w-0">
+                    <div className="flex-grow min-w-0 cursor-pointer" onClick={() => onViewPage(item.pageNumber)}>
                         <div className="flex items-center gap-2 flex-wrap">
                             {item.videoUrl && (
                                 <a href={item.videoUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-blue-500 hover:underline flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded border border-blue-100 dark:border-blue-900/50">
@@ -694,7 +813,17 @@ const PlanItemCard = ({
                                 <CheckCircleIcon className="w-5 h-5" />
                             </button>
                         </div>
-                        <button onClick={() => setExpanded(!expanded)} className="self-end mt-2 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400">
+                        
+                         {/* TTS Button */}
+                         <button 
+                             onClick={handleSpeak}
+                             className={`self-end mt-2 p-1.5 rounded transition-colors ${isSpeaking ? 'text-red-500 bg-red-50' : 'text-slate-300 dark:text-slate-600 hover:text-indigo-500'}`}
+                             title="Read Plan Aloud"
+                         >
+                             {isSpeaking ? <StopCircleIcon className="w-4 h-4" /> : <SpeakerWaveIcon className="w-4 h-4" />}
+                         </button>
+
+                        <button onClick={() => setExpanded(!expanded)} className="self-end mt-1 text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400">
                             <ChevronDownIcon className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                         </button>
                     </div>
@@ -705,10 +834,10 @@ const PlanItemCard = ({
             {expanded && (
                 <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/30 p-4 rounded-b-xl space-y-4 text-sm">
                      
-                     {/* TIMESTAMPS DISPLAY (New) */}
+                     {/* TIMESTAMPS DISPLAY */}
                      <div className="flex justify-between text-[10px] text-slate-400 uppercase font-bold">
-                         <span>Created: {item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
-                         {item.completedAt && <span className="text-green-500">Completed: {new Date(item.completedAt).toLocaleString()}</span>}
+                         <span>Created: {item.createdAt ? new Date(item.createdAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}</span>
+                         {item.completedAt && <span className="text-green-500">Completed: {new Date(item.completedAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>}
                      </div>
 
                      {/* Subtasks List */}
@@ -773,7 +902,7 @@ const PlanItemCard = ({
                                                 <div className="flex items-center gap-3">
                                                      <span className="font-bold text-xs text-slate-700 dark:text-slate-300">{formatMinutes(log.durationMinutes)}</span>
                                                      <button 
-                                                        onClick={() => onDeleteLog(log.id)}
+                                                        onClick={() => setLogToDelete(log.id)}
                                                         className="text-slate-300 hover:text-red-500 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                                         title="Delete Log"
                                                     >

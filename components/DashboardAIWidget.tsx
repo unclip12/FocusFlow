@@ -1,17 +1,17 @@
-
 import React, { useEffect, useState } from 'react';
-import { StudySession, StudyPlanItem } from '../types';
+import { StudyPlanItem } from '../types';
 import { SparklesIcon, ChatBubbleLeftRightIcon, ArrowPathIcon } from './Icons';
 import { generateMentorDailyBrief } from '../services/geminiService';
 
 interface DashboardAIWidgetProps {
-  sessions: StudySession[];
+  sessions: any[]; // Accommodate transition from StudySession to KnowledgeBaseEntry
   studyPlan: StudyPlanItem[];
   streak: number;
   onOpenChat: () => void;
+  displayName?: string;
 }
 
-export const DashboardAIWidget: React.FC<DashboardAIWidgetProps> = ({ sessions, studyPlan, streak, onOpenChat }) => {
+export const DashboardAIWidget: React.FC<DashboardAIWidgetProps> = ({ sessions, studyPlan, streak, onOpenChat, displayName }) => {
   const [brief, setBrief] = useState<{ message: string, quote: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,14 +28,14 @@ export const DashboardAIWidget: React.FC<DashboardAIWidgetProps> = ({ sessions, 
             return;
         }
 
-        const data = await generateMentorDailyBrief(sessions, studyPlan, streak);
+        const data = await generateMentorDailyBrief(sessions, studyPlan, streak, displayName);
         setBrief(data);
         sessionStorage.setItem(cacheKey, JSON.stringify(data));
         setLoading(false);
     };
 
     fetchBrief();
-  }, [sessions.length, studyPlan.length, streak]);
+  }, [sessions.length, studyPlan.length, streak, displayName]);
 
   return (
     <div 

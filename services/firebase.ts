@@ -1,9 +1,11 @@
+
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, addDoc, query, orderBy, writeBatch, where } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker } from "../types";
+import { notifySyncStart, notifySyncEnd } from "./syncService";
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCpASx-JIkZr88rJLhpfeqI_11oVnbOLNI",
@@ -60,20 +62,34 @@ export const cleanData = (obj: any): any => {
   return newObj;
 };
 
-export const getUserProfile = async (): Promise<UserProfile | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'profile', 'main');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as UserProfile;
+// Helper wrapper for sync notification
+const withSync = async <T>(operation: () => Promise<T>): Promise<T> => {
+    notifySyncStart();
+    try {
+        return await operation();
+    } finally {
+        notifySyncEnd();
     }
-    return null;
+};
+
+export const getUserProfile = async (): Promise<UserProfile | null> => {
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'profile', 'main');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as UserProfile;
+        }
+        return null;
+    });
 };
 
 export const saveUserProfile = async (profile: UserProfile) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'profile', 'main');
-    await setDoc(docRef, cleanData(profile), { merge: true });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'profile', 'main');
+        await setDoc(docRef, cleanData(profile), { merge: true });
+    });
 };
 
 
@@ -83,152 +99,191 @@ export const loginWithSecretId = async (secretId: string) => {
     const password = `pass_${normalizedId}`;
 
     try {
+        // Auth operations technically sync too, but often handled by auth state listeners
+        notifySyncStart();
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        notifySyncEnd();
         return userCredential.user;
     } catch (error: any) {
         if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
              try {
                  const newUser = await createUserWithEmailAndPassword(auth, email, password);
+                 notifySyncEnd();
                  return newUser.user;
              } catch (createError) {
+                 notifySyncEnd();
                  throw createError;
              }
         }
+        notifySyncEnd();
         throw error;
     }
 };
 
 export const uploadFile = async (file: File): Promise<string> => {
-    if (!auth.currentUser) throw new Error("No user logged in");
-    const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-    const storageRef = ref(storage, `users/${auth.currentUser.uid}/attachments/${Date.now()}_${safeName}`);
-    const snapshot = await uploadBytes(storageRef, file);
-    return getDownloadURL(snapshot.ref);
+    return withSync(async () => {
+        if (!auth.currentUser) throw new Error("No user logged in");
+        const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const storageRef = ref(storage, `users/${auth.currentUser.uid}/attachments/${Date.now()}_${safeName}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        return getDownloadURL(snapshot.ref);
+    });
 };
 
 export const uploadTempFile = async (file: File): Promise<{ url: string, fullPath: string }> => {
-    if (!auth.currentUser) throw new Error("No user logged in");
-    const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-    const storageRef = ref(storage, `temp/${auth.currentUser.uid}/${Date.now()}_${safeName}`);
-    const snapshot = await uploadBytes(storageRef, file);
-    const url = await getDownloadURL(snapshot.ref);
-    return { url, fullPath: snapshot.ref.fullPath };
+    return withSync(async () => {
+        if (!auth.currentUser) throw new Error("No user logged in");
+        const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const storageRef = ref(storage, `temp/${auth.currentUser.uid}/${Date.now()}_${safeName}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(snapshot.ref);
+        return { url, fullPath: snapshot.ref.fullPath };
+    });
 };
 
 export const deleteTempFile = async (fullPath: string) => {
-    const storageRef = ref(storage, fullPath);
-    await deleteObject(storageRef);
+    return withSync(async () => {
+        const storageRef = ref(storage, fullPath);
+        await deleteObject(storageRef);
+    });
 };
 
 export const saveStudyMaterial = async (material: StudyMaterial) => {
-    if (!auth.currentUser) throw new Error("No user logged in");
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', material.id);
-    await setDoc(docRef, cleanData(material));
+    return withSync(async () => {
+        if (!auth.currentUser) throw new Error("No user logged in");
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', material.id);
+        await setDoc(docRef, cleanData(material));
+    });
 };
 
 export const getStudyMaterials = async (): Promise<StudyMaterial[]> => {
-    if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'materials');
-    const snap = await getDocs(colRef);
-    return snap.docs.map(d => d.data() as StudyMaterial).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'materials');
+        const snap = await getDocs(colRef);
+        return snap.docs.map(d => d.data() as StudyMaterial).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    });
 };
 
 export const deleteStudyMaterial = async (materialId: string) => {
-    if (!auth.currentUser) return;
-    await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'materials', materialId));
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'materials', materialId));
+    });
 };
 
 export const toggleMaterialActive = async (materialId: string, isActive: boolean) => {
-    if (!auth.currentUser) return;
-    if (isActive) {
-        const materials = await getStudyMaterials();
-        const updatePromises = materials.map(m => {
-            if (m.id !== materialId && m.isActive) {
-                return updateDoc(doc(db, 'users', auth.currentUser!.uid, 'materials', m.id), { isActive: false });
-            }
-            return Promise.resolve();
-        });
-        await Promise.all(updatePromises);
-    }
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', materialId);
-    await updateDoc(docRef, { isActive });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        if (isActive) {
+            const materials = await getStudyMaterials(); // This will trigger a nested sync notification, which is fine due to counter
+            const updatePromises = materials.map(m => {
+                if (m.id !== materialId && m.isActive) {
+                    return updateDoc(doc(db, 'users', auth.currentUser!.uid, 'materials', m.id), { isActive: false });
+                }
+                return Promise.resolve();
+            });
+            await Promise.all(updatePromises);
+        }
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', materialId);
+        await updateDoc(docRef, { isActive });
+    });
 };
 
 export const updateMaterialTitle = async (materialId: string, newTitle: string) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', materialId);
-    await updateDoc(docRef, { title: newTitle });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'materials', materialId);
+        await updateDoc(docRef, { title: newTitle });
+    });
 };
 
 export const saveMaterialChat = async (materialId: string, chat: MaterialChatMessage) => {
-    if (!auth.currentUser) return;
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'materials', materialId, 'chats');
-    await addDoc(colRef, cleanData(chat));
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'materials', materialId, 'chats');
+        await addDoc(colRef, cleanData(chat));
+    });
 };
 
 export const getMaterialChats = async (materialId: string): Promise<MaterialChatMessage[]> => {
-    if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'materials', materialId, 'chats');
-    const q = query(colRef, orderBy('timestamp', 'asc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as MaterialChatMessage));
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'materials', materialId, 'chats');
+        const q = query(colRef, orderBy('timestamp', 'asc'));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as MaterialChatMessage));
+    });
 };
 
 export const saveMentorMessage = async (message: MentorMessage) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'mentorMessages', message.id);
-    await setDoc(docRef, cleanData(message));
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'mentorMessages', message.id);
+        await setDoc(docRef, cleanData(message));
+    });
 };
 
 export const getMentorMessages = async (): Promise<MentorMessage[]> => {
-    if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'mentorMessages');
-    const q = query(colRef, orderBy('timestamp', 'asc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as MentorMessage);
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'mentorMessages');
+        const q = query(colRef, orderBy('timestamp', 'asc'));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as MentorMessage);
+    });
 };
 
 export const clearMentorMessages = async () => {
-    if (!auth.currentUser) return;
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'mentorMessages');
-    const snap = await getDocs(colRef);
-    const batch = writeBatch(db);
-    snap.docs.forEach(doc => {
-        batch.delete(doc.ref);
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'mentorMessages');
+        const snap = await getDocs(colRef);
+        const batch = writeBatch(db);
+        snap.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
     });
-    await batch.commit();
 };
 
 export const saveChatMaterial = async (text: string, filename: string) => {
-    if (!auth.currentUser) return;
-    const id = Date.now().toString();
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'materialsFromChat', id);
-    await setDoc(docRef, {
-        text,
-        originalFileName: filename,
-        sourceType: 'CHAT_ATTACHMENT',
-        createdAt: new Date().toISOString()
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const id = Date.now().toString();
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'materialsFromChat', id);
+        await setDoc(docRef, {
+            text,
+            originalFileName: filename,
+            sourceType: 'CHAT_ATTACHMENT',
+            createdAt: new Date().toISOString()
+        });
+        return id;
     });
-    return id;
 };
 
 export const getMentorMemoryData = async (): Promise<MentorMemory | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'aiMentorMemory', 'profile');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as MentorMemory;
-    }
-    return null;
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'aiMentorMemory', 'profile');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as MentorMemory;
+        }
+        return null;
+    });
 };
 
 export const saveMentorMemoryData = async (memory: MentorMemory) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'aiMentorMemory', 'profile');
-    await setDoc(docRef, cleanData({ ...memory, lastUpdated: new Date().toISOString() }), { merge: true });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'aiMentorMemory', 'profile');
+        await setDoc(docRef, cleanData({ ...memory, lastUpdated: new Date().toISOString() }), { merge: true });
+    });
 };
 
 export const addToBacklog = async (item: any) => {
+    // This composes existing functions, implicit sync from get/save
     const memory = await getMentorMemoryData();
     const currentBacklog = memory?.backlog || [];
     if (currentBacklog.find((b: any) => b.id === item.id)) return;
@@ -239,130 +294,156 @@ export const addToBacklog = async (item: any) => {
 // --- NEW AI & REVISION SETTINGS ---
 
 export const getAISettings = async (): Promise<AISettings | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'aiSettings');
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() as AISettings : null;
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'aiSettings');
+        const docSnap = await getDoc(docRef);
+        return docSnap.exists() ? docSnap.data() as AISettings : null;
+    });
 };
 
 export const saveAISettings = async (settings: AISettings) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'aiSettings');
-    await setDoc(docRef, cleanData(settings), { merge: true });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'aiSettings');
+        await setDoc(docRef, cleanData(settings), { merge: true });
+    });
 };
 
 export const getRevisionSettings = async (): Promise<RevisionSettings | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'revisionSettings');
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() as RevisionSettings : null;
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'revisionSettings');
+        const docSnap = await getDoc(docRef);
+        return docSnap.exists() ? docSnap.data() as RevisionSettings : null;
+    });
 };
 
 export const saveRevisionSettings = async (settings: RevisionSettings) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'revisionSettings');
-    await setDoc(docRef, cleanData(settings), { merge: true });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'revisionSettings');
+        await setDoc(docRef, cleanData(settings), { merge: true });
+    });
 };
 
 // --- DAY PLANS ---
 
 export const saveDayPlan = async (plan: DayPlan) => {
-    if (!auth.currentUser) throw new Error("No user logged in");
-    
-    if (!plan.date || plan.date.length !== 10) {
-        console.error("SESSION UPDATE ERROR: Invalid date format", { plan });
-        throw new Error("Invalid date format. Must be YYYY-MM-DD.");
-    }
+    return withSync(async () => {
+        if (!auth.currentUser) throw new Error("No user logged in");
+        
+        if (!plan.date || plan.date.length !== 10) {
+            console.error("SESSION UPDATE ERROR: Invalid date format", { plan });
+            throw new Error("Invalid date format. Must be YYYY-MM-DD.");
+        }
 
-    const path = `users/${auth.currentUser.uid}/dayPlans/${plan.date}`;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', plan.date);
-    
-    try {
-        const cleanedPlan = cleanData(plan);
-        await setDoc(docRef, cleanedPlan);
-    } catch (error: any) {
-        console.error("SESSION UPDATE ERROR: Firestore write failed", {
-            function: 'saveDayPlan',
-            path: path,
-            data: plan,
-            error: error
-        });
-        // Re-throw so caller (UI) knows it failed
-        throw error;
-    }
+        const path = `users/${auth.currentUser.uid}/dayPlans/${plan.date}`;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', plan.date);
+        
+        try {
+            const cleanedPlan = cleanData(plan);
+            await setDoc(docRef, cleanedPlan);
+        } catch (error: any) {
+            console.error("SESSION UPDATE ERROR: Firestore write failed", {
+                function: 'saveDayPlan',
+                path: path,
+                data: plan,
+                error: error
+            });
+            throw error;
+        }
+    });
 };
 
 export const getDayPlan = async (date: string): Promise<DayPlan | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', date);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as DayPlan;
-    }
-    return null;
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', date);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as DayPlan;
+        }
+        return null;
+    });
 };
 
 export const deleteDayPlan = async (date: string) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', date);
-    await deleteDoc(docRef);
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'dayPlans', date);
+        await deleteDoc(docRef);
+    });
 };
 
 // --- DAILY TRACKER ---
 export const getDailyTracker = async (date: string): Promise<DailyTracker | null> => {
-    if (!auth.currentUser) return null;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'dailyTrackers', date);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        return docSnap.data() as DailyTracker;
-    }
-    return null;
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'dailyTrackers', date);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as DailyTracker;
+        }
+        return null;
+    });
 };
 
 export const saveDailyTracker = async (tracker: DailyTracker) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'dailyTrackers', tracker.date);
-    await setDoc(docRef, cleanData(tracker), { merge: true });
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'dailyTrackers', tracker.date);
+        await setDoc(docRef, cleanData(tracker), { merge: true });
+    });
 };
 
 
 // --- KNOWLEDGE BASE (FA PAGES) ---
 export const getKnowledgeBase = async (): Promise<KnowledgeBaseEntry[]> => {
-    if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'knowledgeBase');
-    const snap = await getDocs(colRef);
-    return snap.docs.map(d => d.data() as KnowledgeBaseEntry);
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'knowledgeBase');
+        const snap = await getDocs(colRef);
+        return snap.docs.map(d => d.data() as KnowledgeBaseEntry);
+    });
 };
 
 export const saveKnowledgeBase = async (kb: KnowledgeBaseEntry[]) => {
-    if (!auth.currentUser) return;
-    const batch = writeBatch(db);
-    kb.forEach(entry => {
-        const docRef = doc(db, 'users', auth.currentUser.uid, 'knowledgeBase', entry.pageNumber);
-        batch.set(docRef, cleanData(entry));
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const batch = writeBatch(db);
+        kb.forEach(entry => {
+            const docRef = doc(db, 'users', auth.currentUser.uid, 'knowledgeBase', entry.pageNumber);
+            batch.set(docRef, cleanData(entry));
+        });
+        await batch.commit();
     });
-    await batch.commit();
 };
 
 // --- TIME LOGGER ---
 
 export const saveTimeLog = async (entry: TimeLogEntry) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', entry.id);
-    await setDoc(docRef, cleanData(entry));
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', entry.id);
+        await setDoc(docRef, cleanData(entry));
+    });
 };
 
 export const getTimeLogs = async (date: string): Promise<TimeLogEntry[]> => {
-    if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
-    // Query specifically for the "study day" date
-    const q = query(colRef, where('date', '==', date));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
+        const q = query(colRef, where('date', '==', date));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    });
 };
 
 export const deleteTimeLog = async (id: string) => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', id);
-    await deleteDoc(docRef);
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', id);
+        await deleteDoc(docRef);
+    });
 };

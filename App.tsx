@@ -1,7 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, getRevisionSettings, getDayPlan } from './services/firebase';
+import { subscribeToSync } from './services/syncService';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
   getAdjustedDate, VideoResource, Attachment, ToDoItem,
@@ -17,7 +18,7 @@ import { calculateNextRevisionDate } from './services/srsService';
 
 // Components
 import { LoginView } from './components/LoginView';
-import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon } from './components/Icons';
+import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon, CheckCircleIcon } from './components/Icons';
 import { TodayGlance } from './components/StatsCard';
 import { ActivityGraphs } from './components/ActivityGraphs';
 import SessionModal from './components/SessionModal';
@@ -43,6 +44,39 @@ import { toggleMaterialActive } from './services/firebase';
 
 // Services
 import { requestNotificationPermission } from './services/notificationService';
+
+const SyncIndicator = () => {
+    const [status, setStatus] = useState<'HIDDEN' | 'SYNCING' | 'SYNCED'>('HIDDEN');
+    const timerRef = useRef<any>(null);
+
+    useEffect(() => {
+        return subscribeToSync((isActive) => {
+            if (isActive) {
+                if (timerRef.current) clearTimeout(timerRef.current);
+                setStatus('SYNCING');
+            } else {
+                setStatus('SYNCED');
+                timerRef.current = setTimeout(() => setStatus('HIDDEN'), 2500);
+            }
+        });
+    }, []);
+
+    if (status === 'HIDDEN') return null;
+
+    return (
+        <div className="flex items-center gap-1 ml-2 animate-fade-in">
+            {status === 'SYNCING' ? (
+                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 animate-pulse flex items-center gap-1 whitespace-nowrap">
+                    <ArrowPathIcon className="w-3 h-3 animate-spin" /> Syncing...
+                </span>
+            ) : (
+                <span className="text-[10px] font-medium text-green-500 flex items-center gap-1 whitespace-nowrap">
+                    <CheckCircleIcon className="w-3 h-3" /> Synced
+                </span>
+            )}
+        </div>
+    );
+};
 
 export default function App() {
   // Auth
@@ -339,11 +373,17 @@ export default function App() {
 
       {/* SIDEBAR */}
       <aside className="hidden md:flex w-64 flex-col bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-r border-white/20 dark:border-slate-700/50 h-screen sticky top-0 overflow-y-auto z-20 shadow-lg">
-          <div className="p-6 flex items-center gap-3">
-              <div className="w-10 h-10 flex items-center justify-center shadow-md rounded-2xl bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm">
-                   <AppLogo className="w-full h-full" />
+          <div className="p-6 flex flex-col items-start gap-2">
+              <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 flex items-center justify-center shadow-md rounded-2xl bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm">
+                       <AppLogo className="w-full h-full" />
+                  </div>
+                  <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</h1>
               </div>
-              <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</h1>
+              {/* Sync Indicator Desktop */}
+              <div className="pl-1">
+                  <SyncIndicator />
+              </div>
           </div>
           <nav className="flex-1 px-4 space-y-2">
               {[
@@ -384,6 +424,8 @@ export default function App() {
                    <AppLogo className="w-full h-full" />
                </div>
                <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</span>
+               {/* Sync Indicator Mobile */}
+               <SyncIndicator />
            </div>
            
            <div className="flex items-center gap-2">

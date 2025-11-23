@@ -29,8 +29,8 @@ import { InstallPrompt } from './components/InstallPrompt';
 
 // Views
 import { CalendarView } from './components/CalendarView';
-import PlannerView from './components/PlannerView';
-import RevisionView from './components/RevisionView';
+import { PlannerView } from './components/PlannerView';
+import { RevisionView } from './components/RevisionView';
 import KnowledgeBaseView from './components/KnowledgeBaseView';
 import { DataView } from './components/DataView';
 import { AIChatView } from './components/AIChatView';
@@ -66,11 +66,11 @@ const SyncIndicator = () => {
     return (
         <div className="flex items-center gap-1 ml-2 animate-fade-in">
             {status === 'SYNCING' ? (
-                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 animate-pulse flex items-center gap-1 whitespace-nowrap">
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 animate-pulse flex items-center gap-1 whitespace-nowrap bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full shadow-inner">
                     <ArrowPathIcon className="w-3 h-3 animate-spin" /> Syncing...
                 </span>
             ) : (
-                <span className="text-[10px] font-medium text-green-500 flex items-center gap-1 whitespace-nowrap">
+                <span className="text-[10px] font-bold text-green-500 flex items-center gap-1 whitespace-nowrap bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full shadow-sm">
                     <CheckCircleIcon className="w-3 h-3" /> Synced
                 </span>
             )}
@@ -361,31 +361,31 @@ export default function App() {
   const secretId = user?.email?.split('@')[0];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
       <InstallPrompt />
       
       {/* Background Blobs */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-purple-400/20 blur-[120px] animate-pulse"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-teal-400/20 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
-         <div className="absolute top-[40%] left-[30%] w-[40%] h-[40%] rounded-full bg-indigo-400/20 blur-[120px] animate-pulse" style={{ animationDelay: '4s' }}></div>
+         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-purple-400/10 blur-[120px] animate-pulse"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-teal-400/10 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
+         <div className="absolute top-[40%] left-[30%] w-[40%] h-[40%] rounded-full bg-indigo-400/10 blur-[120px] animate-pulse" style={{ animationDelay: '4s' }}></div>
       </div>
 
-      {/* SIDEBAR */}
-      <aside className="hidden md:flex w-64 flex-col bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-r border-white/20 dark:border-slate-700/50 h-screen sticky top-0 overflow-y-auto z-20 shadow-lg">
+      {/* SIDEBAR (3D Glassmorphism) */}
+      <aside className="hidden md:flex w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/60 dark:border-slate-700/50 h-[calc(100vh-2rem)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
           <div className="p-6 flex flex-col items-start gap-2">
               <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center shadow-md rounded-2xl bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm">
-                       <AppLogo className="w-full h-full" />
+                  <div className="w-12 h-12 flex items-center justify-center shadow-lg rounded-2xl bg-gradient-to-br from-white to-slate-100 dark:from-slate-800 dark:to-slate-900 border border-white/50 dark:border-slate-600 card-3d">
+                       <AppLogo className="w-full h-full scale-75" />
                   </div>
-                  <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</h1>
+                  <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500 tracking-tight drop-shadow-sm">FocusFlow</h1>
               </div>
               {/* Sync Indicator Desktop */}
-              <div className="pl-1">
+              <div className="pl-1 mt-1">
                   <SyncIndicator />
               </div>
           </div>
-          <nav className="flex-1 px-4 space-y-2">
+          <nav className="flex-1 px-4 space-y-3 pb-4">
               {[
                   { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
                   { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
@@ -408,37 +408,37 @@ export default function App() {
                           }
                           setCurrentView(item.id as any);
                       }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm ${currentView === item.id ? 'bg-indigo-100/60 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-200 shadow-sm border border-indigo-200/50 dark:border-indigo-800/50' : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-bold text-sm relative overflow-hidden btn-3d ${
+                          currentView === item.id 
+                          ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg border border-indigo-400' 
+                          : 'bg-white/50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border border-transparent hover:bg-white/80 dark:hover:bg-slate-700/80'
+                      }`}
                   >
-                      <item.icon className="w-5 h-5" />
-                      {item.label}
+                      <item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : ''}`} />
+                      <span className="relative z-10">{item.label}</span>
                   </button>
               ))}
           </nav>
       </aside>
 
-      {/* MOBILE HEADER */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg border-b border-slate-200/50 dark:border-slate-700/50 p-3 z-30 flex justify-between items-center shadow-sm">
+      {/* MOBILE HEADER (3D Style) */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-white/20 dark:border-slate-700/50 p-3 z-30 flex justify-between items-center shadow-sm">
            <div className="flex items-center gap-2">
-               <div className="w-8 h-8">
-                   <AppLogo className="w-full h-full" />
+               <div className="w-8 h-8 card-3d rounded-lg flex items-center justify-center">
+                   <AppLogo className="w-6 h-6" />
                </div>
-               <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</span>
+               <span className="font-extrabold text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</span>
                {/* Sync Indicator Mobile */}
                <SyncIndicator />
            </div>
            
            <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 rounded-full border border-orange-200/50 dark:border-orange-900/30" title="Current Streak">
+                <div className="flex items-center gap-1 bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 rounded-full border border-orange-200/50 dark:border-orange-900/30 shadow-inner" title="Current Streak">
                     <FireIcon className="w-4 h-4 text-orange-500" />
                     <span className="text-xs font-bold text-orange-600 dark:text-orange-400">{streak}</span>
                 </div>
                 
-                <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-[10px] font-bold text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800/50 whitespace-nowrap">
-                    {todayFormatted}
-                </div>
-
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg bg-white dark:bg-slate-800 btn-3d text-slate-600 dark:text-slate-300">
                     <Bars3Icon className="w-6 h-6" />
                 </button>
            </div>
@@ -447,15 +447,15 @@ export default function App() {
       {/* MOBILE MENU */}
       {isSidebarOpen && (
           <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)}>
-              <aside className="w-64 h-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl shadow-2xl p-4 animate-slide-in-left border-r border-white/20" onClick={e => e.stopPropagation()}>
-                   <div className="flex justify-between items-center mb-8">
+              <aside className="w-72 h-[95%] m-2 rounded-3xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl shadow-2xl p-4 animate-slide-in-left border border-white/20 overflow-y-auto card-3d" onClick={e => e.stopPropagation()}>
+                   <div className="flex justify-between items-center mb-8 px-2">
                        <div className="flex items-center gap-2">
-                           <div className="w-8 h-8">
-                               <AppLogo className="w-full h-full" />
+                           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                               <AppLogo className="w-full h-full scale-75 text-white" />
                            </div>
-                           <span className="font-bold text-lg">FocusFlow</span>
+                           <span className="font-extrabold text-xl text-slate-800 dark:text-white">FocusFlow</span>
                        </div>
-                       <button onClick={() => setIsSidebarOpen(false)}><XMarkIcon className="w-6 h-6 text-slate-400" /></button>
+                       <button onClick={() => setIsSidebarOpen(false)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full btn-3d"><XMarkIcon className="w-6 h-6 text-slate-500" /></button>
                    </div>
                    <nav className="space-y-2">
                       {[
@@ -479,7 +479,7 @@ export default function App() {
                                   setCurrentView(item.id as any); 
                                   setIsSidebarOpen(false); 
                               }}
-                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-sm ${currentView === item.id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-primary' : 'text-slate-500 dark:text-slate-400'}`}
+                              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-bold text-sm btn-3d ${currentView === item.id ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}
                           >
                               <item.icon className="w-5 h-5" />
                               {item.label}
@@ -491,20 +491,20 @@ export default function App() {
       )}
 
       {/* MAIN AREA */}
-      <main className="flex-1 pt-20 md:pt-0 p-4 md:p-8 overflow-y-auto h-screen custom-scrollbar relative z-10">
-          <div className="max-w-6xl mx-auto h-full">
+      <main className="flex-1 pt-20 md:pt-4 p-4 md:p-6 overflow-y-auto h-screen custom-scrollbar relative z-10">
+          <div className="max-w-6xl mx-auto h-full pb-20">
             
             {currentView === 'DASHBOARD' && (
                 <>
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                         <div>
-                            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Hello, {displayName || 'Doctor'} 👋</h1>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Ready for today's session?</p>
+                            <h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight drop-shadow-sm">Hello, {displayName || 'Doctor'} 👋</h1>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">Ready to crush your goals today?</p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3 w-full md:w-auto">
                             <button 
                                 onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }}
-                                className="bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 shadow-sm border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-lg text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2"
+                                className="btn-3d bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center"
                             >
                                 <CalendarIcon className="w-4 h-4" />
                                 Today's Plan
@@ -513,26 +513,33 @@ export default function App() {
                     </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                         <div className="space-y-6">
+                         <div className="space-y-8">
                             {/* Pass todayPlan to StatsCard for integration */}
                             <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} />
                             <ActivityGraphs knowledgeBase={knowledgeBase} />
                          </div>
-                         <div className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-white/50 dark:border-slate-700/50 shadow-sm">
-                             <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                                <ListCheckIcon className="w-5 h-5 text-indigo-500" />
+                         <div className="bg-white dark:bg-slate-800 card-3d rounded-3xl p-6 border border-white/50 dark:border-slate-700/50">
+                             <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 text-lg">
+                                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 shadow-inner">
+                                    <ListCheckIcon className="w-5 h-5" />
+                                </div>
                                 Due Now
                              </h3>
                              <div className="space-y-3">
                                 {dueNowItems.length > 0 ? dueNowItems.map(item => (
-                                     <div key={item.id} className={`p-3 rounded-lg flex items-center justify-between transition-all ${item.urgent ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50' : 'bg-slate-50 dark:bg-slate-900/30 border border-slate-100 dark:border-slate-700'}`}>
+                                     <div key={item.id} className={`p-4 rounded-2xl flex items-center justify-between transition-all hover:scale-[1.02] cursor-pointer shadow-sm border card-3d ${item.urgent ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-800' : 'bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-700'}`}>
                                          <div>
-                                             <p className="font-bold text-sm text-slate-700 dark:text-slate-200">{item.title}</p>
-                                             <p className="text-xs text-slate-500 dark:text-slate-400">{item.subtitle}</p>
+                                             <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</p>
+                                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{item.subtitle}</p>
                                          </div>
-                                         <button className="text-primary hover:underline text-xs font-bold">View</button>
+                                         <button className="btn-3d bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-primary px-4 py-2 rounded-lg text-xs font-bold shadow-sm">View</button>
                                      </div>
-                                )) : <p className="text-sm text-slate-400 italic text-center py-8">All caught up!</p>}
+                                )) : (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                                        <CheckCircleIcon className="w-12 h-12 text-green-200 mb-3" />
+                                        <p className="text-slate-400 font-medium">All caught up! Great job.</p>
+                                    </div>
+                                )}
                              </div>
                          </div>
                     </div>
@@ -590,6 +597,10 @@ export default function App() {
                 <TodaysPlanView 
                     targetDate={targetPlanDate} 
                     settings={settings} 
+                    onUpdateSettings={async (newSettings) => {
+                        setSettings(newSettings);
+                        await saveData('settings', newSettings);
+                    }} 
                     knowledgeBase={knowledgeBase}
                     onUpdateKnowledgeBase={updateKB} // Pass update function for synchronization
                 />

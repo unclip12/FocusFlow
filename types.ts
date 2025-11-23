@@ -1,4 +1,5 @@
 
+
 export interface UserProfile {
     displayName?: string;
 }
@@ -514,7 +515,31 @@ export const SYSTEMS = [
  * Updates at 12:00 AM.
  */
 export const getAdjustedDate = (dateInput: Date | string): string => {
-    const date = new Date(dateInput);
+    // Handle null, undefined, or empty string by creating a new Date() for today
+    const safeDateInput = dateInput || new Date();
+    
+    let date: Date;
+
+    // The main problem is `new Date('YYYY-MM-DD')` in Safari, which parses as UTC.
+    // ISO strings like `YYYY-MM-DDTHH:mm:ss.sssZ` are fine.
+    // Date objects are fine.
+    if (typeof safeDateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(safeDateInput)) {
+        // It's a 'YYYY-MM-DD' string, make it timezone-safe by treating it as local time.
+        // Replacing dashes with slashes is a common way to achieve this.
+        date = new Date(safeDateInput.replace(/-/g, '/'));
+    } else {
+        date = new Date(safeDateInput);
+    }
+    
+    // Check for "Invalid Date"
+    if (isNaN(date.getTime())) {
+        console.warn('getAdjustedDate received an invalid dateInput, falling back to today:', dateInput);
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
     
     // Return YYYY-MM-DD in local time
     const year = date.getFullYear();

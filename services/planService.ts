@@ -1,6 +1,6 @@
 
 import { getDayPlan, saveDayPlan } from './firebase';
-import { Block, DayPlan, BlockTask } from '../types';
+import { Block, DayPlan, BlockTask, BlockType } from '../types';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
@@ -72,18 +72,18 @@ const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
 };
 
 /**
- * Shift subsequent blocks if a block runs overtime.
+ * Shift subsequent blocks if a block runs overtime OR finishes early.
  */
 const shiftSchedule = (blocks: Block[], startIndex: number, minutesToShift: number): Block[] => {
-    // Only shift if minutes > 0
-    if (minutesToShift <= 0) return blocks;
+    // If minutesToShift is 0, no change
+    if (minutesToShift === 0) return blocks;
 
     const updatedBlocks = [...blocks];
     
     // Iterate through all blocks AFTER the finished one
     for (let i = startIndex + 1; i < updatedBlocks.length; i++) {
         const block = updatedBlocks[i];
-        // Do not shift completed blocks or skipped ones (logic choice: shift everything pending)
+        // Do not shift completed blocks or skipped ones
         if (block.status === 'DONE' || block.status === 'SKIPPED') continue;
 
         const oldStart = parseTimeToMinutes(block.plannedStartTime);
@@ -301,14 +301,14 @@ export const finishBlock = async (
         rescheduledTo?: string, // The time or context where tasks were pushed
         generatedLogIds?: string[],
         generatedTimeLogIds?: string[]
-    }
+    },
+    endTimeStr?: string
 ): Promise<DayPlan | null> => {
     try {
         const plan = await getDayPlan(date);
         if (!plan || !plan.blocks) return null;
 
-        const now = new Date();
-        const endTime = now.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        const endTime = endTimeStr || new Date().toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
 
         let updatedBlocks = [...plan.blocks];
         const currentBlockIndex = updatedBlocks.findIndex(b => b.id === blockId);
@@ -367,7 +367,8 @@ export const finishBlock = async (
         };
 
         // --- TIME SHIFTING LOGIC ---
-        if (overrun > 0) {
+        // Shifts schedule if overrun is positive (late) or negative (finished early)
+        if (overrun !== 0) {
             updatedBlocks = shiftSchedule(updatedBlocks, currentBlockIndex, overrun);
         }
 
@@ -385,13 +386,16 @@ export const finishBlock = async (
 
 /**
  * Inserts a new block at a specific time and shifts overlapping/future blocks.
+ * Supports optional block type and description.
  */
 export const insertBlockAndShift = async (
     date: string, 
     startTimeStr: string, 
     durationMinutes: number, 
     tasks: BlockTask[],
-    title: string = 'New Study Block'
+    title: string = 'New Study Block',
+    type: BlockType = 'MIXED',
+    description: string = ''
 ): Promise<DayPlan | null> => {
     try {
         let plan = await getDayPlan(date);
@@ -425,9 +429,9 @@ export const insertBlockAndShift = async (
             date: date,
             plannedStartTime: formatTime(newBlockStart),
             plannedEndTime: formatTime(newBlockEnd),
-            type: 'MIXED',
+            type: type,
             title: title,
-            description: 'Manual Entry',
+            description: description || (type === 'BREAK' ? 'Break' : 'Manual Entry'),
             plannedDurationMinutes: durationMinutes,
             status: 'NOT_STARTED',
             tasks: tasks

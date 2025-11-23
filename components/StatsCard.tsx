@@ -14,8 +14,8 @@ interface StatsProps {
 const ProgressBar = ({ current, total, colorClass }: { current: number, total: number, colorClass: string }) => {
     const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
     return (
-        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mt-2">
-            <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${percent}%` }}></div>
+        <div className="h-2.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mt-3 shadow-inner-3d border border-white/50 dark:border-white/10">
+            <div className={`h-full rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${colorClass}`} style={{ width: `${percent}%` }}></div>
         </div>
     );
 };
@@ -158,86 +158,102 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
     }, [knowledgeBase, todayStr, now, todayPlan]);
 
     return (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 mb-6">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-                <span className="w-1.5 h-4 bg-indigo-500 rounded-full"></span>
+        <div className="card-3d rounded-3xl p-6 mb-8 bg-white dark:bg-slate-800 border border-white/50 dark:border-slate-700/50">
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-6 flex items-center gap-2 tracking-tight">
+                <span className="w-2 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
                 Today at a Glance
             </h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Card 1: Time */}
-                <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 flex flex-col justify-between h-full">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 border border-white/60 dark:border-white/5 shadow-[0_10px_20px_-5px_rgba(59,130,246,0.15)] flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform card-3d">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <ClockIcon className="w-16 h-16 text-blue-600" />
+                    </div>
                     <div>
-                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
-                            <ClockIcon className="w-4 h-4" />
+                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-3">
+                            <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                                <ClockIcon className="w-4 h-4" />
+                            </div>
                             <span className="text-xs font-bold uppercase tracking-wider">Study Time</span>
                         </div>
-                        <div className="flex items-baseline gap-2">
-                            <p className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.timeString}</p>
-                            <span className="text-xs text-slate-500 font-medium">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
+                        <div className="flex items-baseline gap-2 relative z-10">
+                            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
+                            <span className="text-xs text-slate-500 font-bold bg-white/60 dark:bg-black/20 px-2 py-0.5 rounded-md">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
                         </div>
                     </div>
-                    <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-blue-500" />
+                    <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" />
                 </div>
 
                 {/* Card 2: Pages Studied */}
-                <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 flex flex-col justify-between h-full">
-                    <div className="flex justify-between items-start mb-2">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/10 border border-white/60 dark:border-white/5 shadow-[0_10px_20px_-5px_rgba(16,185,129,0.15)] flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform card-3d">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <BookOpenIcon className="w-16 h-16 text-emerald-600" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
                         <div>
-                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-1">
-                                <BookOpenIcon className="w-4 h-4" />
+                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-3">
+                                <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                                    <BookOpenIcon className="w-4 h-4" />
+                                </div>
                                 <span className="text-xs font-bold uppercase tracking-wider">Pages</span>
                             </div>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.plannedPagesCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold">/ {metrics.plannedPagesTotal}</span>
+                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold bg-white/60 dark:bg-black/20 px-2 py-0.5 rounded-md">/ {metrics.plannedPagesTotal}</span>
                             </div>
-                        </div>
-                        <div className="text-right bg-white dark:bg-slate-800/50 px-2 py-1 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Total</p>
-                            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">{metrics.totalUniqueStudied}</p>
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-emerald-500" />
+                        <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-gradient-to-r from-emerald-500 to-emerald-600" />
                     </div>
                 </div>
 
                 {/* Card 3: Revisions */}
-                <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-900/30 flex flex-col justify-between h-full">
-                    <div className="flex justify-between items-start mb-2">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-900/30 dark:to-violet-900/10 border border-white/60 dark:border-white/5 shadow-[0_10px_20px_-5px_rgba(139,92,246,0.15)] flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform card-3d">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <ArrowPathIcon className="w-16 h-16 text-violet-600" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
                         <div>
-                            <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 mb-1">
-                                <ArrowPathIcon className="w-4 h-4" />
+                            <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-3">
+                                <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                                    <ArrowPathIcon className="w-4 h-4" />
+                                </div>
                                 <span className="text-xs font-bold uppercase tracking-wider">Revisions</span>
                             </div>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.revisionGoalCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold">/ {metrics.revisionGoalTotal}</span>
+                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold bg-white/60 dark:bg-black/20 px-2 py-0.5 rounded-md">/ {metrics.revisionGoalTotal}</span>
                             </div>
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-violet-500" />
+                        <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-gradient-to-r from-violet-500 to-violet-600" />
                     </div>
                 </div>
 
                 {/* Card 4: Anki */}
-                <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 flex flex-col justify-between h-full">
-                    <div className="flex justify-between items-start mb-2">
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/10 border border-white/60 dark:border-white/5 shadow-[0_10px_20px_-5px_rgba(245,158,11,0.15)] flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform card-3d">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <FireIcon className="w-16 h-16 text-amber-600" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
                         <div>
-                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-1">
-                                <FireIcon className="w-4 h-4" />
+                            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-3">
+                                <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                                    <FireIcon className="w-4 h-4" />
+                                </div>
                                 <span className="text-xs font-bold uppercase tracking-wider">Anki Cards</span>
                             </div>
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">{metrics.ankiCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold">/ {metrics.ankiPlanned}</span>
+                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
+                                <span className="text-xs text-slate-500 font-bold bg-white/60 dark:bg-black/20 px-2 py-0.5 rounded-md">/ {metrics.ankiPlanned}</span>
                             </div>
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-amber-500" />
+                        <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
                     </div>
                 </div>
             </div>
@@ -262,59 +278,79 @@ export const StatsGrid: React.FC<Pick<StatsProps, 'knowledgeBase' | 'streak'>> =
 
     return (
         <div className="mb-8">
-             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2 px-1">
+             <h3 className="text-sm font-extrabold text-slate-800 dark:text-white mb-4 flex items-center gap-2 px-1 tracking-tight">
                 <ChartBarIcon className="w-4 h-4 text-slate-400" />
                 Stats & Progress
             </h3>
             <div className="grid grid-cols-2 gap-4">
                 {/* Card 1: Total Pages */}
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                    <div className="flex justify-between items-start mb-2">
-                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Pages</span>
-                         <BookOpenIcon className="w-4 h-4 text-indigo-400" />
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-white/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <BookOpenIcon className="w-24 h-24" />
                     </div>
-                    <div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-white">{stats.totalPages}</span>
-                        <span className="text-xs text-slate-400 ml-1">pages</span>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Pages</span>
+                         <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg text-indigo-500">
+                            <BookOpenIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalPages}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">pages</span>
                     </div>
                 </div>
 
                 {/* Card 2: Total Hours */}
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                    <div className="flex justify-between items-start mb-2">
-                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Time</span>
-                         <ClockIcon className="w-4 h-4 text-blue-400" />
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-white/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <ClockIcon className="w-24 h-24" />
                     </div>
-                    <div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-white">{stats.totalHours}</span>
-                        <span className="text-xs text-slate-400 ml-1">hours</span>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Time</span>
+                         <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-blue-500">
+                            <ClockIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalHours}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">hours</span>
                     </div>
                 </div>
 
                 {/* Card 3: Anki */}
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                    <div className="flex justify-between items-start mb-2">
-                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Total Cards</span>
-                         <FireIcon className="w-4 h-4 text-amber-400" />
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-white/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <FireIcon className="w-24 h-24" />
                     </div>
-                    <div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-white">{stats.totalAnki}</span>
-                        <div className="mt-2">
-                             <ProgressBar current={stats.totalAnki} total={stats.totalAnkiTarget || stats.totalAnki * 1.5} colorClass="bg-amber-500" />
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Cards</span>
+                         <div className="p-1.5 bg-amber-50 dark:bg-amber-900/30 rounded-lg text-amber-500">
+                            <FireIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalAnki}</span>
+                        <div className="mt-3">
+                             <ProgressBar current={stats.totalAnki} total={stats.totalAnkiTarget || stats.totalAnki * 1.5} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
                         </div>
                     </div>
                 </div>
 
                 {/* Card 4: Streak */}
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col justify-between">
-                    <div className="flex justify-between items-start mb-2">
-                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">Streak</span>
-                         <TrophyIcon className="w-4 h-4 text-yellow-400" />
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-white/50 dark:border-slate-700/50 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <TrophyIcon className="w-24 h-24" />
                     </div>
-                    <div>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-white">{streak}</span>
-                        <span className="text-xs text-slate-400 ml-1">days</span>
-                        <p className="text-[10px] text-green-500 font-bold mt-1">Keep it up!</p>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Streak</span>
+                         <div className="p-1.5 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg text-yellow-500">
+                            <TrophyIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{streak}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">days</span>
+                        <p className="text-[10px] text-green-500 font-bold mt-1 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-md inline-block">Keep it up!</p>
                     </div>
                 </div>
             </div>

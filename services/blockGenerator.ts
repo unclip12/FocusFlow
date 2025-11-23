@@ -3,8 +3,13 @@ import { DayPlan, Block, BlockType } from '../types';
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
 const parseTime = (timeStr: string): number => {
-    const [h, m] = timeStr.split(':').map(Number);
-    return h * 60 + m;
+    try {
+        const [h, m] = timeStr.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return 0;
+        return h * 60 + m;
+    } catch (e) {
+        return 0;
+    }
 };
 
 const formatTime = (minutes: number): string => {

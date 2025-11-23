@@ -1,12 +1,14 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings } from '../types';
 import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
-import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon } from './Icons';
+import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, PhotoIcon } from './Icons';
 import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan } from '../services/firebase';
 import { generateBlocks } from '../services/blockGenerator';
 import { startBlock, updateBlockInPlan, finishBlock } from '../services/planService';
 import { processLogEntries } from '../services/faLoggerService';
+import { parseSchedule } from '../services/scheduleParser';
 
 const generateId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -43,7 +45,7 @@ type ChatMode = 'MENTOR' | 'BUDDY';
 
 export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, streak, onAddToPlan, onViewDayPlan, displayName, knowledgeBase, onUpdateKnowledgeBase }) => {
   const [mode, setMode] = useState<ChatMode>('MENTOR');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3-pro-preview');
+  const [selectedModel, setSelectedModel] = useState<string>('chatbot');
   
   const [mentorMessages, setMentorMessages] = useState<MentorMessage[]>([]);
   const [mentorMemory, setMentorMemory] = useState<MentorMemory | null>(null);
@@ -375,6 +377,64 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
       const msgId = generateId();
       const timestamp = new Date().toISOString();
 
+      const userMsg: MentorMessage = {
+          id: msgId,
+          role: 'user',
+          text: textToSend,
+          timestamp: timestamp
+      };
+
+      setInput('');
+      setIsTyping(true);
+
+      // --- LOCAL CHAT BOT INTERCEPTION ---
+      if (mode === 'MENTOR' && selectedModel === 'chatbot') {
+        setMentorMessages(prev => [...prev, userMsg]);
+        await saveMentorMessage(userMsg);
+        
+        const parsedPlans = parseSchedule(textToSend, getAdjustedDate(new Date()));
+        
+        if (parsedPlans && parsedPlans.length > 0) {
+            // Iterate and save ALL days found
+            let summaryText = `✅ Schedule Parsed Successfully! I've created detailed plans for ${parsedPlans.length} days:\n\n`;
+            
+            for (const plan of parsedPlans) {
+                await saveDayPlan(plan);
+                summaryText += `📅 **${plan.date}**: ${plan.blocks?.length} blocks (inc. video speeds)\n`;
+            }
+            summaryText += `\nYou can view them in the "Today's Plan" section or Calendar.`;
+
+            // Refresh current day blocks if today was updated
+            const today = getAdjustedDate(new Date());
+            if (parsedPlans.some(p => p.date === today)) {
+                await loadTodaysBlocks();
+            }
+
+            const modelMsg: MentorMessage = {
+                id: generateId(),
+                role: 'model',
+                text: summaryText,
+                timestamp: new Date().toISOString(),
+                isSystemAction: true,
+                actionType: 'VIEW_PLAN',
+                actionPayload: { date: parsedPlans[0].date } // Link to first day found
+            };
+            setMentorMessages(prev => [...prev, modelMsg]);
+            await saveMentorMessage(modelMsg);
+        } else {
+            const errorMsg: MentorMessage = {
+                id: generateId(),
+                role: 'model',
+                text: "I couldn't find any valid schedule blocks. Please ensure you use the format: 'HH:MM - HH:MM -> Action Details'.",
+                timestamp: new Date().toISOString(),
+            };
+            setMentorMessages(prev => [...prev, errorMsg]);
+        }
+        setIsTyping(false);
+        return;
+    }
+
+
       // --- LONG TEXT SAVING LOGIC ---
       // If text is long (> 300 chars), save it as a Study Material first
       if (mode === 'MENTOR' && textToSend.length > 300) {
@@ -408,15 +468,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
           }
       }
 
-      const userMsg: MentorMessage = {
-          id: msgId,
-          role: 'user',
-          text: textToSend,
-          timestamp: timestamp
-      };
-
-      setInput('');
-      setIsTyping(true);
       
       const currentAttachment = attachedImage;
       const attachmentForApi = (currentAttachment && currentAttachment.mimeType.startsWith('image/') && currentAttachment.data) 
@@ -685,6 +736,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                 >
                     <option value="gemini-3-pro-preview">Gemini 3.0 Pro</option>
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="chatbot">Chat Bot (Local)</option>
                 </select>
 
                 {mode === 'MENTOR' && (
@@ -775,38 +827,34 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         <div className="flex gap-1.5">
                             <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-indigo-400' : 'bg-blue-400'}`} style={{ animationDelay: '0s' }}></span>
                             <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-purple-400' : 'bg-cyan-400'}`} style={{ animationDelay: '0.2s' }}></span>
-                            <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-pink-400' : 'bg-sky-400'}`} style={{ animationDelay: '0.4s' }}></span>
+                            <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-fuchsia-400' : 'bg-teal-400'}`} style={{ animationDelay: '0.4s' }}></span>
                         </div>
                     </div>
                 </div>
             )}
         </div>
-        
-        {attachedImage && (
-            <div className="absolute bottom-20 left-4 right-4 z-20 flex items-center gap-3 bg-indigo-100 dark:bg-slate-700 p-2 rounded-lg border border-indigo-200 dark:border-slate-600 shadow-md animate-fade-in-up">
-                {attachedImage.mimeType.startsWith('image/') ? (
-                    <img src={`data:${attachedImage.mimeType};base64,${attachedImage.data}`} alt="preview" className="w-8 h-8 rounded object-cover" />
-                ) : (
-                    <DocumentTextIcon className="w-8 h-8 text-red-500 p-1" />
-                )}
-                <span className="text-xs font-bold truncate flex-1 text-indigo-800 dark:text-indigo-200">{attachedImage.filename}</span>
-                <button onClick={handleRemoveAttachment} className="hover:bg-indigo-200 dark:hover:bg-slate-600 rounded-full p-1 text-indigo-500 dark:text-indigo-300">
-                    <XMarkIcon className="w-4 h-4" />
-                </button>
-            </div>
-        )}
 
-        <div className="p-2 bg-white/40 dark:bg-slate-800/40 backdrop-blur-lg border-t border-white/20 dark:border-slate-700 z-10">
-            <div className="flex items-end gap-2">
-                <label className={`p-3.5 rounded-xl transition-all cursor-pointer hover:bg-white/50 dark:hover:bg-slate-700 ${isUploadingFile ? 'opacity-50 cursor-wait' : ''}`} title="Attach Photo or PDF">
-                    {isUploadingFile ? (
-                         <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                         <PaperClipIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                    )}
-                    <input type="file" accept="image/*,application/pdf" onChange={handleFileSelect} className="hidden" disabled={isUploadingFile} />
+        <div className="p-4 border-t border-white/20 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10">
+            {attachedImage && (
+                <div className="mb-2 p-2 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg flex items-start justify-between animate-fade-in-up text-xs border border-slate-200 dark:border-slate-600">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                        {attachedImage.mimeType.startsWith('image/') ? (
+                             <img src={`data:${attachedImage.mimeType};base64,${attachedImage.data}`} className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                        ) : (
+                            <DocumentTextIcon className="w-8 h-8 text-slate-500 flex-shrink-0" />
+                        )}
+                        <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{attachedImage.filename}</span>
+                    </div>
+                    <button onClick={handleRemoveAttachment} className="p-1 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-full">
+                        <XMarkIcon className="w-4 h-4 text-slate-500" />
+                    </button>
+                </div>
+            )}
+            <div className="relative flex items-end gap-2">
+                <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <PaperClipIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                    <input type="file" onChange={handleFileSelect} className="hidden" disabled={isUploadingFile} />
                 </label>
-                
                 <textarea
                     ref={textareaRef}
                     value={input}
@@ -817,18 +865,16 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                             handleSend();
                         }
                     }}
-                    placeholder={mode === 'MENTOR' ? "Ask Mentor to plan your day..." : "Ask Study Buddy about the content..."}
-                    className="flex-1 p-3.5 rounded-xl border border-white/50 dark:border-slate-600 bg-white/70 dark:bg-slate-900/70 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500/50 outline-none placeholder-slate-400 shadow-inner resize-none max-h-36 custom-scrollbar text-sm"
-                    disabled={isTyping}
+                    placeholder={mode === 'MENTOR' ? "Ask your mentor anything..." : "Ask about your study material..."}
+                    className="flex-1 w-full p-3 bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white max-h-32"
                     rows={1}
                 />
-                
-                <button 
+                <button
                     onClick={handleSend}
-                    disabled={isTyping || (!input.trim() && !attachedImage)}
-                    className={`p-3.5 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:scale-105 active:scale-95 self-end ${mode === 'MENTOR' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30'}`}
+                    disabled={(!input.trim() && !attachedImage) || isTyping || isUploadingFile}
+                    className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:scale-95 disabled:shadow-none"
                 >
-                    <PaperAirplaneIcon className="w-5 h-5 transform rotate-90" />
+                    <PaperAirplaneIcon className="w-5 h-5" />
                 </button>
             </div>
         </div>

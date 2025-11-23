@@ -32,8 +32,8 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
     const isDue = new Date(nextRevisionAt) <= new Date();
 
     return (
-        <div className={`group relative bg-white dark:bg-dark-surface border rounded-xl p-4 transition-all duration-200 hover:shadow-md ${isDue ? 'border-l-4 border-l-amber-400 border-slate-200 dark:border-dark-border bg-amber-50/10 dark:bg-amber-900/10' : 'border-slate-100 dark:border-dark-border'}`}>
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <div className={`group relative card-3d rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.1)] ${isDue ? 'border-l-4 border-l-amber-400' : ''}`}>
+            <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center">
                 <div className="flex-shrink-0">
                     <PageBadge
                         pageNumber={pageNumber}
@@ -42,26 +42,26 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                         onClick={() => onViewPage(pageNumber)}
                     />
                 </div>
-                <div className="flex-grow min-w-0 w-full" onClick={() => onViewPage(pageNumber)}>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate text-base sm:text-lg">
+                <div className="flex-grow min-w-0 w-full cursor-pointer" onClick={() => onViewPage(pageNumber)}>
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100 truncate text-lg group-hover:text-indigo-600 transition-colors">
                         {title}
                     </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                         {type !== 'PAGE' ? `From: ${parentTitle}` : item.kbEntry.system}
                     </p>
-                    <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        <span className="font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">R{currentRevisionIndex}</span>
-                        <span>Due: {new Date(nextRevisionAt).toLocaleString([], {
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-3">
+                        <span className="font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-600">R{currentRevisionIndex}</span>
+                        <span className="font-medium">Due: {new Date(nextRevisionAt).toLocaleString([], {
                             year: '2-digit', month: 'numeric', day: 'numeric',
                             hour: 'numeric', minute: '2-digit', hour12: true
                         })}</span>
-                        {isDue && <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse text-[10px]">DUE</span>}
+                        {isDue && <span className="text-amber-600 dark:text-amber-400 font-black animate-pulse bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-md text-[10px] tracking-wide uppercase">DUE NOW</span>}
                     </div>
                 </div>
-                <div className="flex items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0 justify-end">
+                <div className="flex items-center gap-3 w-full sm:w-auto mt-3 sm:mt-0 justify-end">
                     <button
                         onClick={() => onLogRevision(item)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isDue ? 'bg-primary text-white shadow-md' : 'bg-white dark:bg-slate-800 border'}`}
+                        className={`btn-3d flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md ${isDue ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}
                     >
                         <ArrowPathIcon className="w-4 h-4" />
                         Revise
@@ -82,7 +82,7 @@ const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) 
     const isStudy = log.type === 'STUDY';
 
     return (
-        <div className={`group relative bg-white dark:bg-dark-surface border rounded-xl p-4 transition-all duration-200 hover:shadow-md ${isStudy ? 'border-slate-100 dark:border-dark-border' : 'border-green-100 dark:border-green-800/30'}`}>
+        <div className={`group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 ${isStudy ? '' : 'border-l-4 border-l-green-400'} card-3d`}>
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="flex-shrink-0">
                     <PageBadge
@@ -90,17 +90,18 @@ const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) 
                         attachments={kbEntry.attachments}
                         revisionCount={kbEntry.revisionCount}
                         onClick={() => onViewPage(kbEntry.pageNumber)}
+                        className="scale-90"
                     />
                 </div>
                 <div className="flex-grow min-w-0 w-full cursor-pointer" onClick={() => onViewPage(kbEntry.pageNumber)}>
-                    <h4 className="font-semibold text-slate-800 dark:text-slate-200 truncate text-base sm:text-lg">
+                    <h4 className="font-bold text-slate-700 dark:text-slate-200 truncate text-base">
                         {kbEntry.title}
                     </h4>
                     <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        <span className={`font-bold px-2 py-1 rounded ${isStudy ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'}`}>
+                        <span className={`font-bold px-2 py-1 rounded-md shadow-sm border ${isStudy ? 'bg-blue-50 border-blue-100 text-blue-600 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300' : 'bg-green-50 border-green-100 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300'}`}>
                             {isStudy ? 'First Study' : `Revision #${log.revisionIndex}`}
                         </span>
-                        <span>
+                        <span className="font-mono text-slate-400">
                             {new Date(log.timestamp).toLocaleString([], {
                                 year: '2-digit', month: 'numeric', day: 'numeric',
                                 hour: 'numeric', minute: '2-digit', hour12: true
@@ -124,7 +125,7 @@ interface RevisionViewProps {
 type SortOption = 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
 type SortOrder = 'ASC' | 'DESC';
 
-const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevision, onDeleteSession, onViewPage }) => {
+export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevision, onDeleteSession, onViewPage }) => {
   const [activeTab, setActiveTab] = useState<'DUE' | 'UPCOMING' | 'HISTORY'>('DUE');
   const [sortBy, setSortBy] = useState<SortOption>('TIME');
   const [sortOrder, setSortOrder] = useState<SortOrder>('ASC');
@@ -286,37 +287,39 @@ const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevisio
 
   return (
     <div className="animate-fade-in space-y-8">
-        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-slate-200 dark:border-dark-border p-6 shadow-sm">
+        <div className="card-3d rounded-3xl p-6 border border-white/50 dark:border-slate-700/50 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md">
              <div className="flex justify-between items-start mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                        <ArrowPathIcon className="w-6 h-6 text-primary" />
+                    <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white flex items-center gap-2 tracking-tight">
+                        <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg text-white">
+                            <ArrowPathIcon className="w-6 h-6" />
+                        </div>
                         Revision Hub
                     </h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Forecast & History</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium ml-12">Forecast & History</p>
                 </div>
                 <div className="flex gap-4 text-sm">
-                     <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-center hidden sm:block">
-                         <span className="block text-xs font-bold text-indigo-400 uppercase">Total Revisions</span>
-                         <span className="block text-xl font-bold text-indigo-700 dark:text-indigo-300">{totalRevisionsCount}</span>
+                     <div className="px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 text-center hidden sm:block shadow-sm">
+                         <span className="block text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Revisions</span>
+                         <span className="block text-2xl font-black text-indigo-700 dark:text-indigo-300">{totalRevisionsCount}</span>
                      </div>
-                     <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-900/50 text-center">
-                         <span className="block text-xs font-bold text-amber-400 uppercase">Due Now</span>
-                         <span className="block text-xl font-bold text-amber-700 dark:text-amber-400">{dueItems.length}</span>
+                     <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-100 dark:border-amber-900/50 text-center shadow-sm">
+                         <span className="block text-[10px] font-bold text-amber-400 uppercase tracking-widest">Due Now</span>
+                         <span className="block text-2xl font-black text-amber-700 dark:text-amber-400">{dueItems.length}</span>
                      </div>
                 </div>
             </div>
              { (todaysLogs.studied.length > 0 || todaysLogs.revised.length > 0) &&
-                <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Today's Log</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-inner">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Today's Activity Log</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                         <div>
-                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Studied (First Time):</p>
-                            <p className="text-slate-600 dark:text-slate-400">{todaysLogs.studied.length > 0 ? `Pg ${todaysLogs.studied.join(', ')}` : 'None'}</p>
+                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1 text-xs uppercase">Studied (First Time)</p>
+                            <p className="text-slate-600 dark:text-slate-400 font-mono text-xs">{todaysLogs.studied.length > 0 ? `Pg ${todaysLogs.studied.join(', ')}` : 'None'}</p>
                         </div>
                         <div>
-                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Revised:</p>
-                            <p className="text-slate-600 dark:text-slate-400">{todaysLogs.revised.length > 0 ? todaysLogs.revised.map(([pg, idx]) => `Pg ${pg} (R${idx})`).join(', ') : 'None'}</p>
+                            <p className="font-bold text-slate-700 dark:text-slate-300 mb-1 text-xs uppercase">Revised</p>
+                            <p className="text-slate-600 dark:text-slate-400 font-mono text-xs">{todaysLogs.revised.length > 0 ? todaysLogs.revised.map(([pg, idx]) => `Pg ${pg} (R${idx})`).join(', ') : 'None'}</p>
                         </div>
                     </div>
                 </div>
@@ -324,50 +327,52 @@ const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevisio
         </div>
         
         <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 dark:border-dark-border mb-4 gap-4">
-                <div className="flex overflow-x-auto max-w-full">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 dark:border-slate-700 mb-6 gap-4">
+                <div className="flex overflow-x-auto max-w-full gap-6">
                     <button 
                         onClick={() => handleTabClick('DUE')}
-                        className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'DUE' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'DUE' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
-                        Due Now ({dueItems.length})
+                        Due Now <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{dueItems.length}</span>
                     </button>
                     <button 
                         onClick={() => handleTabClick('UPCOMING')}
-                        className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'UPCOMING' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'UPCOMING' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
-                        Upcoming ({upcomingItems.length})
+                        Upcoming <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{upcomingItems.length}</span>
                     </button>
                     <button 
                         onClick={() => handleTabClick('HISTORY')}
-                        className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                        className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'HISTORY' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
-                        Past Logs
+                        Log History
                     </button>
-                    {activeTab === 'HISTORY' && (
-                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                            <select
-                                value={sortBy}
-                                onChange={e => setSortBy(e.target.value as SortOption)}
-                                className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md px-2 py-1 text-xs font-medium focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                                aria-label="Sort by"
-                            >
-                                <option value="TIME">Date</option>
-                                <option value="PAGE">Page</option>
-                                <option value="TOPIC">Topic</option>
-                            </select>
-                            <button
-                                onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
-                                className="p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-500 dark:text-slate-400"
-                                aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
-                            >
-                                {sortOrder === 'ASC' ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
-                            </button>
-                        </div>
-                    )}
                 </div>
+                
+                {activeTab === 'HISTORY' && (
+                    <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                        <select
+                            value={sortBy}
+                            onChange={e => setSortBy(e.target.value as SortOption)}
+                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+                            aria-label="Sort by"
+                        >
+                            <option value="TIME">Date</option>
+                            <option value="PAGE">Page</option>
+                            <option value="TOPIC">Topic</option>
+                        </select>
+                        <button
+                            onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
+                            className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50 transition-colors"
+                            aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
+                        >
+                            {sortOrder === 'ASC' ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
+                        </button>
+                    </div>
+                )}
             </div>
-            <div className="space-y-3">
+
+            <div className="space-y-4">
                 {activeTab === 'DUE' && (
                     sortedDue.length > 0 ? (
                         sortedDue.map(item => (
@@ -380,9 +385,10 @@ const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevisio
                             />
                         ))
                     ) : (
-                         <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
-                            <CheckCircleIcon className="w-10 h-10 text-green-300 dark:text-green-600 mx-auto mb-3" />
-                            <p className="text-slate-500 dark:text-slate-400">No revisions due right now. You're all caught up!</p>
+                         <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                            <CheckCircleIcon className="w-16 h-16 text-green-200 dark:text-green-900 mx-auto mb-4" />
+                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">All Caught Up!</h3>
+                            <p className="text-slate-400 dark:text-slate-500">No revisions due right now.</p>
                         </div>
                     )
                 )}
@@ -399,8 +405,8 @@ const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevisio
                             />
                         ))
                     ) : (
-                         <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
-                            <p className="text-slate-500 dark:text-slate-400">No upcoming revisions scheduled.</p>
+                         <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                            <p className="text-slate-400 dark:text-slate-500">No upcoming revisions scheduled.</p>
                         </div>
                     )
                 )}
@@ -415,15 +421,12 @@ const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevisio
                             />
                         ))
                     ) : (
-                        <div className="p-8 text-center bg-white dark:bg-dark-surface rounded-xl border border-slate-200 dark:border-dark-border border-dashed">
-                            <p className="text-slate-500 dark:text-slate-400">No past logs found.</p>
+                        <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                            <p className="text-slate-400 dark:text-slate-500">No past logs found.</p>
                         </div>
                     )
                  )}
             </div>
         </div>
-    </div>
-  );
+    );
 };
-
-export default RevisionView;

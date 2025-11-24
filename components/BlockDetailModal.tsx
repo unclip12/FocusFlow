@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Block, BlockTask } from '../types';
 import { XMarkIcon, PencilSquareIcon, CheckCircleIcon, TrashIcon, ClockIcon } from './Icons';
@@ -21,6 +22,17 @@ export const BlockDetailModal: React.FC<BlockDetailModalProps> = ({ isOpen, bloc
     // Reschedule inputs
     const [rescheduleMode, setRescheduleMode] = useState<'NEW_BLOCK' | 'NEXT_BLOCK' | null>(null);
     const [rescheduleStart, setRescheduleStart] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
 
     useEffect(() => {
         if (block) {
@@ -322,25 +334,4 @@ export const BlockDetailModal: React.FC<BlockDetailModalProps> = ({ isOpen, bloc
                                                     type="time" 
                                                     value={rescheduleStart}
                                                     onChange={e => setRescheduleStart(e.target.value)}
-                                                    className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-sm"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-                    )}
-
-                </div>
-
-                {isEditing && (
-                    <div className="p-5 border-t border-slate-100 dark:border-slate-800 flex gap-3 shrink-0">
-                        <button onClick={() => { setFormData(block); setIsEditing(false); }} className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-sm text-slate-600">Cancel</button>
-                        <button onClick={handleSave} className="flex-[2] py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md">Save Changes</button>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
+                                                    className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Block, BlockTask } from '../types';
 import { CheckCircleIcon, XMarkIcon, ClockIcon, ArrowRightIcon, PlusIcon, CalendarIcon } from './Icons';
@@ -28,6 +29,17 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen
     // Future Date State
     const [futureDate, setFutureDate] = useState('');
     
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
+
     // Initialize state from block
     useEffect(() => {
         if (isOpen && block.tasks) {

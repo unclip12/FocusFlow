@@ -1,38 +1,64 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { BlockTask, KnowledgeBaseEntry, SYSTEMS, CATEGORIES } from '../types';
-import { XMarkIcon, PlusIcon, TrashIcon, BookOpenIcon, FireIcon, CheckCircleIcon, VideoIcon, ChevronDownIcon } from './Icons';
+import { Block, BlockTask, KnowledgeBaseEntry, SYSTEMS, CATEGORIES } from '../types';
+import { XMarkIcon, PlusIcon, TrashIcon, BookOpenIcon, StarIcon, QIcon, VideoIcon, ChevronDownIcon, CalendarIcon } from './Icons';
 
 interface AddBlockModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (title: string, startTime: string, endTime: string, tasks: BlockTask[]) => void;
+    onSave: (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => void;
     initialStartTime?: string;
+    initialDate?: string;
     knowledgeBase?: KnowledgeBaseEntry[];
+    blockToEdit?: Block | null;
 }
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
-export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, onSave, initialStartTime = '08:00', knowledgeBase = [] }) => {
+export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, onSave, initialStartTime = '08:00', initialDate, knowledgeBase = [], blockToEdit }) => {
     const [title, setTitle] = useState('Study Block');
     const [startTime, setStartTime] = useState(initialStartTime);
     const [endTime, setEndTime] = useState('');
+    const [date, setDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
     const [tasks, setTasks] = useState<BlockTask[]>([]);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen) {
-            setTitle('Study Block');
-            setStartTime(initialStartTime);
-            // Default 30m
-            const [h, m] = initialStartTime.split(':').map(Number);
-            const d = new Date();
-            d.setHours(h, m + 30);
-            setEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
-            setTasks([]);
-            setExpandedTaskId(null);
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
         }
-    }, [isOpen, initialStartTime]);
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (blockToEdit) {
+                setTitle(blockToEdit.title);
+                setStartTime(blockToEdit.plannedStartTime);
+                setEndTime(blockToEdit.plannedEndTime);
+                setDate(blockToEdit.date);
+                // Deep copy tasks to avoid mutating original object directly before save
+                setTasks(blockToEdit.tasks ? JSON.parse(JSON.stringify(blockToEdit.tasks)) : []);
+                setExpandedTaskId(null);
+            } else {
+                setTitle('Study Block');
+                setStartTime(initialStartTime);
+                setDate(initialDate || new Date().toISOString().split('T')[0]);
+                // Default 30m
+                const [h, m] = initialStartTime.split(':').map(Number);
+                const d = new Date();
+                d.setHours(h, m + 30);
+                setEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+                setTasks([]);
+                setExpandedTaskId(null);
+            }
+        }
+    }, [isOpen, initialStartTime, initialDate, blockToEdit]);
 
     const adjustEndTime = (minutes: number) => {
         if (!startTime) return;
@@ -112,7 +138,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
 
     const handleSave = () => {
         if (startTime && endTime) {
-            onSave(title, startTime, endTime, tasks);
+            onSave(title, startTime, endTime, tasks, date);
             onClose();
         }
     };
@@ -124,7 +150,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
             <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
                 <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
                     <div className="flex-1 mr-4">
-                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">Block Title</label>
+                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1 block">{blockToEdit ? 'Edit Block Title' : 'New Block Title'}</label>
                         <input 
                             type="text"
                             value={title}
@@ -140,8 +166,21 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                     
                     {/* Time Controls */}
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Time Window</label>
-                        {/* Increased gap-6 to gap-8 for better separation */}
+                        <div className="flex justify-between items-center mb-4 border-b border-slate-100 dark:border-slate-700 pb-3">
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Time & Date</label>
+                            
+                            {/* Date Input */}
+                            <div className="relative group">
+                                 <input 
+                                     type="date" 
+                                     value={date} 
+                                     onChange={(e) => setDate(e.target.value)}
+                                     className="pl-8 pr-2 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                 />
+                                 <CalendarIcon className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            </div>
+                        </div>
+
                         <div className="flex items-center gap-8 mb-3">
                             <div className="flex-1">
                                 <label className="text-[10px] text-slate-400 font-bold mb-1 block">Start</label>
@@ -187,10 +226,10 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                     <VideoIcon className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => addTask('ANKI')} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm transition-colors" title="Add Flashcards">
-                                    <FireIcon className="w-4 h-4" />
+                                    <StarIcon className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => addTask('QBANK')} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm transition-colors" title="Add Questions">
-                                    <CheckCircleIcon className="w-4 h-4" />
+                                    <QIcon className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
@@ -210,8 +249,8 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                             }`}>
                                                 {task.type === 'FA' && <BookOpenIcon className="w-4 h-4" />}
                                                 {task.type === 'VIDEO' && <VideoIcon className="w-4 h-4" />}
-                                                {task.type === 'ANKI' && <FireIcon className="w-4 h-4" />}
-                                                {task.type === 'QBANK' && <CheckCircleIcon className="w-4 h-4" />}
+                                                {task.type === 'ANKI' && <StarIcon className="w-4 h-4" />}
+                                                {task.type === 'QBANK' && <QIcon className="w-4 h-4" />}
                                                 {task.type === 'OTHER' && <PlusIcon className="w-4 h-4" />}
                                             </span>
                                             
@@ -279,7 +318,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                                         <option value="3">3x</option>
                                                                     </select>
                                                                     {task.meta?.videoDuration && task.meta?.playbackSpeed && (
-                                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 w-8 text-right">
+                                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 w-10 text-right">
                                                                             ~{Math.ceil(task.meta.videoDuration / task.meta.playbackSpeed)}m
                                                                         </span>
                                                                     )}
@@ -294,7 +333,7 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                                     value={task.meta?.count || ''}
                                                                     onChange={(e) => {
                                                                         const val = parseInt(e.target.value);
-                                                                        updateTask(task.id, { detail: `${val} items`, meta: { ...task.meta, count: val } })
+                                                                        updateTask(task.id, { detail: `${val} items`, meta: { ...task.meta, count: isNaN(val) ? 0 : val } })
                                                                     }}
                                                                     onClick={(e) => e.stopPropagation()}
                                                                 />
@@ -394,8 +433,6 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                         <button 
                                                             className="px-3 bg-slate-100 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 font-bold text-lg"
                                                             onClick={(e) => {
-                                                                // Getting value from sibling input is tricky in React without ref/state,
-                                                                // relying on Enter key for now or better state management if button needed.
                                                                 // Simplified: Just use enter key for this quick interaction.
                                                             }}
                                                         >
@@ -414,9 +451,9 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
 
                 </div>
 
-                <div className="p-5 border-t border-slate-100 dark:border-slate-800 flex gap-3 shrink-0">
+                <div className="p-5 border-t border-slate-100 dark:border-slate-800 flex gap-3 shrink-0 bg-white dark:bg-slate-900 rounded-b-2xl">
                     <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm">Cancel</button>
-                    <button onClick={handleSave} disabled={!startTime || !endTime} className="flex-[2] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg transition-colors text-sm disabled:opacity-50">Create Block</button>
+                    <button onClick={handleSave} disabled={!startTime || !endTime} className="flex-[2] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg transition-colors text-sm disabled:opacity-50">{blockToEdit ? 'Update Block' : 'Create Block'}</button>
                 </div>
             </div>
         </div>

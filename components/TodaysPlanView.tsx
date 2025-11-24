@@ -1,17 +1,21 @@
 
+
+
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry, RevisionSettings } from '../types';
 import { getDayPlan, saveDayPlan, getRevisionSettings, saveKnowledgeBase } from '../services/firebase';
 import { saveTimeLog, deleteTimeLog } from '../services/timeLogService';
 import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock, startVirtualBlock, moveTasksToFuturePlan } from '../services/planService';
 import { generateBlocks } from '../services/blockGenerator'; 
-import { CalendarIcon, ClockIcon, VideoIcon, FireIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, CursorArrowRaysIcon, SunIcon, MoonIcon, SunCloudIcon, SunsetIcon, ChevronDownIcon, SparklesIcon } from './Icons';
+import { CalendarIcon, ClockIcon, VideoIcon, StarIcon, QIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, CursorArrowRaysIcon, SunIcon, MoonIcon, SunCloudIcon, SunsetIcon, ChevronDownIcon, SparklesIcon, ClipboardDocumentCheckIcon, FireIcon } from './Icons';
 import { TaskCompletionModal } from './TaskCompletionModal'; 
 import { ManualPlanModal } from './ManualPlanModal'; 
 import { AddBlockModal } from './AddBlockModal';
 import { AddBreakModal } from './AddBreakModal';
-import { BlockDetailModal } from './BlockDetailModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { PauseReasonModal } from './PauseReasonModal';
 import { processLogEntries } from '../services/faLoggerService';
 import { calculateNextRevisionDate } from '../services/srsService';
 
@@ -40,9 +44,9 @@ const parseTimeToMinutes = (timeStr: string): number => {
 };
 
 const formatDurationString = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`;
+    if (minutes < 60) return `${Math.round(minutes)}m`;
     const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
+    const m = Math.round(minutes % 60);
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
 
@@ -52,102 +56,128 @@ const formatTime24 = (date: Date) => {
 
 // --- COMPONENTS ---
 
+// New Emoji Map for Stickers
+const PERIOD_EMOJIS: Record<string, string> = {
+    'Early Morning': '🌌', // 00:00 - 05:00 (Technically late night, but chronological start)
+    'Morning': '🌅',
+    'Late Morning': '☀️',
+    'Afternoon': '🌤️',
+    'Evening': '🌆',
+    'Night': '🌙',
+};
+
 const TimelineSectionHeader: React.FC<{ 
     period: string, 
-    totalBlocks: number, 
-    completedBlocks: number,
+    blocks: Block[], 
     isCollapsed: boolean,
-    onToggle: () => void,
-    timeRange?: string
-}> = ({ period, totalBlocks, completedBlocks, isCollapsed, onToggle, timeRange }) => {
+    onToggle: () => void
+}> = ({ period, blocks, isCollapsed, onToggle }) => {
     
+    // Filter out breaks for counting
+    const studyBlocks = blocks.filter(b => b.type !== 'BREAK');
+    const totalBlocks = studyBlocks.length;
+    const completedBlocks = studyBlocks.filter(b => b.status === 'DONE').length;
     const progressPercent = totalBlocks > 0 ? (completedBlocks / totalBlocks) * 100 : 0;
 
+    // Calculate Times (Standard sort)
+    const sortedBlocks = [...blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+    const firstBlock = sortedBlocks[0];
+    const lastBlock = sortedBlocks[sortedBlocks.length - 1];
+    
+    // Use actual start/end if available for more accuracy, else planned
+    const startTimeStr = firstBlock ? formatTime12(firstBlock.actualStartTime || firstBlock.plannedStartTime) : '';
+    const endTimeStr = lastBlock ? formatTime12(lastBlock.actualEndTime || lastBlock.plannedEndTime) : '';
+    const timeRange = firstBlock && lastBlock ? `${startTimeStr} - ${endTimeStr}` : '';
+
+    // Calculate Total Planned Duration for display (excluding breaks)
+    const totalDurationMins = studyBlocks.reduce((acc, b) => acc + b.plannedDurationMinutes, 0);
+    const durationDisplay = formatDurationString(totalDurationMins);
+
+    // Calculate Aggregate Time Saved/Lost for Seal (Exclude breaks from seal logic)
+    let totalPlannedForCompleted = 0;
+    let totalActualForCompleted = 0;
+    let hasCompleted = false;
+
+    studyBlocks.forEach(b => {
+        if (b.status === 'DONE' && b.actualDurationMinutes !== undefined) {
+            hasCompleted = true;
+            totalPlannedForCompleted += b.plannedDurationMinutes;
+            totalActualForCompleted += b.actualDurationMinutes;
+        }
+    });
+
+    // Glassy Header Styles
     let config = {
-        bgBase: 'bg-slate-100 dark:bg-slate-800',
-        fillGradient: 'from-slate-500 to-slate-600',
-        iconColor: 'text-slate-700 dark:text-slate-400',
+        bgBase: 'bg-slate-100/50 dark:bg-slate-800/50',
+        fillGradient: 'from-slate-500/50 to-slate-600/50',
         textColor: 'text-slate-900 dark:text-slate-100',
-        borderColor: 'border-slate-300 dark:border-slate-700',
-        shadowColor: 'rgba(100, 116, 139, 0.6)',
-        Icon: ClockIcon
+        borderColor: 'border-slate-300/50 dark:border-slate-700/50',
+        shadowColor: 'rgba(100, 116, 139, 0.3)',
     };
 
     switch (period) {
-        case 'Midnight': // 12AM - 5AM
+        case 'Early Morning': // 00:00 - 06:00
             config = {
-                bgBase: 'bg-slate-200 dark:bg-slate-900',
-                fillGradient: 'from-slate-400 via-violet-500 to-slate-500',
-                iconColor: 'text-slate-700 dark:text-slate-400',
+                bgBase: 'bg-slate-200/60 dark:bg-slate-900/60',
+                fillGradient: 'from-slate-400/70 via-violet-500/70 to-slate-500/70',
                 textColor: 'text-slate-900 dark:text-slate-200',
-                borderColor: 'border-slate-300 dark:border-slate-700',
-                shadowColor: 'rgba(71, 85, 105, 0.5)',
-                Icon: SparklesIcon
+                borderColor: 'border-slate-300/50 dark:border-slate-700/50',
+                shadowColor: 'rgba(71, 85, 105, 0.3)',
             };
             break;
-        case 'Early Morning': // 5AM - 8AM
+        case 'Morning': // 06:00 - 10:00
             config = {
-                bgBase: 'bg-rose-100 dark:bg-rose-900/30',
-                fillGradient: 'from-rose-200 via-orange-200 to-rose-300',
-                iconColor: 'text-rose-700 dark:text-rose-400',
+                bgBase: 'bg-rose-100/60 dark:bg-rose-900/20',
+                fillGradient: 'from-rose-200/70 via-orange-200/70 to-rose-300/70',
                 textColor: 'text-rose-950 dark:text-rose-100',
-                borderColor: 'border-rose-200 dark:border-rose-700',
-                shadowColor: 'rgba(244, 63, 94, 0.5)',
-                Icon: SunIcon
+                borderColor: 'border-rose-200/50 dark:border-rose-700/50',
+                shadowColor: 'rgba(244, 63, 94, 0.3)',
             };
             break;
-        case 'Morning': // 8AM - 1PM
+        case 'Late Morning': // 10:00 - 13:00
             config = {
-                bgBase: 'bg-amber-100 dark:bg-amber-900/30',
-                fillGradient: 'from-amber-200 via-yellow-300 to-amber-300',
-                iconColor: 'text-amber-700 dark:text-amber-400',
+                bgBase: 'bg-amber-100/60 dark:bg-amber-900/20',
+                fillGradient: 'from-amber-200/70 via-yellow-300/70 to-amber-300/70',
                 textColor: 'text-amber-950 dark:text-amber-100',
-                borderColor: 'border-amber-200 dark:border-amber-700',
-                shadowColor: 'rgba(245, 158, 11, 0.5)',
-                Icon: SunIcon
+                borderColor: 'border-amber-200/50 dark:border-amber-700/50',
+                shadowColor: 'rgba(245, 158, 11, 0.3)',
             };
             break;
-        case 'Afternoon': // 1PM - 6PM
+        case 'Afternoon': // 13:00 - 17:00
             config = {
-                bgBase: 'bg-orange-100 dark:bg-orange-900/30',
-                fillGradient: 'from-orange-200 via-red-300 to-orange-300',
-                iconColor: 'text-orange-700 dark:text-orange-400',
+                bgBase: 'bg-orange-100/60 dark:bg-orange-900/20',
+                fillGradient: 'from-orange-200/70 via-red-300/70 to-orange-300/70',
                 textColor: 'text-orange-950 dark:text-orange-100',
-                borderColor: 'border-orange-200 dark:border-orange-700',
-                shadowColor: 'rgba(249, 115, 22, 0.5)',
-                Icon: SunCloudIcon
+                borderColor: 'border-orange-200/50 dark:border-orange-700/50',
+                shadowColor: 'rgba(249, 115, 22, 0.3)',
             };
             break;
-        case 'Evening': // 6PM - 8PM
+        case 'Evening': // 17:00 - 21:00
             config = {
-                bgBase: 'bg-indigo-100 dark:bg-indigo-900/30',
-                fillGradient: 'from-indigo-300 via-purple-400 to-indigo-300',
-                iconColor: 'text-indigo-700 dark:text-indigo-400',
+                bgBase: 'bg-indigo-100/60 dark:bg-indigo-900/20',
+                fillGradient: 'from-indigo-300/70 via-purple-400/70 to-indigo-300/70',
                 textColor: 'text-indigo-950 dark:text-indigo-100',
-                borderColor: 'border-indigo-200 dark:border-indigo-700',
-                shadowColor: 'rgba(99, 102, 241, 0.5)',
-                Icon: SunsetIcon
+                borderColor: 'border-indigo-200/50 dark:border-indigo-700/50',
+                shadowColor: 'rgba(99, 102, 241, 0.3)',
             };
             break;
-        case 'Night': // 8PM - 12AM
+        case 'Night': // 21:00 - 24:00
             config = {
-                bgBase: 'bg-blue-100 dark:bg-blue-900/30',
-                fillGradient: 'from-blue-400 via-indigo-500 to-blue-500',
-                iconColor: 'text-blue-700 dark:text-blue-400',
+                bgBase: 'bg-blue-100/60 dark:bg-blue-900/20',
+                fillGradient: 'from-blue-400/70 via-indigo-500/70 to-blue-500/70',
                 textColor: 'text-blue-950 dark:text-blue-100',
-                borderColor: 'border-blue-300 dark:border-blue-700',
-                shadowColor: 'rgba(37, 99, 235, 0.5)',
-                Icon: MoonIcon
+                borderColor: 'border-blue-300/50 dark:border-blue-700/50',
+                shadowColor: 'rgba(37, 99, 235, 0.3)',
             };
             break;
     }
 
-    const { Icon } = config;
+    const emoji = PERIOD_EMOJIS[period] || '📅';
 
     return (
         <div 
             onClick={onToggle}
-            className={`relative mt-8 mb-4 h-24 rounded-2xl overflow-hidden cursor-pointer select-none transform transition-all active:scale-[0.98] group card-3d ${config.bgBase} border-2 ${config.borderColor}`}
+            className={`relative mt-8 mb-4 h-24 rounded-2xl overflow-hidden cursor-pointer select-none transform transition-all active:scale-[0.98] group card-3d ${config.bgBase} border-2 ${config.borderColor} backdrop-blur-xl`}
             style={{
                 animation: `pulse-border-${period.replace(/\s+/g, '')} 3s infinite ease-in-out`
             }}
@@ -157,10 +187,7 @@ const TimelineSectionHeader: React.FC<{
                 className="absolute top-0 left-0 bottom-0 transition-all duration-1000 ease-out overflow-hidden"
                 style={{ width: `${progressPercent}%` }}
             >
-                {/* The Liquid Gradient Background */}
-                <div className={`absolute inset-0 bg-gradient-to-r ${config.fillGradient} opacity-90`}></div>
-                
-                {/* Animated Water Flow Effect (Overlay) */}
+                <div className={`absolute inset-0 bg-gradient-to-r ${config.fillGradient} opacity-80 backdrop-blur-sm`}></div>
                 <div 
                     className="absolute inset-0 opacity-30"
                     style={{
@@ -169,56 +196,61 @@ const TimelineSectionHeader: React.FC<{
                         animation: 'shimmer 3s infinite linear'
                     }}
                 ></div>
-
-                {/* Inner Glow */}
-                <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(255,255,255,0.3)]"></div>
             </div>
 
-            {/* Content Layer (Z-Indexed above fill) */}
-            <div className="relative z-10 flex items-center justify-between h-full px-6">
+            {/* Content Layer */}
+            <div className="relative z-10 flex items-center justify-between h-full px-4 sm:px-6">
                 
-                {/* Left: Toggle & Title */}
-                <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-full bg-white/40 backdrop-blur-md shadow-sm transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`}>
-                        <ChevronDownIcon className={`w-6 h-6 ${config.textColor}`} />
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className={`p-2 rounded-full bg-white/40 backdrop-blur-md shadow-sm transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'} shrink-0`}>
+                        <ChevronDownIcon className={`w-5 h-5 ${config.textColor}`} />
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-white/30 backdrop-blur-md rounded-xl shadow-inner">
-                            <Icon className={`w-8 h-8 ${config.textColor} drop-shadow-sm`} />
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                        {/* Sticker Icon */}
+                        <div className="text-4xl drop-shadow-md filter hover:scale-110 transition-transform cursor-pointer shrink-0" title={period}>
+                            {emoji}
                         </div>
-                        <div className="flex flex-col">
-                            <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${config.textColor} drop-shadow-md mix-blend-hard-light leading-none`}>
+                        
+                        <div className="flex flex-col min-w-0">
+                            <h3 className={`text-xl sm:text-2xl font-black tracking-tight ${config.textColor} drop-shadow-md mix-blend-hard-light leading-none truncate`}>
                                 {period}
                             </h3>
-                            {timeRange && (
-                                <span className={`text-xs font-bold font-mono mt-1 opacity-80 ${config.textColor} mix-blend-hard-light`}>
-                                    {timeRange}
-                                </span>
-                            )}
+                            <span className={`text-xs sm:text-sm font-bold font-mono mt-1 opacity-90 ${config.textColor} mix-blend-hard-light truncate`}>
+                                {timeRange && <span className="mr-1">{timeRange} •</span>}
+                                {durationDisplay} study • {totalBlocks} Tasks
+                            </span>
                         </div>
                     </div>
                 </div>
 
-                {/* Right: Big Counter */}
-                <div className="flex items-baseline gap-1">
-                    <span className={`text-5xl font-black ${config.textColor} drop-shadow-md mix-blend-overlay`}>
-                        {completedBlocks}
-                    </span>
-                    <span className={`text-xl font-bold ${config.textColor} opacity-60 mix-blend-overlay`}>
-                        /{totalBlocks}
-                    </span>
+                {/* Right Side: Time Seal or Counter */}
+                <div className="flex items-center shrink-0 ml-2">
+                    {hasCompleted ? (
+                        <div className="scale-75 sm:scale-90 origin-right">
+                            <TimeSeal planned={totalPlannedForCompleted} actual={totalActualForCompleted} />
+                        </div>
+                    ) : (
+                        <div className="flex items-baseline gap-1">
+                            <span className={`text-4xl sm:text-5xl font-black ${config.textColor} drop-shadow-md mix-blend-overlay`}>
+                                {completedBlocks}
+                            </span>
+                            <span className={`text-lg sm:text-xl font-bold ${config.textColor} opacity-60 mix-blend-overlay`}>
+                                /{totalBlocks}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Wave Edge (Visual separator if partially filled) */}
             {progressPercent > 0 && progressPercent < 100 && (
                 <div 
                     className="absolute top-0 bottom-0 w-2 bg-white/30 blur-sm z-20"
                     style={{ left: `${progressPercent}%`, transform: 'translateX(-50%)' }}
                 ></div>
             )}
-
+            
+            {/* Keep Styles for Animation */}
             <style>{`
                 @keyframes shimmer {
                     0% { background-position: 200% 0; }
@@ -255,7 +287,7 @@ const TimeSeal: React.FC<{ planned: number, actual: number }> = ({ planned, actu
             <div className={`absolute inset-2 rounded-full opacity-40 blur-md`} style={{ animation: `pulse-glow-${isSaved ? 'green' : 'red'} ${pulseDuration} infinite alternate`, background: isSaved ? `radial-gradient(circle, rgba(34,197,94,0.8) 0%, rgba(16,185,129,0) 70%)` : `radial-gradient(circle, rgba(239,68,68,0.8) 0%, rgba(236,72,153,0) 70%)` }}></div>
             <div className={`relative z-10 w-full h-full rounded-full border-[3px] border-double flex flex-col items-center justify-center bg-white/10 backdrop-blur-[1px] shadow-sm ${isSaved ? 'border-green-600 text-green-700' : 'border-red-600 text-red-700'}`}>
                 <div className={`absolute inset-1 rounded-full border border-dashed opacity-50 ${isSaved ? 'border-green-600' : 'border-red-600'}`}></div>
-                <div className="font-black text-2xl leading-none tracking-tighter drop-shadow-sm flex items-center">{isSaved ? '+' : '-'}{absDiff}<span className="text-xs ml-0.5 align-top mt-1">m</span></div>
+                <div className="font-black text-2xl leading-none tracking-tighter drop-shadow-sm flex items-center">{isSaved ? '+' : '-'}{Math.round(absDiff)}<span className="text-xs ml-0.5 align-top mt-1">m</span></div>
                 <div className="text-[9px] font-bold uppercase tracking-widest opacity-90 mt-0.5">{isSaved ? 'SAVED' : 'OVER'}</div>
             </div>
             <style>{` @keyframes pulse-glow-green { 0% { transform: scale(0.95); opacity: 0.3; filter: hue-rotate(0deg); } 100% { transform: scale(1.15); opacity: 0.7; filter: hue-rotate(30deg); } } @keyframes pulse-glow-red { 0% { transform: scale(0.95); opacity: 0.3; filter: hue-rotate(0deg); } 100% { transform: scale(1.15); opacity: 0.6; filter: hue-rotate(-20deg); } } .animate-scale-in { animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; } @keyframes scaleIn { from { transform: scale(0) rotate(-45deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 0.2; } } `}</style>
@@ -270,9 +302,9 @@ const InfoCard: React.FC<{
     className?: string;
     colorClass?: string; 
 }> = ({ title, icon: Icon, children, className = '', colorClass = 'text-indigo-600 bg-indigo-50' }) => (
-    <div className={`bg-white dark:bg-slate-800 rounded-3xl border border-white/50 dark:border-slate-700/50 p-6 shadow-lg shadow-slate-200/50 dark:shadow-none card-3d ${className}`}>
+    <div className={`bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border border-white/40 dark:border-white/10 p-6 shadow-lg card-3d ${className}`}>
         <div className="flex items-center gap-3 mb-5">
-            <div className={`p-3 rounded-xl ${colorClass} shadow-sm border border-white/50 dark:border-white/5`}>
+            <div className={`p-3 rounded-xl ${colorClass} shadow-sm border border-white/50 dark:border-white/5 backdrop-blur-sm`}>
                 <Icon className="w-6 h-6" />
             </div>
             <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-lg tracking-tight">{title}</h3>
@@ -281,15 +313,16 @@ const InfoCard: React.FC<{
     </div>
 );
 
-// ... (FullDayPlanLayout remains same) ...
 const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ plan, onEdit }) => {
     const totalStudyMinutes = plan.totalStudyMinutesPlanned || 0;
     const totalHours = Math.floor(totalStudyMinutes / 60);
     const remainingMinutes = totalStudyMinutes % 60;
     
-    // Execution Stats
+    // Execution Stats - Filter out BREAKS for effective study time
     const executedBlocks = plan.blocks?.filter(b => b.status === 'DONE') || [];
-    const actualMinutes = executedBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
+    const actualStudyBlocks = executedBlocks.filter(b => b.type !== 'BREAK');
+    const actualMinutes = actualStudyBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
+    
     const actualHours = Math.floor(actualMinutes / 60);
     const actualRemMinutes = actualMinutes % 60;
     
@@ -306,7 +339,7 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
             <div className="lg:col-span-2 space-y-6">
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-bold text-slate-800 dark:text-white">Daily Summary</h3>
-                    <button onClick={onEdit} className="btn-3d bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                    <button onClick={onEdit} className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 backdrop-blur-md">
                         <PencilSquareIcon className="w-4 h-4" /> Edit Plan
                     </button>
                 </div>
@@ -314,10 +347,10 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                 <InfoCard 
                     title="Planned Blocks" 
                     icon={CalendarIcon} 
-                    colorClass="text-blue-600 bg-blue-50 dark:bg-blue-900/20"
+                    colorClass="text-blue-600 bg-blue-50/80 dark:bg-blue-900/30"
                 >
                     <div className="space-y-2">
-                        {plan.blocks && plan.blocks.length > 0 ? plan.blocks.map((b, i) => (
+                        {plan.blocks && plan.blocks.length > 0 ? plan.blocks.filter(b => b.type !== 'BREAK').map((b, i) => (
                             <div key={i} className="flex justify-between text-sm py-2 border-b border-slate-100 dark:border-slate-800 last:border-0 items-center">
                                 <span className="font-mono text-slate-500 w-24 text-xs font-bold">{formatTime12(b.plannedStartTime)} - {formatTime12(b.plannedEndTime)}</span>
                                 <span className="font-bold truncate flex-1 text-slate-700 dark:text-slate-200 flex items-center">
@@ -333,7 +366,7 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                 <InfoCard 
                     title="Execution Overview" 
                     icon={FireIcon}
-                    colorClass="text-orange-600 bg-orange-50 dark:bg-orange-900/20"
+                    colorClass="text-orange-600 bg-orange-50/80 dark:bg-orange-900/30"
                 >
                     <div className="space-y-3">
                         {executedBlocks.length > 0 ? executedBlocks.map((b, i) => (
@@ -358,8 +391,8 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                                         )}
                                     </div>
                                 </div>
-                                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 self-start sm:self-auto">
-                                    {formatDurationString(b.actualDurationMinutes || 0)}
+                                <span className={`text-xs font-mono font-bold ${b.type === 'BREAK' ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20' : 'text-slate-500 bg-slate-50 dark:bg-slate-800'} px-2 py-1 rounded border border-slate-200 dark:border-slate-700 self-start sm:self-auto`}>
+                                    {b.type === 'BREAK' ? `Break: ${formatDurationString(b.actualDurationMinutes || 0)}` : formatDurationString(b.actualDurationMinutes || 0)}
                                 </span>
                             </div>
                         )) : (
@@ -377,17 +410,17 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                     title="Study Performance" 
                     icon={BookOpenIcon} 
                     className="text-center"
-                    colorClass="text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20"
+                    colorClass="text-emerald-600 bg-emerald-50/80 dark:bg-emerald-900/30"
                 >
                     <div className="mb-6">
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Total Planned</p>
-                        <div className="flex items-baseline justify-center gap-1 bg-slate-50 dark:bg-slate-800/50 py-4 rounded-2xl border border-slate-100 dark:border-slate-700">
+                        <div className="flex items-baseline justify-center gap-1 bg-slate-50/50 dark:bg-slate-800/50 py-4 rounded-2xl border border-slate-100 dark:border-slate-700 backdrop-blur-sm">
                             <span className="text-4xl font-black text-slate-800 dark:text-white drop-shadow-sm">{totalHours}</span><span className="text-sm font-bold text-slate-500">h</span>
                             {remainingMinutes > 0 && <><span className="text-4xl font-black text-slate-800 dark:text-white ml-2 drop-shadow-sm">{remainingMinutes}</span><span className="text-sm font-bold text-slate-500">m</span></>}
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-inner-3d">
+                    <div className="bg-white/70 dark:bg-slate-800/70 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-inner-3d backdrop-blur-sm">
                         <div className="flex justify-between items-end mb-2">
                             <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Actual Execution</p>
                             <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{completionPercent}%</span>
@@ -396,7 +429,7 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                             <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-full rounded-full transition-all duration-1000 ease-out shadow-md" style={{ width: `${completionPercent}%` }}></div>
                         </div>
                         <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300 mt-2">
-                            {actualHours}h {actualRemMinutes}m <span className="text-sm font-normal text-slate-400">done</span>
+                            {actualHours}h {actualRemMinutes}m <span className="text-sm font-normal text-slate-400">effective</span>
                         </p>
                     </div>
                 </InfoCard>
@@ -404,7 +437,7 @@ const FullDayPlanLayout: React.FC<{ plan: DayPlan, onEdit: () => void }> = ({ pl
                  <InfoCard 
                     title="Timeline" 
                     icon={ClockIcon}
-                    colorClass="text-violet-600 bg-violet-50 dark:bg-violet-900/20"
+                    colorClass="text-violet-600 bg-violet-50/80 dark:bg-violet-900/30"
                 >
                     <div className="space-y-4">
                         <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-700">
@@ -435,12 +468,14 @@ const SwipeableBlockWrapper: React.FC<{
     onClick: () => void,
     isSelectMode: boolean,
     isSelected: boolean,
-    onSelect: () => void
-}> = ({ children, onDelete, onClick, isSelectMode, isSelected, onSelect }) => {
+    onSelect: () => void,
+    onReset?: () => void
+}> = ({ children, onDelete, onClick, isSelectMode, isSelected, onSelect, onReset }) => {
     const touchStartRef = useRef<{ x: number, y: number } | null>(null);
     const [offset, setOffset] = useState(0);
 
     const enableSwipe = !isSelectMode;
+    const maxSwipe = onReset ? -160 : -80; // Expand if reset is available
 
     const handleTouchStart = (e: React.TouchEvent) => {
         if (!enableSwipe) return;
@@ -453,15 +488,16 @@ const SwipeableBlockWrapper: React.FC<{
         const deltaY = e.touches[0].clientY - touchStartRef.current.y;
         
         if (Math.abs(deltaX) > Math.abs(deltaY) + 5) {
-            const newOffset = Math.min(0, Math.max(-100, deltaX));
+            const newOffset = Math.min(0, Math.max(maxSwipe * 1.5, deltaX)); // Allow some overdrag
             setOffset(newOffset);
         }
     };
 
     const handleTouchEnd = () => {
         if (!enableSwipe) return;
-        if (offset < -50) {
-            setOffset(-80);
+        // Snap to open if past threshold (halfway)
+        if (offset < maxSwipe / 2) {
+            setOffset(maxSwipe);
         } else {
             setOffset(0);
         }
@@ -477,26 +513,47 @@ const SwipeableBlockWrapper: React.FC<{
         if (!touchStartRef.current || e.buttons !== 1 || !enableSwipe) return;
         const deltaX = e.clientX - touchStartRef.current.x;
         if (deltaX < 0) {
-             const newOffset = Math.min(0, Math.max(-100, deltaX)); 
+             const newOffset = Math.min(0, Math.max(maxSwipe * 1.5, deltaX)); 
              setOffset(newOffset);
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: React.MouseEvent) => {
         if (!enableSwipe) return;
-        if (offset < -50) setOffset(-80);
+        if (offset < maxSwipe / 2) setOffset(maxSwipe);
         else setOffset(0);
         touchStartRef.current = null;
     };
 
     return (
         <div className="relative overflow-visible select-none mb-4">
-            <div 
-                className="absolute top-0 bottom-4 right-0 w-24 bg-red-500 flex items-center justify-center z-0 cursor-pointer rounded-2xl my-1 shadow-inner"
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            >
-                <TrashIcon className="w-6 h-6 text-white" />
+            {/* Action Buttons Layer */}
+            <div className="absolute top-0 bottom-4 right-0 flex z-0 my-1">
+                {onReset && (
+                    <div 
+                        className="w-20 bg-indigo-500 flex items-center justify-center cursor-pointer rounded-l-2xl shadow-inner transition-colors hover:bg-indigo-600 backdrop-blur-sm"
+                        onClick={(e) => { e.stopPropagation(); onReset(); setOffset(0); }}
+                        title="Reset Block"
+                    >
+                        <div className="flex flex-col items-center text-white">
+                            <ArrowPathIcon className="w-5 h-5" />
+                            <span className="text-[10px] font-bold mt-1">Reset</span>
+                        </div>
+                    </div>
+                )}
+                <div 
+                    className={`w-24 bg-red-500 flex items-center justify-center cursor-pointer shadow-inner transition-colors hover:bg-red-600 backdrop-blur-sm ${onReset ? 'rounded-r-2xl' : 'rounded-2xl'}`}
+                    onClick={(e) => { e.stopPropagation(); onDelete(); setOffset(0); }}
+                    title="Delete Block"
+                >
+                    <div className="flex flex-col items-center text-white">
+                        <TrashIcon className="w-5 h-5" />
+                        <span className="text-[10px] font-bold mt-1">Delete</span>
+                    </div>
+                </div>
             </div>
+
+            {/* Foreground Content Layer */}
             <div 
                 className="relative z-10 transition-transform duration-200 ease-out active:scale-[0.98]"
                 style={{ transform: `translateX(${offset}px)` }}
@@ -532,7 +589,15 @@ const SwipeableBlockWrapper: React.FC<{
 };
 
 // --- BLOCK RENDERER ---
-const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, onStart: () => void, onPause: () => void, onFinish: () => void }> = ({ block, isCurrent, isNext, onStart, onPause, onFinish }) => {
+const BlockCard: React.FC<{ 
+    block: Block, 
+    isCurrent: boolean, 
+    isNext: boolean, 
+    onStart: () => void, 
+    onPause: () => void, 
+    onFinish: () => void,
+    currentTimeMinutes: number // NEW: Pass current time for visual line logic
+}> = ({ block, isCurrent, isNext, onStart, onPause, onFinish, currentTimeMinutes }) => {
     const isDone = block.status === 'DONE';
     const isBreak = block.type === 'BREAK';
     const isVirtual = block.isVirtual; 
@@ -540,6 +605,56 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
     const [countdown, setCountdown] = useState<string>('--:--');
     const [progress, setProgress] = useState(0);
     const timerRef = useRef<number | null>(null);
+
+    // Time Calculations for Vertical Line
+    const startMins = parseTimeToMinutes(block.plannedStartTime);
+    const endMins = parseTimeToMinutes(block.plannedEndTime);
+    // Handle midnight wrap if needed (simple assumption for day view)
+    const effectiveEndMins = endMins < startMins ? endMins + 24*60 : endMins; 
+    
+    // Fill Logic
+    // 1. If Done -> 100% Green (Success)
+    // 2. If Not Done / Rescheduled -> 100% Red (Fail)
+    // 3. If Not Started:
+    //    - If time > end -> 100% Orange (Missed)
+    //    - If time > start -> Percentage Orange/Glowing (Late/Missed Progress)
+    //    - If time < start -> 0% (Future)
+    
+    let lineFillColor = 'bg-slate-200/50 dark:bg-slate-700/50';
+    let lineFillHeight = '0%';
+    let lineGlow = '';
+
+    if (block.status === 'DONE') {
+        lineFillColor = 'bg-green-500';
+        lineFillHeight = '100%';
+    } else if (block.completionStatus === 'NOT_DONE' || block.completionStatus === 'PARTIAL' || block.rescheduledTo) {
+        lineFillColor = 'bg-red-500';
+        lineFillHeight = '100%';
+    } else if (block.status === 'NOT_STARTED' || block.status === 'PAUSED') {
+        if (currentTimeMinutes > effectiveEndMins) {
+            // Totally missed/overdue
+            lineFillColor = 'bg-orange-500';
+            lineFillHeight = '100%';
+            lineGlow = 'shadow-[0_0_8px_rgba(249,115,22,0.8)]'; // Strong Orange Glow
+        } else if (currentTimeMinutes > startMins) {
+            // Currently passing through this block time (Late/Active window)
+            const duration = effectiveEndMins - startMins;
+            const elapsed = currentTimeMinutes - startMins;
+            const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+            lineFillColor = 'bg-orange-400';
+            lineFillHeight = `${pct}%`;
+            lineGlow = 'shadow-[0_0_5px_rgba(249,115,22,0.5)]';
+        }
+    } else if (block.status === 'IN_PROGRESS') {
+        // Active tracking handled by card, line can just track time or match green
+        const duration = effectiveEndMins - startMins;
+        const elapsed = currentTimeMinutes - startMins;
+        const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
+        lineFillColor = 'bg-emerald-500'; // Using emerald for active progress
+        lineFillHeight = `${pct}%`;
+        lineGlow = 'shadow-[0_0_5px_rgba(16,185,129,0.5)]';
+    }
+
 
     useEffect(() => {
         if (isCurrent && block.status === 'IN_PROGRESS') {
@@ -602,29 +717,83 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
         };
     }, [isCurrent, block.status, block.segments, block.plannedDurationMinutes, block.date]);
 
-    let cardStyle = 'bg-white dark:bg-slate-800 border-white/60 dark:border-slate-700';
+    // Glassy Card Styles
+    let cardStyle = 'bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border-white/30 dark:border-slate-700/50';
     let shadowClass = 'card-3d';
-    let accentColor = 'bg-slate-200 dark:bg-slate-700';
+    
+    // Accent color determines the *static* background line, but we now override with dynamic line
+    let accentColor = 'bg-slate-200/50 dark:bg-slate-700/50'; 
 
     if (isVirtual) {
-        cardStyle = 'bg-amber-50 dark:bg-amber-900/10 border-amber-200/50 dark:border-amber-800';
+        cardStyle = 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-200/30 dark:border-amber-800 backdrop-blur-sm';
         accentColor = 'bg-amber-400';
     } else if (block.rescheduledTo || block.completionStatus === 'NOT_DONE') {
-        cardStyle = 'bg-red-50 dark:bg-red-900/10 border-red-200/50 dark:border-red-800';
+        cardStyle = 'bg-red-50/50 dark:bg-red-900/10 border-red-200/30 dark:border-red-800 backdrop-blur-sm';
         accentColor = 'bg-red-400';
     } else if (isDone) {
-        cardStyle = 'bg-green-50 dark:bg-green-900/10 border-green-200/50 dark:border-green-800';
+        cardStyle = 'bg-green-50/50 dark:bg-green-900/10 border-green-200/30 dark:border-green-800 backdrop-blur-sm';
         accentColor = 'bg-green-500';
         shadowClass = 'card-3d'; 
     } else if (isCurrent) {
-        cardStyle = 'bg-white dark:bg-slate-800 border-emerald-400 dark:border-emerald-600 z-20 relative overflow-hidden';
+        cardStyle = 'bg-white/80 dark:bg-slate-800/80 border-emerald-400/70 dark:border-emerald-600/70 z-20 relative overflow-hidden backdrop-blur-xl';
         shadowClass = 'shadow-[0_0_40px_-5px_rgba(16,185,129,0.5)] dark:shadow-[0_0_40px_-10px_rgba(16,185,129,0.4)] scale-[1.02]';
         accentColor = 'bg-emerald-500';
     } else if (isBreak) {
-        cardStyle = 'bg-teal-50 dark:bg-teal-900/20 border-dashed border-teal-200 dark:border-teal-800';
+        cardStyle = 'bg-teal-50/50 dark:bg-teal-900/20 border-dashed border-teal-200/50 dark:border-teal-800 backdrop-blur-sm';
         shadowClass = 'shadow-sm';
         accentColor = 'bg-teal-400';
     }
+
+    // Reusable function to display segments timeline
+    const renderSegments = () => {
+        const items: React.ReactNode[] = [];
+        
+        // 1. Display Actual Study Segments
+        if (block.segments) {
+            block.segments.forEach((seg, idx) => {
+                if (seg.start && seg.end) {
+                    const start = parseTimeToMinutes(seg.start);
+                    let end = parseTimeToMinutes(seg.end);
+                    if (end < start) end += 24*60;
+                    const dur = end - start;
+                    items.push(
+                        <div key={`seg-${idx}`} className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+                            <span className="text-xs font-mono text-slate-600 dark:text-slate-400">{formatTime12(seg.start)} - {formatTime12(seg.end)}</span>
+                            <span className="text-xs font-bold text-green-600 dark:text-green-400">Studied ({dur}m)</span>
+                        </div>
+                    );
+                }
+            });
+        }
+
+        // 2. Display Interruptions (Breaks)
+        if (block.interruptions) {
+            block.interruptions.forEach((int, idx) => {
+                if (int.start && int.end) {
+                    const start = parseTimeToMinutes(int.start);
+                    let end = parseTimeToMinutes(int.end);
+                    if (end < start) end += 24*60;
+                    const dur = end - start;
+                    items.push(
+                        <div key={`int-${idx}`} className="flex justify-between items-center py-1 border-b border-slate-100 dark:border-slate-700/50 last:border-0 bg-amber-50/50 dark:bg-amber-900/10 -mx-2 px-2 rounded">
+                            <span className="text-xs font-mono text-slate-500 dark:text-slate-500">{formatTime12(int.start)} - {formatTime12(int.end)}</span>
+                            <span className="text-xs font-bold text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                                <CoffeeIcon className="w-3 h-3"/> {int.reason || "Break"} ({dur}m)
+                            </span>
+                        </div>
+                    );
+                }
+            });
+        }
+
+        // Sort by start time visual
+        return (
+            <div className="mt-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50 space-y-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Activity Log</p>
+                {items}
+            </div>
+        );
+    };
 
     const renderCardContent = () => {
         if (isDone) {
@@ -633,7 +802,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
             
             return (
                 <div className={`rounded-2xl border ${cardStyle} ${shadowClass} overflow-hidden flex flex-col md:flex-row w-full transition-all duration-300`}>
-                    <div className="flex-1 p-4 border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 bg-white/50 dark:bg-slate-800/50">
+                    <div className="flex-1 p-4 border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md">
                         <div className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-wider">Original Plan</div>
                         <div className="font-mono font-bold text-sm text-slate-600 dark:text-slate-300 mb-1">{isVirtual ? formatTime12(block.plannedStartTime) : `${formatTime12(block.plannedStartTime)} - ${formatTime12(block.plannedEndTime)}`}</div>
                         <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-3">{block.title}</h4>
@@ -648,7 +817,7 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                         </div>
                     </div>
 
-                    <div className="flex-1 p-4 bg-green-50/20 dark:bg-green-900/5 relative">
+                    <div className="flex-1 p-4 bg-green-50/20 dark:bg-green-900/10 relative backdrop-blur-sm">
                         <div className="flex justify-between items-start mb-3">
                             <div>
                                 <div className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase mb-1 flex items-center gap-1 tracking-wider">
@@ -656,34 +825,39 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                 </div>
                                 <div className="font-mono font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
                                     <span>{formatTime12(block.actualStartTime)} - {formatTime12(block.actualEndTime)}</span>
-                                    {block.actualDurationMinutes && (
-                                        <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
-                                            ({formatDurationString(block.actualDurationMinutes)})
+                                    {block.actualDurationMinutes !== undefined && (
+                                        <span className="text-xs font-normal text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded">
+                                            (Eff. Study: {formatDurationString(block.actualDurationMinutes)})
                                         </span>
                                     )}
                                 </div>
                             </div>
-                            {!block.rescheduledTo && block.completionStatus !== 'NOT_DONE' && (
+                            {/* Lowered threshold for TimeSeal visibility based on feedback */}
+                            {!block.rescheduledTo && block.completionStatus !== 'NOT_DONE' && Math.abs(plannedDuration - actualDuration) > 1 && (
                                 <TimeSeal planned={plannedDuration} actual={actualDuration} />
                             )}
                         </div>
 
                         {block.rescheduledTo && (
-                            <div className="mb-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-red-700 dark:text-red-300 font-bold shadow-sm">
+                            <div className="mb-3 bg-red-50/50 dark:bg-red-900/20 border border-red-100/50 dark:border-red-800/50 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-red-700 dark:text-red-300 font-bold shadow-sm">
                                 <ArrowRightIcon className="w-3.5 h-3.5" />
                                 <span>Rescheduled to {block.rescheduledTo.includes(':') ? formatTime12(block.rescheduledTo) : block.rescheduledTo}</span>
                             </div>
                         )}
 
-                        <div className="space-y-2">
+                        {/* Render Segments Breakdown */}
+                        {renderSegments()}
+
+                        <div className="space-y-2 mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Completion</p>
                             {block.tasks && block.tasks.length > 0 ? block.tasks.map((t, i) => (
-                                <div key={i} className={`p-2 rounded-lg border flex items-center justify-between shadow-sm ${t.execution?.completed ? 'bg-white border-green-100 dark:border-green-900/30 dark:bg-slate-800' : 'bg-red-50 border-red-100 dark:border-red-900/30 dark:bg-slate-800'}`}>
+                                <div key={i} className={`p-2 rounded-lg border flex items-center justify-between shadow-sm backdrop-blur-sm ${t.execution?.completed ? 'bg-white/50 border-green-100/50 dark:border-green-900/30 dark:bg-slate-800/50' : 'bg-red-50/50 border-red-100/50 dark:border-red-900/30 dark:bg-slate-800/50'}`}>
                                     <div className="flex items-center gap-2 mb-1 min-w-0 flex-1">
                                         {t.execution?.completed ? <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" /> : <XMarkIcon className="w-4 h-4 text-red-500 flex-shrink-0" />}
                                         <span className={`text-xs font-bold truncate ${t.execution?.completed ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>{t.detail}</span>
                                     </div>
                                     {t.execution?.note && (
-                                        <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded max-w-[40%] truncate text-right ml-2 shrink-0" title={t.execution.note}>
+                                        <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-slate-700/50 px-2 py-1 rounded max-w-[40%] truncate text-right ml-2 shrink-0" title={t.execution.note}>
                                             {t.execution.note}
                                         </span>
                                     )}
@@ -736,46 +910,46 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                 <span className={`font-mono font-bold text-sm ${isCurrent ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-500'}`}>
                                     {isVirtual ? formatTime12(block.plannedStartTime) : `${formatTime12(block.plannedStartTime)} - ${formatTime12(block.plannedEndTime)}`}
                                 </span>
-                                {isBreak && <span className="text-[10px] font-bold bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded shadow-sm border border-teal-200 dark:border-teal-800">BREAK</span>}
-                                {isVirtual && <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 shadow-sm">DUE</span>}
+                                {isBreak && <span className="text-[10px] font-bold bg-teal-100/50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded shadow-sm border border-teal-200/50 dark:border-teal-800">BREAK</span>}
+                                {isVirtual && <span className="text-[10px] font-bold bg-amber-100/50 dark:bg-amber-900/30 px-2 py-0.5 rounded text-amber-600 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800 shadow-sm">DUE</span>}
                             </div>
                             <h4 className="font-extrabold text-xl text-slate-800 dark:text-white tracking-tight drop-shadow-sm">{block.title}</h4>
-                            {(isVirtual || isBreak) && block.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium bg-white/50 dark:bg-black/10 inline-block px-2 py-1 rounded">{block.description}</p>}
+                            {(isVirtual || isBreak) && block.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium bg-white/40 dark:bg-black/10 inline-block px-2 py-1 rounded">{block.description}</p>}
                         </div>
                         
                         <div className="flex items-center gap-2">
                             {isCurrent ? (
                                 <>
-                                    <div className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-xl text-emerald-700 dark:text-emerald-300 font-mono font-black text-xl mr-2 animate-pulse shadow-inner border border-emerald-200 dark:border-emerald-800">
+                                    <div className="px-4 py-1.5 bg-emerald-100/80 dark:bg-emerald-900/50 rounded-xl text-emerald-700 dark:text-emerald-300 font-mono font-black text-xl mr-2 animate-pulse shadow-inner border border-emerald-200/50 dark:border-emerald-800">
                                         {countdown}
                                     </div>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); onFinish(); }} 
-                                        className="btn-3d bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm"
+                                        className="btn-3d bg-white/80 text-emerald-600 border border-emerald-200 hover:bg-emerald-50 px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1 shadow-sm backdrop-blur-sm"
                                     >
                                         <StopIcon className="w-4 h-4" /> Finish
                                     </button>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); onPause(); }} 
-                                        className="btn-3d p-2.5 bg-amber-100 text-amber-600 rounded-xl hover:bg-amber-200 transition-colors"
+                                        className="btn-3d p-2.5 bg-amber-100/80 text-amber-600 rounded-xl hover:bg-amber-200 transition-colors backdrop-blur-sm"
                                     >
                                         <PauseIcon className="w-5 h-5" />
                                     </button>
                                 </>
                             ) : block.status === 'PAUSED' ? (
-                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className="btn-3d px-4 py-2 bg-amber-100 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-200 transition-colors flex items-center gap-1">
+                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className="btn-3d px-4 py-2 bg-amber-100/80 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-200 transition-colors flex items-center gap-1 backdrop-blur-sm">
                                     <PlayIcon className="w-4 h-4" /> Resume
                                 </button>
                             ) : (
                                 !isBreak && (
-                                    <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`btn-3d p-3 rounded-xl transition-all ${isNext ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:text-indigo-500'} ${isVirtual ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}`}>
+                                    <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`btn-3d p-3 rounded-xl transition-all backdrop-blur-sm ${isNext ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-slate-100/50 dark:bg-slate-700/50 text-slate-400 hover:text-indigo-500'} ${isVirtual ? 'bg-amber-500 text-white hover:bg-amber-600' : ''}`}>
                                         <PlayIcon className="w-6 h-6" />
                                     </button>
                                 )
                             )}
                             
                             {isBreak && !isCurrent && block.status !== 'DONE' && (
-                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`btn-3d p-3 rounded-xl transition-all bg-teal-500 text-white hover:bg-teal-600`}>
+                                <button onClick={(e) => { e.stopPropagation(); onStart(); }} className={`btn-3d p-3 rounded-xl transition-all bg-teal-500 text-white hover:bg-teal-600 backdrop-blur-sm`}>
                                     <PlayIcon className="w-6 h-6" />
                                 </button>
                             )}
@@ -797,19 +971,19 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                                 const metaText = metaTextParts.join(', ');
 
                                 const taskColorClasses = {
-                                    FA: 'bg-indigo-50/80 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300',
-                                    VIDEO: 'bg-blue-50/80 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800 text-blue-700 dark:text-blue-300',
-                                    ANKI: 'bg-amber-50/80 dark:bg-amber-900/10 border-amber-100 dark:border-amber-800 text-amber-700 dark:text-amber-300',
-                                    QBANK: 'bg-emerald-50/80 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
-                                    OTHER: 'bg-slate-50/80 dark:bg-slate-800/10 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300',
-                                }[task.type] || 'bg-slate-50/80 dark:bg-slate-800/10 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300';
+                                    FA: 'bg-indigo-50/60 dark:bg-indigo-900/20 border-indigo-100/50 dark:border-indigo-800/50 text-indigo-700 dark:text-indigo-300',
+                                    VIDEO: 'bg-blue-50/60 dark:bg-blue-900/20 border-blue-100/50 dark:border-blue-800/50 text-blue-700 dark:text-blue-300',
+                                    ANKI: 'bg-amber-50/60 dark:bg-amber-900/20 border-amber-100/50 dark:border-amber-800/50 text-amber-700 dark:text-amber-300',
+                                    QBANK: 'bg-emerald-50/60 dark:bg-emerald-900/20 border-emerald-100/50 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-300',
+                                    OTHER: 'bg-slate-50/60 dark:bg-slate-800/20 border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300',
+                                }[task.type] || 'bg-slate-50/60 dark:bg-slate-800/20 border-slate-200/50 dark:border-slate-700/50 text-slate-600 dark:text-slate-300';
                                 
                                 return (
                                     <div key={i} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold shadow-sm backdrop-blur-sm ${taskColorClasses}`}>
                                         {task.type === 'FA' && <BookOpenIcon className="w-3 h-3" />}
                                         {task.type === 'VIDEO' && <VideoIcon className="w-3 h-3" />}
-                                        {task.type === 'ANKI' && <FireIcon className="w-3 h-3" />}
-                                        {task.type === 'QBANK' && <CheckCircleIcon className="w-3 h-3" />}
+                                        {task.type === 'ANKI' && <StarIcon className="w-3 h-3" />}
+                                        {task.type === 'QBANK' && <QIcon className="w-3 h-3" />}
                                         <span>{task.detail}</span>
                                         {metaText && (
                                             <span className="ml-1.5 opacity-80 font-medium">
@@ -823,11 +997,11 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
                     )}
                     
                     {isCurrent && (
-                        <div className="mt-3 pt-3 border-t border-emerald-200/50 dark:border-emerald-800/50 flex justify-between items-center">
+                        <div className="mt-3 pt-3 border-t border-emerald-200/30 dark:border-emerald-800/30 flex justify-between items-center">
                             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 animate-pulse">
                                 <ClockIcon className="w-3 h-3" /> Focus Mode Active
                             </span>
-                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-black/20 px-2 py-1 rounded-lg backdrop-blur-md">started {formatTime12(block.actualStartTime)}</span>
+                            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/40 dark:bg-black/20 px-2 py-1 rounded-lg backdrop-blur-md">started {formatTime12(block.actualStartTime)}</span>
                         </div>
                     )}
                 </div>
@@ -838,14 +1012,24 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
     return (
         <div className={`flex gap-4 relative group ${isBreak ? 'opacity-95 scale-[0.98] origin-left' : ''} ${isVirtual ? 'hover:scale-[1.01]' : ''}`}>
             <div className="w-12 flex-shrink-0 relative flex flex-col items-center justify-center">
-                <div className={`absolute top-0 bottom-0 w-1 rounded-full ${accentColor} opacity-30`}></div>
+                {/* 
+                    Dynamic Timeline Connector Line 
+                    Replaces static: <div className={`absolute top-0 bottom-0 w-1 rounded-full ${accentColor} opacity-30`}></div>
+                */}
+                <div className="absolute top-0 bottom-0 w-1.5 bg-slate-200/50 dark:bg-slate-800/50 rounded-full overflow-hidden backdrop-blur-sm">
+                    <div 
+                        className={`absolute top-0 w-full transition-all duration-1000 ease-in-out ${lineFillColor} ${lineGlow}`} 
+                        style={{ height: lineFillHeight }}
+                    ></div>
+                </div>
+
                 {!isVirtual && block.index >= 0 && !isBreak && (
-                    <div className={`relative z-10 border-2 text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full shadow-md transition-all ${isCurrent ? 'bg-emerald-500 border-emerald-400 text-white scale-110 ring-2 ring-emerald-200' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                    <div className={`relative z-10 border-2 text-sm font-bold w-8 h-8 flex items-center justify-center rounded-full shadow-md transition-all backdrop-blur-sm ${isCurrent ? 'bg-emerald-500 border-emerald-400 text-white scale-110 ring-2 ring-emerald-200' : 'bg-white/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-500'}`}>
                         {block.index + 1}
                     </div>
                 )}
                 {isBreak && (
-                    <div className="relative z-10 w-8 h-8 flex items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/50 border-2 border-teal-200 dark:border-teal-700 text-teal-600 dark:text-teal-400 shadow-sm">
+                    <div className="relative z-10 w-8 h-8 flex items-center justify-center rounded-full bg-teal-100/80 dark:bg-teal-900/50 border-2 border-teal-200 dark:border-teal-700 text-teal-600 dark:text-teal-400 shadow-sm backdrop-blur-sm">
                         <CoffeeIcon className="w-4 h-4" />
                     </div>
                 )}
@@ -857,31 +1041,33 @@ const BlockCard: React.FC<{ block: Block, isCurrent: boolean, isNext: boolean, o
     );
 };
 
-// FIX: Define the missing BlocksLayout component.
 // --- BLOCKS LAYOUT (Timeline View) ---
 interface BlocksLayoutProps {
     blocks: Block[];
     onStartBlock: (blockId: string, block: Block) => void;
-    onPauseBlock: (blockId: string) => void;
+    onPauseBlock: (blockId: string, blockTitle: string) => void;
     onFinishBlock: (block: Block) => void;
     onDeleteBlock: (block: Block) => void;
     onSelectBlock: (block: Block) => void;
     isSelectMode: boolean;
     selectedBlockIds: Set<string>;
     onToggleSelection: (blockId: string) => void;
+    onResetBlock: (block: Block) => void;
+    currentTimeMinutes: number; // NEW PROP
 }
 
-const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock, isSelectMode, selectedBlockIds, onToggleSelection }) => {
+const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPauseBlock, onFinishBlock, onDeleteBlock, onSelectBlock, isSelectMode, selectedBlockIds, onToggleSelection, onResetBlock, currentTimeMinutes }) => {
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
     const getPeriod = (timeStr: string): string => {
         const hour = parseInt(timeStr.split(':')[0]);
-        if (hour < 5) return 'Midnight';
-        if (hour < 8) return 'Early Morning';
-        if (hour < 13) return 'Morning';
-        if (hour < 18) return 'Afternoon';
-        if (hour < 20) return 'Evening';
-        return 'Night';
+        
+        if (hour < 6) return 'Early Morning'; // 00:00 - 05:59
+        if (hour < 10) return 'Morning';      // 06:00 - 09:59
+        if (hour < 13) return 'Late Morning'; // 10:00 - 12:59
+        if (hour < 17) return 'Afternoon';    // 13:00 - 16:59
+        if (hour < 21) return 'Evening';      // 17:00 - 20:59
+        return 'Night';                       // 21:00 - 23:59
     };
 
     const groupedBlocks = blocks.reduce((acc, block) => {
@@ -899,6 +1085,7 @@ const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPau
 
     let nextBlockId: string | null = null;
     if (!currentBlock) {
+        // Sort using standard minutes
         const upcomingBlocks = blocks
             .filter(b => b.status === 'NOT_STARTED' && b.type !== 'BREAK')
             .sort((a,b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
@@ -909,17 +1096,9 @@ const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPau
         }
     }
 
-    const PERIODS_ORDER = ['Midnight', 'Early Morning', 'Morning', 'Afternoon', 'Evening', 'Night'];
+    // Order aligned with standard day
+    const PERIODS_ORDER = ['Early Morning', 'Morning', 'Late Morning', 'Afternoon', 'Evening', 'Night'];
     
-    const PERIOD_TIME_RANGES: Record<string, string> = {
-        'Midnight': '12am - 5am',
-        'Early Morning': '5am - 8am',
-        'Morning': '8am - 1pm',
-        'Afternoon': '1pm - 6pm',
-        'Evening': '6pm - 8pm',
-        'Night': '8pm - 12am',
-    };
-
     const toggleCollapse = (period: string) => {
         setCollapsedSections(prev => ({ ...prev, [period]: !prev[period] }));
     };
@@ -930,21 +1109,18 @@ const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPau
                 const periodBlocks = groupedBlocks[period];
                 if (!periodBlocks || periodBlocks.length === 0) return null;
 
-                const completedCount = periodBlocks.filter(b => b.status === 'DONE').length;
                 const isCollapsed = collapsedSections[period] || false;
 
                 return (
                     <div key={period}>
                         <TimelineSectionHeader
                             period={period}
-                            totalBlocks={periodBlocks.length}
-                            completedBlocks={completedCount}
+                            blocks={periodBlocks} // Pass all blocks
                             isCollapsed={isCollapsed}
                             onToggle={() => toggleCollapse(period)}
-                            timeRange={PERIOD_TIME_RANGES[period]}
                         />
                         {!isCollapsed && (
-                            <div className="pl-4 border-l-2 border-slate-200 dark:border-slate-700 ml-6 space-y-4 animate-fade-in-up">
+                            <div className="pl-4 border-l-2 border-slate-200/50 dark:border-slate-700/50 ml-6 space-y-4 animate-fade-in-up">
                                 {periodBlocks.map(block => (
                                     <SwipeableBlockWrapper
                                         key={block.id}
@@ -953,14 +1129,16 @@ const BlocksLayout: React.FC<BlocksLayoutProps> = ({ blocks, onStartBlock, onPau
                                         isSelectMode={isSelectMode}
                                         isSelected={selectedBlockIds.has(block.id)}
                                         onSelect={() => onToggleSelection(block.id)}
+                                        onReset={block.status === 'DONE' ? () => onResetBlock(block) : undefined}
                                     >
                                         <BlockCard
                                             block={block}
                                             isCurrent={currentBlock?.id === block.id}
                                             isNext={!currentBlock && nextBlockId === block.id}
                                             onStart={() => onStartBlock(block.id, block)}
-                                            onPause={() => onPauseBlock(block.id)}
+                                            onPause={() => onPauseBlock(block.id, block.title)}
                                             onFinish={() => onFinishBlock(block)}
+                                            currentTimeMinutes={currentTimeMinutes} // Pass time down
                                         />
                                     </SwipeableBlockWrapper>
                                 ))}
@@ -987,6 +1165,9 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const [plan, setPlan] = useState<DayPlan | null>(null);
     const [loading, setLoading] = useState(true);
     
+    // Real-time Clock State
+    const [currentTimeMinutes, setCurrentTimeMinutes] = useState(0);
+
     // Undo/Redo State
     const [historyPast, setHistoryPast] = useState<DayPlan[]>([]);
     const [historyFuture, setHistoryFuture] = useState<DayPlan[]>([]);
@@ -1004,12 +1185,30 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const [isAddBreakModalOpen, setIsAddBreakModalOpen] = useState(false);
     const [addBlockStartTime, setAddBlockStartTime] = useState('08:00');
     
+    // Unplanned Study Log State
+    const [isUnplannedLogModalOpen, setIsUnplannedLogModalOpen] = useState(false);
+    
     const [defaultDuration, setDefaultDuration] = useState(30);
 
     // Block Detail & Edit
     const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
-    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [blockToDelete, setBlockToDelete] = useState<Block | null>(null);
+
+    // Pause Logic
+    const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
+    const [pausingBlockId, setPausingBlockId] = useState<string | null>(null);
+    const [pausingBlockTitle, setPausingBlockTitle] = useState('');
+
+    // Timer Effect for updating current time visual
+    useEffect(() => {
+        const updateTime = () => {
+            const now = new Date();
+            setCurrentTimeMinutes(now.getHours() * 60 + now.getMinutes());
+        };
+        updateTime(); // Initial set
+        const interval = setInterval(updateTime, 60000); // Update every minute
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         setCurrentDate(targetDate || getAdjustedDate(new Date()));
@@ -1099,6 +1298,34 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         }
     };
 
+    const handleResetBlock = async (block: Block) => {
+        if (!confirm(`Are you sure you want to reset "${block.title}"? This will clear execution data and delete logs.`)) return;
+
+        // 1. Clean up logs
+        await deleteBlocksAndSync([block]);
+
+        // 2. Reset Block Data
+        const updatedBlock: Block = {
+            ...block,
+            status: 'NOT_STARTED',
+            actualStartTime: undefined,
+            actualEndTime: undefined,
+            actualDurationMinutes: undefined,
+            completionStatus: undefined,
+            segments: [],
+            interruptions: [],
+            generatedLogIds: [],
+            generatedTimeLogIds: [],
+            actualNotes: undefined,
+            rescheduledTo: undefined,
+            tasks: block.tasks?.map(t => ({ ...t, execution: undefined })) // Clear task execution
+        };
+
+        // 3. Update Plan
+        const updatedPlan = await updateBlockInPlan(currentDate, block.id, updatedBlock);
+        if (updatedPlan) handlePlanChange(updatedPlan);
+    };
+
     const handleDeleteSelected = async () => {
         if (!plan || selectedBlockIds.size === 0) return;
         if (!confirm(`Permanently delete ${selectedBlockIds.size} blocks and their synced logs?`)) return;
@@ -1151,6 +1378,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             };
         }).filter(Boolean) as Block[];
         const all = [...actualBlocks, ...virtualBlocks];
+        // Sort Chronologically (Standard Time)
         return all.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
     }, [plan, knowledgeBase, currentDate]);
 
@@ -1166,11 +1394,36 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         } catch (e) { console.error(e); }
     };
     
-    const handlePauseBlock = async (blockId: string) => {
+    const handlePauseBlock = (blockId: string, blockTitle: string) => {
+        setPausingBlockId(blockId);
+        setPausingBlockTitle(blockTitle);
+        setIsPauseModalOpen(true);
+    };
+
+    const handleConfirmPause = async (reason: string, notes: string, createBreakMinutes?: number) => {
+        if (!pausingBlockId) return;
         try {
-            const updatedPlan = await updateBlockInPlan(currentDate, blockId, { status: 'PAUSED' });
-            if (updatedPlan) handlePlanChange(updatedPlan);
+            const actualNotes = `Paused: ${reason}${notes ? ` - Note: ${notes}` : ''}`;
+            const updatedPlan = await updateBlockInPlan(currentDate, pausingBlockId, { 
+                status: 'PAUSED',
+                actualNotes: actualNotes
+            });
+            
+            if (updatedPlan) {
+                if (createBreakMinutes) {
+                    // Create break block immediately after
+                    const now = new Date();
+                    const startTimeStr = now.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+                    await insertBlockAndShift(currentDate, startTimeStr, createBreakMinutes, [], 'Break', 'BREAK', reason);
+                    // Reload
+                    const refreshed = await getDayPlan(currentDate);
+                    if(refreshed) handlePlanChange(refreshed);
+                } else {
+                    handlePlanChange(updatedPlan);
+                }
+            }
         } catch (e) { console.error(e); }
+        setPausingBlockId(null);
     };
 
     const initiateFinish = (block: Block) => {
@@ -1259,7 +1512,6 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 status, 
                 tasks,
                 rescheduledTo: rescheduleAction?.type === 'NEW_BLOCK' ? rescheduleAction.time : (rescheduleAction?.type === 'FUTURE_DATE' ? rescheduleAction.date : undefined),
-                // FIX: Pass the correct variable `generatedKbLogIds` to the `generatedLogIds` parameter.
                 generatedLogIds: generatedKbLogIds,
                 generatedTimeLogIds,
                 pagesCovered: [],
@@ -1277,6 +1529,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         let startTime = '08:00';
         if (lastBlock) startTime = lastBlock.plannedEndTime;
         setAddBlockStartTime(startTime);
+        setSelectedBlock(null);
         setIsAddBlockModalOpen(true);
     };
 
@@ -1288,13 +1541,156 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         setIsAddBreakModalOpen(true);
     };
 
-    const handleSaveNewBlock = async (title: string, startTime: string, endTime: string, tasks: BlockTask[]) => {
+    const handleOpenUnplannedLog = () => {
+        // For logging past study, default to current time or recent past
+        const now = new Date();
+        const startTimeStr = now.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+        setAddBlockStartTime(startTimeStr);
+        setIsUnplannedLogModalOpen(true);
+    };
+
+    const handleSaveBlock = async (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => {
+        const targetDate = date || currentDate;
+        
+        // Calculate Duration
         const [sH, sM] = startTime.split(':').map(Number);
         const [eH, eM] = endTime.split(':').map(Number);
         let duration = (eH * 60 + eM) - (sH * 60 + sM);
         if (duration < 0) duration += 24 * 60;
-        const updatedPlan = await insertBlockAndShift(currentDate, startTime, duration, tasks, title);
-        if (updatedPlan) handlePlanChange(updatedPlan);
+
+        if (targetDate !== currentDate) {
+            // Move Block Logic (Delete from current, create in target)
+            if (selectedBlock && !selectedBlock.isVirtual) {
+                await deleteBlock(currentDate, selectedBlock.id);
+            }
+            const type = selectedBlock?.type || 'MIXED';
+            const description = selectedBlock?.description || '';
+            
+            await insertBlockAndShift(targetDate, startTime, duration, tasks, title, type, description);
+            
+            // Refresh current view (to remove deleted block)
+            const updated = await getDayPlan(currentDate);
+            if (updated) handlePlanChange(updated);
+        } else {
+            if (selectedBlock && !selectedBlock.isVirtual) {
+                // Update Existing
+                const updatedBlock: Block = {
+                    ...selectedBlock,
+                    title,
+                    plannedStartTime: startTime,
+                    plannedEndTime: endTime,
+                    plannedDurationMinutes: duration,
+                    tasks
+                };
+                await handleUpdateBlock(updatedBlock);
+            } else {
+                // Create New (or convert Virtual to Real)
+                const updatedPlan = await insertBlockAndShift(currentDate, startTime, duration, tasks, title);
+                if (updatedPlan) handlePlanChange(updatedPlan);
+            }
+        }
+        setSelectedBlock(null); // Clear selection
+    };
+
+    const handleSaveUnplanned = async (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => {
+        try {
+            const targetDate = date || currentDate;
+            // 1. Calculate duration
+            const [sH, sM] = startTime.split(':').map(Number);
+            const [eH, eM] = endTime.split(':').map(Number);
+            let duration = (eH * 60 + eM) - (sH * 60 + sM);
+            if (duration < 0) duration += 24 * 60;
+
+            // 2. Mark tasks as completed since this is a retrospective log
+            const completedTasks = tasks.map(t => ({ ...t, completed: true, execution: { completed: true } }));
+
+            // 3. Process Logic similar to handleFinishConfirm
+            let generatedKbLogIds: string[] = [];
+            let generatedTimeLogIds: string[] = [];
+
+            if (onUpdateKnowledgeBase) {
+                const faTasks = completedTasks.filter(t => t.type === 'FA');
+                if (faTasks.length > 0) {
+                    const revSettings = await getRevisionSettings() || { mode: 'balanced', targetCount: 7 };
+                    const entriesToLog = faTasks.map((t) => {
+                        const pageMatch = t.detail.match(/\d+/);
+                        const pageNum = pageMatch ? parseInt(pageMatch[0]) : (t.meta?.pageNumber || 0);
+                        return {
+                            pageNumber: pageNum,
+                            isExplicitRevision: title.toLowerCase().includes('revis') || t.detail.toLowerCase().includes('revis'),
+                            topics: t.meta?.topic ? [t.meta.topic] : [],
+                            date: targetDate
+                        };
+                    }).filter((e) => e.pageNumber > 0);
+
+                    if (entriesToLog.length > 0) {
+                        const { results, updatedKB } = processLogEntries(entriesToLog, knowledgeBase, revSettings);
+                        await onUpdateKnowledgeBase(updatedKB);
+                        
+                        results.forEach(res => {
+                            const newLog = res.updatedEntry.logs[res.updatedEntry.logs.length - 1];
+                            if (newLog) generatedKbLogIds.push(newLog.id);
+                        });
+
+                        const startOfBlock = new Date(`${targetDate}T${startTime}:00`);
+                        const durationPerTask = Math.max(1, Math.round(duration / entriesToLog.length));
+                        let taskStartTime = new Date(startOfBlock.getTime());
+
+                        for (const res of results) {
+                            const start = taskStartTime;
+                            const end = new Date(start.getTime() + durationPerTask * 60000);
+                            const newTimeLogId = generateId();
+                            const newKbLog = results.find(r => r.pageNumber === res.pageNumber)?.updatedEntry.logs.slice(-1)[0];
+
+                            const timeLog: TimeLogEntry = {
+                                id: newTimeLogId,
+                                date: targetDate,
+                                startTime: start.toISOString(),
+                                endTime: end.toISOString(),
+                                durationMinutes: durationPerTask,
+                                category: res.eventType === 'REVISION' ? 'REVISION' : 'STUDY',
+                                source: 'FA_LOGGER',
+                                activity: `Unplanned: ${title} - FA Pg ${res.pageNumber}`,
+                                pageNumber: String(res.pageNumber),
+                                linkedEntityId: newKbLog ? newKbLog.id : undefined
+                            };
+                            await saveTimeLog(timeLog);
+                            generatedTimeLogIds.push(newTimeLogId);
+                            taskStartTime = end;
+                        }
+                    }
+                }
+            }
+
+            // 4. Create the Block directly using insertBlockAndShift with overrides
+            const blockId = generateId();
+            const updatedPlan = await insertBlockAndShift(
+                targetDate, 
+                startTime, 
+                duration, 
+                completedTasks, 
+                title, 
+                'MIXED', 
+                'Unplanned Study Log',
+                blockId,
+                'DONE', // Initial status
+                {
+                    actualStartTime: startTime,
+                    actualEndTime: endTime,
+                    actualDurationMinutes: duration,
+                    completionStatus: 'COMPLETED',
+                    generatedLogIds: generatedKbLogIds,
+                    generatedTimeLogIds: generatedTimeLogIds,
+                    actualNotes: 'Unplanned session logged manually.',
+                    segments: [{ start: startTime, end: endTime }] // Simple full duration segment
+                }
+            );
+
+            if (updatedPlan) handlePlanChange(updatedPlan);
+
+        } catch (e) {
+            console.error("Failed to save unplanned log", e);
+        }
     };
 
     const handleSaveBreak = async (title: string, startTime: string, endTime: string, notes: string) => {
@@ -1317,7 +1713,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             handleToggleBlockSelection(block.id);
         } else {
             setSelectedBlock(block);
-            setIsDetailModalOpen(true);
+            setIsAddBlockModalOpen(true); // Open AddBlockModal in edit mode
         }
     };
 
@@ -1325,20 +1721,6 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         if (updatedBlock.isVirtual) return;
         try {
             await updateBlockInPlan(currentDate, updatedBlock.id, updatedBlock);
-            const updated = await getDayPlan(currentDate);
-            if (updated) handlePlanChange(updated);
-        } catch (e) { console.error(e); }
-    };
-
-    const handleRescheduleFromModal = async (action: { type: 'NEW_BLOCK' | 'NEXT_BLOCK', time?: string, duration?: number, tasks: BlockTask[] }) => {
-        if (!selectedBlock || selectedBlock.isVirtual) return;
-        try {
-            if (action.type === 'NEW_BLOCK' && action.time) {
-                const newTitle = `${selectedBlock.title} (Rescheduled)`;
-                await insertBlockAndShift(currentDate, action.time, action.duration || 30, action.tasks, newTitle);
-            } else if (action.type === 'NEXT_BLOCK') {
-                await moveTasksToNextBlock(currentDate, selectedBlock.id, action.tasks);
-            }
             const updated = await getDayPlan(currentDate);
             if (updated) handlePlanChange(updated);
         } catch (e) { console.error(e); }
@@ -1371,6 +1753,13 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 />
             )}
             
+            <PauseReasonModal 
+                isOpen={isPauseModalOpen}
+                onClose={() => { setIsPauseModalOpen(false); setPausingBlockId(null); }}
+                onConfirm={handleConfirmPause}
+                blockTitle={pausingBlockTitle}
+            />
+
             <ManualPlanModal 
                 isOpen={isManualModalOpen} 
                 onClose={() => setIsManualModalOpen(false)} 
@@ -1381,10 +1770,12 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
 
             <AddBlockModal 
                 isOpen={isAddBlockModalOpen}
-                onClose={() => setIsAddBlockModalOpen(false)}
-                onSave={handleSaveNewBlock}
+                onClose={() => { setIsAddBlockModalOpen(false); setSelectedBlock(null); }}
+                onSave={handleSaveBlock}
                 initialStartTime={addBlockStartTime}
+                initialDate={currentDate}
                 knowledgeBase={knowledgeBase}
+                blockToEdit={selectedBlock}
             />
 
             <AddBreakModal
@@ -1394,12 +1785,14 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 initialStartTime={addBlockStartTime}
             />
 
-            <BlockDetailModal 
-                isOpen={isDetailModalOpen}
-                block={selectedBlock}
-                onClose={() => { setIsDetailModalOpen(false); setSelectedBlock(null); }}
-                onUpdate={handleUpdateBlock}
-                onReschedule={handleRescheduleFromModal}
+            <AddBlockModal 
+                isOpen={isUnplannedLogModalOpen}
+                onClose={() => setIsUnplannedLogModalOpen(false)}
+                onSave={handleSaveUnplanned}
+                initialStartTime={addBlockStartTime}
+                initialDate={currentDate}
+                knowledgeBase={knowledgeBase}
+                blockToEdit={null} // Always new
             />
 
             <DeleteConfirmationModal 
@@ -1418,8 +1811,8 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 message="Are you sure you want to clear all blocks for today? This will permanently remove all associated study logs from Dashboard and History."
             />
 
-            <div className="flex justify-between items-center relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-md p-2 rounded-2xl border border-white/50 dark:border-slate-700/50 shadow-sm card-3d">
-                <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 shadow-sm active:scale-95 transition-all"><ChevronLeftIcon className="w-6 h-6 text-slate-500" /></button>
+            <div className="flex justify-between items-center relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-2 rounded-2xl border border-white/40 dark:border-slate-700/50 shadow-sm card-3d">
+                <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white/80 dark:hover:bg-slate-700/80 shadow-sm active:scale-95 transition-all"><ChevronLeftIcon className="w-6 h-6 text-slate-500" /></button>
                 
                 <div className="relative group cursor-pointer px-4 py-2 rounded-lg hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors flex flex-col items-center">
                     <h2 className="text-xl font-black text-slate-800 dark:text-white text-center select-none tracking-tight">
@@ -1460,24 +1853,24 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                             </button>
                         </>
                     )}
-                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 shadow-sm active:scale-95 transition-all"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
+                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white/80 dark:hover:bg-slate-700/80 shadow-sm active:scale-95 transition-all"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
                 </div>
             </div>
 
             {/* Control Bar */}
             <div className="flex flex-wrap justify-center gap-3 items-center">
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shadow-inner">
+                <div className="flex bg-white/50 dark:bg-slate-800/50 p-1 rounded-xl shadow-inner backdrop-blur-md">
                     <button onClick={() => setViewMode('full')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'full' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white transform scale-105' : 'text-slate-500'}`}>Summary</button>
                     <button onClick={() => setViewMode('blocks')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'blocks' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white transform scale-105' : 'text-slate-500'}`}>Timeline</button>
                 </div>
 
                 <div className="flex items-center gap-2">
                     {/* Undo/Redo Buttons */}
-                    <div className="flex items-center bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <div className="flex items-center bg-white/60 dark:bg-slate-800/60 rounded-xl p-1 shadow-sm border border-white/40 dark:border-slate-700 backdrop-blur-md">
                         <button 
                             onClick={handleUndo} 
                             disabled={historyPast.length === 0}
-                            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300 active:scale-95"
+                            className="p-2 rounded-lg hover:bg-slate-100/50 dark:hover:bg-slate-700/50 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300 active:scale-95"
                             title="Undo last change"
                         >
                             <ArrowUturnLeftIcon className="w-4 h-4" />
@@ -1485,7 +1878,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                         <button 
                             onClick={handleRedo} 
                             disabled={historyFuture.length === 0}
-                            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300 active:scale-95"
+                            className="p-2 rounded-lg hover:bg-slate-100/50 dark:hover:bg-slate-700/50 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300 active:scale-95"
                             title="Redo last change"
                         >
                             <ArrowUturnRightIcon className="w-4 h-4" />
@@ -1495,7 +1888,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                     <select 
                         value={defaultDuration}
                         onChange={(e) => setDefaultDuration(parseInt(e.target.value))}
-                        className="px-3 py-2.5 bg-white dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 dark:border-slate-700 shadow-sm"
+                        className="px-3 py-2.5 bg-white/60 dark:bg-slate-800/60 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500 border border-white/40 dark:border-slate-700 shadow-sm backdrop-blur-md"
                     >
                         <option value={15}>15m</option>
                         <option value={30}>30m</option>
@@ -1505,30 +1898,38 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
 
                     <button 
                         onClick={handleOpenAddBlock}
-                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-500/30 text-xs font-bold text-white hover:bg-indigo-700 transition-all"
+                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-500/30 text-xs font-bold text-white hover:bg-indigo-700 transition-all backdrop-blur-sm"
                     >
                         <PlusIcon className="w-3 h-3" /> Add Block
                     </button>
                     
                     <button 
                         onClick={handleOpenAddBreak}
-                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-teal-500 rounded-xl shadow-lg shadow-teal-500/30 text-xs font-bold text-white hover:bg-teal-600 transition-all"
+                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-teal-500 rounded-xl shadow-lg shadow-teal-500/30 text-xs font-bold text-white hover:bg-teal-600 transition-all backdrop-blur-sm"
                     >
                         <CoffeeIcon className="w-3 h-3" /> Break
+                    </button>
+
+                    <button 
+                        onClick={handleOpenUnplannedLog}
+                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-slate-700 dark:bg-slate-600 rounded-xl shadow-lg shadow-slate-500/30 text-xs font-bold text-white hover:bg-slate-800 dark:hover:bg-slate-500 transition-all backdrop-blur-sm"
+                        title="Log past study activity instantly"
+                    >
+                        <ClipboardDocumentCheckIcon className="w-3 h-3" /> Study Log
                     </button>
                 </div>
             </div>
 
             {loading ? <div className="p-8 text-center text-slate-400">Loading Plan...</div> :
              !plan && mergedBlocks.length === 0 ? (
-                <div className="p-12 text-center flex flex-col items-center bg-white dark:bg-slate-800 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                <div className="p-12 text-center flex flex-col items-center bg-white/60 dark:bg-slate-800/60 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 backdrop-blur-md">
                     <CalendarIcon className="w-16 h-16 text-slate-300 mb-6" />
                     <h3 className="text-xl font-bold text-slate-700 dark:text-white">No Plan for this day</h3>
                     <p className="text-slate-500 mb-8">Create a block schedule or wait for revisions.</p>
                     
                     <button 
                         onClick={() => setIsManualModalOpen(true)} 
-                        className="btn-3d px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 text-lg"
+                        className="btn-3d px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 text-lg backdrop-blur-sm"
                     >
                         <PlusIcon className="w-5 h-5" /> Create Schedule
                     </button>
@@ -1546,6 +1947,8 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                     isSelectMode={isSelectMode}
                     selectedBlockIds={selectedBlockIds}
                     onToggleSelection={handleToggleBlockSelection}
+                    onResetBlock={handleResetBlock}
+                    currentTimeMinutes={currentTimeMinutes}
                   />
              )
             }

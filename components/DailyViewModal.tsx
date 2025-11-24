@@ -1,5 +1,6 @@
 
-import React from 'react';
+
+import React, { useEffect } from 'react';
 import { StudySession, StudyPlanItem, getAdjustedDate } from '../types';
 import { ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, CalendarIcon, ListCheckIcon } from './Icons';
 
@@ -13,6 +14,18 @@ interface DailyViewModalProps {
 }
 
 const DailyViewModal: React.FC<DailyViewModalProps> = ({ isOpen, date, onClose, sessions, studyPlan, onEditSession }) => {
+  
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen || !date) return null;
 
   // The selected date from calendar/forecast (e.g., 2023-11-19)

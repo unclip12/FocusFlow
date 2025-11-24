@@ -277,7 +277,7 @@ export interface MentorMessage {
     text: string;
     timestamp: string; // ISO
     isSystemAction?: boolean;
-    actionType?: 'VIEW_PLAN' | 'BLOCK_CONTROL';
+    actionType?: 'VIEW_PLAN' | 'BLOCK_CONTROL' | 'CONFIRM_IMPORT';
     actionPayload?: any;
 }
 
@@ -376,6 +376,31 @@ export interface DailyTracker {
 
 export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'sky' | 'violet';
 
+// --- NEW THEME SYSTEM ---
+export interface AppTheme {
+    id: string;
+    name: string;
+    bgGradient: string; // CSS background property
+    isDark: boolean;
+    surfaceRGB: string; // "R G B" for Tailwind surface variable
+    backgroundRGB: string; // "R G B" for Tailwind background variable
+}
+
+export const APP_THEMES: AppTheme[] = [
+    { id: 'default', name: 'Flow White', bgGradient: 'linear-gradient(to bottom right, #f1f5f9, #e2e8f0)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '241 245 249' },
+    { id: 'midnight', name: 'Midnight Deep', bgGradient: 'linear-gradient(to bottom, #0f172a, #1e293b)', isDark: true, surfaceRGB: '30 41 59', backgroundRGB: '15 23 42' },
+    { id: 'pastel-sunset', name: 'Pastel Sunset', bgGradient: 'linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '250 240 245' },
+    { id: 'mint-fresh', name: 'Fresh Mint', bgGradient: 'linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '235 250 250' },
+    { id: 'deep-ocean', name: 'Deep Ocean', bgGradient: 'linear-gradient(to top, #1e3c72 0%, #2a5298 100%)', isDark: true, surfaceRGB: '30 58 138', backgroundRGB: '23 37 84' },
+    { id: 'soft-lilac', name: 'Soft Lilac', bgGradient: 'linear-gradient(to top, #c471f5 0%, #fa71cd 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '250 240 250' },
+    { id: 'warm-peach', name: 'Warm Peach', bgGradient: 'linear-gradient(to right, #fa709a 0%, #fee140 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '255 245 245' },
+    { id: 'night-sky', name: 'Night Sky', bgGradient: 'linear-gradient(to bottom, #020024 0%, #090979 35%, #00d4ff 100%)', isDark: true, surfaceRGB: '17 24 39', backgroundRGB: '2 6 23' },
+    { id: 'citrus-burst', name: 'Citrus Burst', bgGradient: 'linear-gradient(to right, #f83600 0%, #f9d423 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '255 250 240' },
+    { id: 'mystic-forest', name: 'Mystic Forest', bgGradient: 'linear-gradient(to bottom, #134e5e 0%, #71b280 100%)', isDark: true, surfaceRGB: '6 78 59', backgroundRGB: '2 44 34' },
+    { id: 'royal-violet', name: 'Royal Violet', bgGradient: 'linear-gradient(to right, #654ea3, #eaafc8)', isDark: true, surfaceRGB: '76 29 149', backgroundRGB: '46 16 101' },
+    { id: 'cloudy-sky', name: 'Cloudy Sky', bgGradient: 'linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '248 250 252' },
+];
+
 export interface NotificationConfig {
     enabled: boolean;
     mode: 'normal' | 'strict'; // C-Mode is strict
@@ -395,6 +420,7 @@ export interface QuietHoursConfig {
 
 export interface AppSettings {
     darkMode: boolean;
+    themeId?: string; // ID from APP_THEMES
     primaryColor: ThemeColor;
     fontSize: 'small' | 'medium' | 'large';
     notifications: NotificationConfig;
@@ -479,6 +505,7 @@ export interface KnowledgeBaseEntry {
   videoLinks: VideoResource[];
   tags: string[];
   notes: string;
+  keyPoints?: string[]; // New field: High Yield Points
   attachments?: Attachment[];
   logs: RevisionLog[];
 
@@ -497,17 +524,25 @@ export const CATEGORIES = ['Pathology', 'Physiology', 'Pharmacology', 'Microbiol
 
 export const SYSTEMS = [
   'General Principles',
+  'Behavioral Science',
+  'Biochemistry',
+  'Biostatistics & Epidemiology',
+  'Microbiology',
+  'Immunology',
+  'Pathology',
+  'Pharmacology',
+  'Public Health Sciences',
   'Cardiovascular',
-  'Respiratory',
-  'Renal',
+  'Endocrine',
   'Gastrointestinal',
-  'Hematology/Oncology',
+  'Hematology & Oncology',
+  'Musculoskeletal, Skin, & Connective Tissue',
   'Neurology',
   'Psychiatry',
-  'Endocrine',
+  'Renal',
   'Reproductive',
-  'Musculoskeletal',
-  'Dermatology'
+  'Respiratory',
+  'Rapid Review'
 ];
 
 /**

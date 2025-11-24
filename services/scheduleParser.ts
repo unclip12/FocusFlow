@@ -1,4 +1,3 @@
-
 import { DayPlan, Block, BlockTask, getAdjustedDate } from '../types';
 
 const generateId = () => {
@@ -6,6 +5,23 @@ const generateId = () => {
         return crypto.randomUUID();
     }
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
+};
+
+// Helper to convert 12-hour time with AM/PM to 24-hour HH:mm
+const parse12HourTime = (timeStr: string): string => {
+    const lower = timeStr.toLowerCase();
+    const isPM = lower.includes('pm');
+    let [h, m] = lower.replace(/[ap]m/g, '').trim().split(':').map(Number);
+    
+    if (isNaN(h) || isNaN(m)) return '00:00';
+
+    if (isPM && h < 12) {
+        h += 12;
+    } else if (!isPM && h === 12) { // 12 AM is 00
+        h = 0;
+    }
+
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
 const parseBlockTimeInMinutes = (timeStr: string): number => {
@@ -53,8 +69,8 @@ export const parseSchedule = (text: string, startDate: string): DayPlan[] => {
     const lines = text.split('\n');
 
     // 1. REGEX FOR KEY-VALUE FORMAT
-    // DAY=1; BLOCK=1; TYPE=VIDEO; VIDEO_TITLE="Title"; VIDEO_MIN_START=0; VIDEO_MIN_END=60; SPEED=2x
-    const kvRegex = /DAY=(\d+);\s*BLOCK=(\d+);\s*TYPE=(VIDEO|REVISION);\s*VIDEO_TITLE="(.*?)";\s*VIDEO_MIN_START=(\d+);\s*VIDEO_MIN_END=(\d+);?(?:\s*SPEED=([\dx.]+))?/i;
+    // DAY=1; BLOCK=1; START_TIME="09:30 AM"; END_TIME="10:00 AM"; TYPE=VIDEO; VIDEO_TITLE="Title"; VIDEO_MIN_START=0; VIDEO_MIN_END=60; SPEED=2x
+    const kvRegex = /DAY=(\d+);\s*BLOCK=(\d+);\s*START_TIME="([^"]+)";\s*END_TIME="([^"]+)";\s*TYPE=(VIDEO|REVISION);\s*VIDEO_TITLE="(.*?)";\s*VIDEO_MIN_START=(\d+);\s*VIDEO_MIN_END=(\d+);?(?:\s*SPEED=([\dx.]+))?/i;
 
     // 2. REGEX FOR TEXT BLOCKS
     // Matches: 09:00 - 09:30 -> Action Details
@@ -113,48 +129,39 @@ export const parseSchedule = (text: string, startDate: string): DayPlan[] => {
             hasKvMatches = true;
             const dayNum = parseInt(kvMatch[1]);
             const blockNum = parseInt(kvMatch[2]);
-            const typeRaw = kvMatch[3].toUpperCase();
-            const title = kvMatch[4];
-            const vStart = parseInt(kvMatch[5]);
-            const vEnd = parseInt(kvMatch[6]);
-            const speedStr = kvMatch[7]; // e.g. "2x" or "2"
+            const startTime12h = kvMatch[3];
+            const endTime12h = kvMatch[4];
+            const typeRaw = kvMatch[5].toUpperCase();
+            const title = kvMatch[6];
+            const vStart = parseInt(kvMatch[7]);
+            const vEnd = parseInt(kvMatch[8]);
+            const speedStr = kvMatch[9]; // e.g. "2x" or "2"
 
-            // Process Speed
+            const startTime24 = parse12HourTime(startTime12h);
+            const endTime24 = parse12HourTime(endTime12h);
+
+            const startMins = parseBlockTimeInMinutes(startTime24);
+            const endMins = parseBlockTimeInMinutes(endTime24);
+            let duration = endMins - startMins;
+            if (duration < 0) duration += 24 * 60; // Crosses midnight
+
             let speed = 1;
             if (speedStr) {
                 speed = parseFloat(speedStr.replace('x', ''));
                 if (isNaN(speed) || speed <= 0) speed = 1;
             }
 
-            // Process Duration
-            const contentDuration = vEnd - vStart;
-            let plannedDuration = 30; // Default fallback
-            
-            if (contentDuration > 0) {
-                if (typeRaw === 'VIDEO') {
-                    // Actual watching time = content / speed
-                    plannedDuration = Math.ceil(contentDuration / speed);
-                } else {
-                    // Revision usually takes less than raw content? 
-                    // Let's assume 30 mins for a standard ~60min content chunk to mimic "2x" pace roughly,
-                    // or just use a fixed ratio. 
-                    // For now, let's treat revision as roughly 50% of content time (similar to 2x watch).
-                    plannedDuration = Math.ceil(contentDuration / 2);
-                }
-            }
-            
-            // Minimum 10 mins block
-            plannedDuration = Math.max(10, plannedDuration);
-
             if (!kvBlocksByDay[dayNum]) kvBlocksByDay[dayNum] = [];
             
             kvBlocksByDay[dayNum].push({
                 blockNum,
                 data: {
+                    startTime: startTime24,
+                    endTime: endTime24,
+                    plannedDurationMinutes: duration,
                     type: typeRaw === 'VIDEO' ? 'VIDEO' : 'REVISION_FA',
                     title: typeRaw === 'VIDEO' ? `Watch: ${title}` : `Revise: ${title}`,
                     description: typeRaw === 'VIDEO' ? `Video: ${vStart}-${vEnd}m @ ${speed}x` : `Revision of ${vStart}-${vEnd}m`,
-                    plannedDurationMinutes: plannedDuration,
                     vidStart: vStart,
                     vidEnd: vEnd,
                     playbackSpeed: typeRaw === 'VIDEO' ? speed : undefined,
@@ -252,20 +259,15 @@ export const parseSchedule = (text: string, startDate: string): DayPlan[] => {
             // Sort by BLOCK number
             rawBlocks.sort((a,b) => a.blockNum - b.blockNum);
 
-            // Generate Schedule Times (Start at 08:00)
-            let currentMinutes = 8 * 60; // 08:00 AM
             const blocks: Block[] = [];
 
             rawBlocks.forEach((item, idx) => {
-                const startMins = currentMinutes;
-                const endMins = currentMinutes + item.data.plannedDurationMinutes;
-                
                 const block: Block = {
                     id: generateId(),
                     index: idx,
                     date: getNextDate(startDate, dayNum - 1),
-                    plannedStartTime: formatTime(startMins),
-                    plannedEndTime: formatTime(endMins),
+                    plannedStartTime: item.data.startTime,
+                    plannedEndTime: item.data.endTime,
                     type: item.data.type,
                     title: item.data.title,
                     description: item.data.description,
@@ -289,8 +291,6 @@ export const parseSchedule = (text: string, startDate: string): DayPlan[] => {
                 };
                 block.tasks!.push(task);
                 blocks.push(block);
-
-                currentMinutes = endMins;
             });
 
             // Create Plan
@@ -298,8 +298,8 @@ export const parseSchedule = (text: string, startDate: string): DayPlan[] => {
             const plan: DayPlan = {
                 date: getNextDate(startDate, dayNum - 1),
                 blocks: blocks,
-                startTimePlanned: blocks[0].plannedStartTime,
-                estimatedEndTime: blocks[blocks.length-1].plannedEndTime,
+                startTimePlanned: blocks.length > 0 ? blocks[0].plannedStartTime : '08:00',
+                estimatedEndTime: blocks.length > 0 ? blocks[blocks.length - 1].plannedEndTime : '09:00',
                 totalStudyMinutesPlanned: totalStudy,
                 totalBreakMinutes: 0,
                 faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0,

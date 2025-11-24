@@ -1,6 +1,6 @@
 
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { StudySession, getAdjustedDate, KnowledgeBaseEntry } from '../types';
 import { 
     BookOpenIcon, ChevronLeftIcon, ClockIcon, FireIcon, 
@@ -30,6 +30,17 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
     // Sorting State
     const [sortBy, setSortBy] = useState<SortOption>('PAGE');
     const [sortOrder, setSortOrder] = useState<SortOrder>('ASC');
+
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
 
     // --- LIST VIEW LOGIC ---
     const filteredSessions = useMemo(() => {

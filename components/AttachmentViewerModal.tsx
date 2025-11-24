@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Attachment } from '../types';
 import { XMarkIcon, ArrowPathIcon, DocumentIcon, ArrowRightIcon, ArrowLeftIcon } from './Icons';
 import { uploadFile } from '../services/firebase';
@@ -22,6 +22,13 @@ const base64ToBlob = (base64: string, type: string = 'application/pdf') => {
 
 export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({ attachment, onClose, onUpdateAttachment }) => {
     const [isUploading, setIsUploading] = useState(false);
+
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, []);
 
     const handleOpenNative = () => {
         if (attachment.data.startsWith('http')) {
@@ -89,7 +96,7 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({ at
     // --- PDF / FILE NATIVE OPENER ---
     return (
         <div className="fixed inset-0 z-[150] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 
                 <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-inner">
                     <DocumentIcon className="w-10 h-10" />

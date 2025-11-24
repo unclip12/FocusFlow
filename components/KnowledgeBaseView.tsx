@@ -6,13 +6,16 @@
 
 
 
-import React, { useState, useMemo } from 'react';
+
+
+import React, { useState, useMemo, useRef } from 'react';
 import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession, TrackableItem } from '../types';
-import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon } from './Icons';
+import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon, TrashIcon } from './Icons';
 import { extractTopicFromImage } from '../services/geminiService';
 import { PageBadge } from './PageBadge';
 import { uploadFile } from '../services/firebase';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 // Robust ID generator
 const generateId = () => {
@@ -26,13 +29,14 @@ interface KnowledgeBaseViewProps {
   data: KnowledgeBaseEntry[];
   sessions?: StudySession[];
   onUpdateEntry: (entry: KnowledgeBaseEntry) => void;
+  onDeleteEntry?: (pageNumber: string) => void;
   onViewPage: (page: string) => void;
 }
 
 type SortOption = 'PAGE' | 'TOPIC' | 'SYSTEM' | 'SUBJECT';
 type SortOrder = 'ASC' | 'DESC';
 
-const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = [], onUpdateEntry, onViewPage }) => {
+const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = [], onUpdateEntry, onDeleteEntry, onViewPage }) => {
   const [search, setSearch] = useState('');
   const [selectedSystem, setSelectedSystem] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('PAGE');
@@ -41,6 +45,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
   // Edit Mode
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<KnowledgeBaseEntry>>({});
+  
+  // Delete State
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+
+  // Swipe State
+  const [swipedEntryId, setSwipedEntryId] = useState<string | null>(null);
+  const touchStartRef = useRef<{ x: number, y: number, id: string } | null>(null);
   
   // Helper for tags and subtopics input
   const [tagsInput, setTagsInput] = useState('');
@@ -278,10 +289,72 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
      return session ? session.revisionCount : 0;
   };
 
+  const confirmDelete = (pageNumber: string) => {
+      setEntryToDelete(pageNumber);
+  };
+
+  const executeDelete = () => {
+      if (entryToDelete && onDeleteEntry) {
+          onDeleteEntry(entryToDelete);
+          setEntryToDelete(null);
+          setSwipedEntryId(null);
+      }
+  };
+
+  // --- SWIPE HANDLERS ---
+  const handleTouchStart = (e: React.TouchEvent, id: string) => {
+      if (swipedEntryId && swipedEntryId !== id) {
+          setSwipedEntryId(null); // Close other
+      }
+      touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (!touchStartRef.current) return;
+      const deltaX = e.touches[0].clientX - touchStartRef.current.x;
+      const deltaY = e.touches[0].clientY - touchStartRef.current.y;
+      
+      // Only horizontal swipes
+      if (Math.abs(deltaX) > Math.abs(deltaY) + 5) {
+           const newX = Math.min(0, Math.max(-100, deltaX)); 
+           if (newX < 0) {
+               e.currentTarget.setAttribute('style', `transform: translateX(${newX}px); transition: none;`);
+           }
+      }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+      if (!touchStartRef.current) return;
+      const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
+      const element = e.currentTarget;
+      const id = touchStartRef.current.id;
+      
+      element.setAttribute('style', 'transform: translateX(0px); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);');
+      
+      if (deltaX < -50) { // Threshold to snap open
+          setSwipedEntryId(id);
+          // Set final state after transition via style
+          setTimeout(() => {
+              element.setAttribute('style', 'transform: translateX(-96px); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);');
+          }, 0);
+      } else {
+          setSwipedEntryId(null);
+      }
+      touchStartRef.current = null;
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
       {viewingAttachment && <AttachmentViewerModal attachment={viewingAttachment} onClose={() => setViewingAttachment(null)} />}
       
+      <DeleteConfirmationModal 
+          isOpen={!!entryToDelete}
+          onClose={() => setEntryToDelete(null)}
+          onConfirm={executeDelete}
+          title="Delete Knowledge Base Entry?"
+          message={`Are you sure you want to delete Page ${entryToDelete}? This will remove all associated logs and revision history.`}
+      />
+
       {/* Header and Stats */}
       <div>
         <div className="flex items-center gap-2 mb-4">
@@ -368,7 +441,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
       </div>
 
       {/* Mobile & Tablet Card View (Up to LG) - Optimized for iPad Portrait with Grid */}
-      <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="lg:hidden space-y-4">
         {filteredData.map(entry => {
            const isEditing = editingId === entry.pageNumber;
            const ankiCovered = entry.ankiCovered || 0;
@@ -377,9 +450,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
            
            if (isEditing) {
              return (
-               <div key={entry.pageNumber} className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4 md:col-span-2">
-                  {/* ... Edit form similar to desktop ... */}
-                  {/* Simplified for brevity, full implementation in main render logic */}
+               <div key={entry.pageNumber} className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-4">
                   <div className="flex justify-between items-center">
                       <span className="font-bold text-slate-700 text-lg">Pg {entry.pageNumber}</span>
                   </div>
@@ -391,7 +462,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                           className="w-full p-2 border rounded-lg text-sm font-bold bg-white"
                       />
                   </div>
-                  {/* ... Attachments/Subtopics ... */}
                    <div className="flex gap-3 pt-2">
                       <button onClick={cancelEdit} className="flex-1 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 font-medium text-sm">Cancel</button>
                       <button onClick={saveEdit} disabled={isUploading} className="flex-1 py-2 bg-primary text-white rounded-lg font-medium text-sm shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{isUploading ? 'Uploading...' : 'Save'}</button>
@@ -400,68 +470,92 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
              );
            }
 
-           // Display Card
+           // Display Card with Swipe
            return (
-             <div key={entry.pageNumber} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex flex-col h-full">
-                <div className="flex justify-between items-start mb-3">
-                    <div className="flex gap-3 w-full">
-                        {/* Integrated Page Badge */}
-                        <PageBadge 
-                            pageNumber={entry.pageNumber}
-                            attachments={entry.attachments}
-                            revisionCount={getRevisionCount(entry.pageNumber)}
-                            onClick={() => onViewPage(entry.pageNumber)}
-                        />
-                        
-                        <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-slate-800 dark:text-white text-lg leading-tight truncate">{entry.title}</h3>
+             <div key={entry.pageNumber} className="relative w-full select-none overflow-hidden rounded-xl">
+                {/* Delete Action Background */}
+                <div 
+                    className="absolute inset-y-0 right-0 w-24 flex items-center justify-center bg-red-500 z-0 cursor-pointer active:bg-red-600 transition-colors"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        confirmDelete(entry.pageNumber);
+                    }}
+                >
+                    <TrashIcon className="w-6 h-6 text-white" />
+                </div>
+
+                {/* Foreground Card */}
+                <div 
+                    className="relative z-10 bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 p-4 flex flex-col h-full cursor-grab active:cursor-grabbing"
+                    style={{ 
+                        transform: swipedEntryId === entry.pageNumber ? 'translateX(-96px)' : 'translateX(0px)'
+                    }}
+                    onTouchStart={(e) => handleTouchStart(e, entry.pageNumber)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onClick={() => {
+                        if (swipedEntryId === entry.pageNumber) setSwipedEntryId(null);
+                    }}
+                >
+                    <div className="flex justify-between items-start mb-3">
+                        <div className="flex gap-3 w-full">
+                            {/* Integrated Page Badge */}
+                            <PageBadge 
+                                pageNumber={entry.pageNumber}
+                                attachments={entry.attachments}
+                                revisionCount={getRevisionCount(entry.pageNumber)}
+                                onClick={() => onViewPage(entry.pageNumber)}
+                            />
                             
-                             {/* Aggregated Topics */}
-                            {entry.topics && entry.topics.length > 1 && (
-                                <div className="text-xs text-slate-500 dark:text-slate-400 italic mt-0.5 truncate">
-                                    Also: {entry.topics.map(t => t.name).join(', ')}
-                                </div>
-                            )}
+                            <div className="min-w-0 flex-1">
+                                <h3 className="font-bold text-slate-800 dark:text-white text-lg leading-tight truncate">{entry.title}</h3>
+                                
+                                {/* Aggregated Topics */}
+                                {entry.topics && entry.topics.length > 1 && (
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 italic mt-0.5 truncate">
+                                        Also: {entry.topics.map(t => t.name).join(', ')}
+                                    </div>
+                                )}
 
-                            <div className="flex gap-2 mt-1 flex-wrap">
-                                <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase">{entry.subject}</span>
-                                <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase truncate max-w-[100px]">{entry.system || 'General'}</span>
+                                <div className="flex gap-2 mt-1 flex-wrap">
+                                    <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase">{entry.subject}</span>
+                                    <span className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-100 dark:border-slate-600 uppercase truncate max-w-[100px]">{entry.system || 'General'}</span>
+                                </div>
+
+                                {/* Subtopics Display */}
+                                {entry.topics && entry.topics.length > 0 && (
+                                    <div className="mt-2 border-l-2 border-slate-200 dark:border-slate-700 pl-2 space-y-0.5">
+                                        {entry.topics.slice(0, 2).map((t, idx) => (
+                                            <p key={idx} className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">• {t.name}</p>
+                                        ))}
+                                        {entry.topics.length > 2 && <p className="text-[10px] text-slate-400 italic">+ {entry.topics.length - 2} more</p>}
+                                    </div>
+                                )}
                             </div>
-
-                            {/* Subtopics Display */}
-                            {entry.topics && entry.topics.length > 0 && (
-                                <div className="mt-2 border-l-2 border-slate-200 dark:border-slate-700 pl-2 space-y-0.5">
-                                    {entry.topics.slice(0, 2).map((t, idx) => (
-                                        <p key={idx} className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">• {t.name}</p>
-                                    ))}
-                                    {entry.topics.length > 2 && <p className="text-[10px] text-slate-400 italic">+ {entry.topics.length - 2} more</p>}
-                                </div>
-                            )}
+                        </div>
+                        <button onClick={() => startEdit(entry)} className="text-primary p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex-shrink-0 -mt-2 -mr-2">
+                            <span className="sr-only">Edit</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                            <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
+                            <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    {/* Mobile Anki Stats */}
+                    <div className="mt-auto border-t border-slate-100 dark:border-slate-700 pt-2">
+                        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
+                            <div className="flex items-center gap-1">
+                                <FireIcon className="w-4 h-4 text-amber-500" />
+                                <span className="font-bold">Anki Progress</span>
+                            </div>
+                            <span>{ankiCovered} / {ankiTotal} Cards</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div className={`h-full ${ankiProgress === 100 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${ankiProgress}%` }}></div>
                         </div>
                     </div>
-                    <button onClick={() => startEdit(entry)} className="text-primary p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex-shrink-0 -mt-2 -mr-2">
-                        <span className="sr-only">Edit</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                          <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
-                          <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
-                        </svg>
-                    </button>
                 </div>
-                
-                {/* Mobile Anki Stats */}
-                <div className="mt-auto border-t border-slate-100 dark:border-slate-700 pt-2">
-                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 mb-1">
-                        <div className="flex items-center gap-1">
-                             <FireIcon className="w-4 h-4 text-amber-500" />
-                             <span className="font-bold">Anki Progress</span>
-                        </div>
-                        <span>{ankiCovered} / {ankiTotal} Cards</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div className={`h-full ${ankiProgress === 100 ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${ankiProgress}%` }}></div>
-                    </div>
-                </div>
-
              </div>
            );
         })}
@@ -673,7 +767,10 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                     </div>
                   </td>
                   <td className="p-4 text-right align-top">
-                    <button onClick={() => startEdit(entry)} className="text-sm text-primary hover:text-indigo-700 dark:hover:text-indigo-400 font-medium">Edit</button>
+                    <div className="flex justify-end gap-2">
+                        <button onClick={() => startEdit(entry)} className="text-sm text-primary hover:text-indigo-700 dark:hover:text-indigo-400 font-medium">Edit</button>
+                        <button onClick={() => confirmDelete(entry.pageNumber)} className="text-sm text-red-400 hover:text-red-600 font-medium" title="Delete">Delete</button>
+                    </div>
                   </td>
                 </tr>
               );

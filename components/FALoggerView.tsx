@@ -2,7 +2,7 @@
 // components/FALoggerView.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { KnowledgeBaseEntry, RevisionLog, getAdjustedDate, Attachment, TimeLogEntry, RevisionSettings } from '../types';
-import { ListCheckIcon, PaperAirplaneIcon, SparklesIcon, PaperClipIcon, XMarkIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, TrashIcon } from './Icons';
+import { ListCheckIcon, PaperAirplaneIcon, SparklesIcon, PaperClipIcon, XMarkIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, TrashIcon, ChevronLeftIcon, ChevronRightIcon, CalendarIcon } from './Icons';
 import { parseFALoggerInput, processLogEntries, ParsedLogEntry } from '../services/faLoggerService';
 import { RevisionHistoryModal } from './RevisionHistoryModal';
 import { PageBadge } from './PageBadge';
@@ -230,6 +230,8 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     const scrollRef = useRef<HTMLDivElement>(null);
     const todayStr = getAdjustedDate(new Date());
 
+    const [selectedDate, setSelectedDate] = useState(getAdjustedDate(new Date()));
+
     const [viewingHistoryForPage, setViewingHistoryForPage] = useState<KnowledgeBaseEntry | null>(null);
     
     const [logToDelete, setLogToDelete] = useState<any | null>(null);
@@ -252,13 +254,24 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
         });
     }, []);
 
-    const todaysLogs = useMemo(() => knowledgeBase.flatMap(kb => 
-        kb.logs.filter(log => getAdjustedDate(log.timestamp) === todayStr).map(log => ({ ...log, pageNumber: kb.pageNumber, title: kb.title, subtopics: (kb.topics || []).map(t => t.name), kbEntry: kb }))
-    ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [knowledgeBase, todayStr]);
+    const dateLabel = useMemo(() => {
+        const today = getAdjustedDate(new Date());
+        const d = new Date(today + 'T12:00:00');
+        d.setDate(d.getDate() - 1);
+        const yesterday = getAdjustedDate(d);
+        
+        if (selectedDate === today) return "Today";
+        if (selectedDate === yesterday) return "Yesterday";
+        return selectedDate;
+    }, [selectedDate]);
 
-    const studiedToday = useMemo(() => {
+    const filteredLogs = useMemo(() => knowledgeBase.flatMap(kb => 
+        kb.logs.filter(log => getAdjustedDate(log.timestamp) === selectedDate).map(log => ({ ...log, pageNumber: kb.pageNumber, title: kb.title, subtopics: (kb.topics || []).map(t => t.name), kbEntry: kb }))
+    ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [knowledgeBase, selectedDate]);
+
+    const studiedList = useMemo(() => {
         const pageMap = new Map<string, any>();
-        todaysLogs.filter(l => l.type === 'STUDY').forEach(log => {
+        filteredLogs.filter(l => l.type === 'STUDY').forEach(log => {
             if (!pageMap.has(log.pageNumber)) {
                 pageMap.set(log.pageNumber, log);
             }
@@ -284,11 +297,11 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             return sortDirection === 'asc' ? comparison : -comparison;
         });
         return list;
-    }, [todaysLogs, sortKey, sortDirection]);
+    }, [filteredLogs, sortKey, sortDirection]);
     
-    const revisedToday = useMemo(() => {
+    const revisedList = useMemo(() => {
         const pageMap = new Map<string, any>();
-        todaysLogs.filter(l => l.type === 'REVISION').forEach(log => {
+        filteredLogs.filter(l => l.type === 'REVISION').forEach(log => {
             const existing = pageMap.get(log.pageNumber);
             if (!existing || new Date(log.timestamp) > new Date(existing.timestamp)) {
                 pageMap.set(log.pageNumber, log);
@@ -316,7 +329,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
         });
 
         return list;
-    }, [todaysLogs, sortKey, sortDirection]);
+    }, [filteredLogs, sortKey, sortDirection]);
     
     useEffect(() => {
         if (scrollRef.current) {
@@ -341,6 +354,12 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     const removeAttachment = () => {
         setAttachedFile(null);
         setAttachmentPreview(null);
+    };
+
+    const handleDateChange = (offset: number) => {
+        const d = new Date(selectedDate + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        setSelectedDate(getAdjustedDate(d));
     };
 
     const handleLog = async () => {
@@ -647,7 +666,33 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
 
             <div>
                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                    <h3 className="font-bold text-lg text-slate-800 dark:text-white">Today's FA Activity ({todayStr})</h3>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => handleDateChange(-1)} 
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-600"
+                        >
+                            <ChevronLeftIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                        </button>
+                        <div className="relative group cursor-pointer px-2">
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                                <CalendarIcon className="w-5 h-5 text-indigo-500" />
+                                {dateLabel === "Today" || dateLabel === "Yesterday" ? dateLabel + "'s" : dateLabel} FA Activity
+                            </h3>
+                            <input 
+                                type="date" 
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                            />
+                        </div>
+                        <button 
+                            onClick={() => handleDateChange(1)} 
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-600"
+                        >
+                            <ChevronRightIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                        </button>
+                    </div>
+
                     <div className="flex items-center gap-2 self-end sm:self-center">
                         <select
                             value={sortKey}
@@ -669,8 +714,25 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <LogTable title="Studied Today" logs={studiedToday} swipedLogId={swipedLogId} setSwipedLogId={setSwipedLogId} onDeleteLog={requestDelete} onViewPage={onViewPage} onViewHistory={setViewingHistoryForPage} />
-                    <LogTable title="Revised Today" logs={revisedToday} isRevisionTable={true} swipedLogId={swipedLogId} setSwipedLogId={setSwipedLogId} onDeleteLog={requestDelete} onViewPage={onViewPage} onViewHistory={setViewingHistoryForPage} />
+                    <LogTable 
+                        title={`Studied ${dateLabel}`} 
+                        logs={studiedList} 
+                        swipedLogId={swipedLogId} 
+                        setSwipedLogId={setSwipedLogId} 
+                        onDeleteLog={requestDelete} 
+                        onViewPage={onViewPage} 
+                        onViewHistory={setViewingHistoryForPage} 
+                    />
+                    <LogTable 
+                        title={`Revised ${dateLabel}`} 
+                        logs={revisedList} 
+                        isRevisionTable={true} 
+                        swipedLogId={swipedLogId} 
+                        setSwipedLogId={setSwipedLogId} 
+                        onDeleteLog={requestDelete} 
+                        onViewPage={onViewPage} 
+                        onViewHistory={setViewingHistoryForPage} 
+                    />
                 </div>
             </div>
         </div>

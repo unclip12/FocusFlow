@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppSettings, ThemeColor, AISettings, RevisionSettings } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon } from './Icons';
+import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES } from '../types';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
 import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
@@ -100,8 +100,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
     }
   };
   
-  const handleToggleDarkMode = (isDark: boolean) => {
-      onUpdateSettings({ ...settings, darkMode: isDark });
+  const handleThemeSelect = (themeId: string) => {
+      onUpdateSettings({ ...settings, themeId: themeId });
   };
 
   const handleColorChange = (color: ThemeColor) => {
@@ -262,6 +262,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
+            <Section title="Appearance & Theme" icon={SwatchIcon}>
+                {/* Background Themes Grid */}
+                <div>
+                    <p className="font-bold text-slate-800 dark:text-white mb-3">Background Theme</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {APP_THEMES.map(theme => (
+                            <button 
+                                key={theme.id}
+                                onClick={() => handleThemeSelect(theme.id)}
+                                className={`relative p-1 rounded-xl border-2 transition-all hover:scale-[1.02] ${settings.themeId === theme.id ? 'border-indigo-600 dark:border-white shadow-md scale-[1.02]' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-600'}`}
+                            >
+                                <div className="h-20 w-full rounded-lg shadow-inner overflow-hidden relative" style={{ background: theme.bgGradient }}>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-white/30 backdrop-blur-sm p-1 text-center">
+                                        <span className={`text-[10px] font-bold ${theme.isDark ? 'text-white' : 'text-slate-800'}`}>{theme.name}</span>
+                                    </div>
+                                </div>
+                                {settings.themeId === theme.id && (
+                                    <div className="absolute top-2 right-2 bg-indigo-600 text-white rounded-full p-0.5 shadow-sm">
+                                        <CheckCircleIcon className="w-3 h-3" />
+                                    </div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Selecting a dark background will automatically enable dark mode for readability.</p>
+                </div>
+
+                {/* Accent Colors */}
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4">
+                         <p className="font-bold text-slate-800 dark:text-white">Accent Color</p>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
+                        {COLORS.map(color => (
+                            <button 
+                                key={color.value}
+                                onClick={() => handleColorChange(color.value)}
+                                className={`relative group p-1 rounded-xl border-2 transition-all ${settings.primaryColor === color.value ? 'border-slate-800 dark:border-white scale-105' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-600'}`}
+                            >
+                                <div className="h-12 w-full rounded-lg" style={{ backgroundColor: color.hex }}></div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </Section>
+
             {/* DATA MANAGEMENT SECTION */}
             <Section title="Data Management" icon={DatabaseIcon}>
                 <SettingRow label="Backup Data" description="Export all your study logs, plans, and settings to a JSON file.">
@@ -393,7 +439,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                      <SettingRow label="Carry Forward Rule" description="How to handle partially completed tasks.">
                          <select value={revisionSettings.carryForwardRule || 'next_block'}
                              onChange={e => setRevisionSettings(s => ({ ...s, carryForwardRule: e.target.value as any }))}
-                             className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm font-medium">
+                             className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm font-medium"
+                         >
                              <option value="next_block">Carry to next block</option>
                              <option value="end_of_day">Carry to end of today</option>
                              <option value="next_day">Carry to next day</option>
@@ -416,38 +463,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     </label>
                 </SettingRow>
             </Section>
-            
-            <Section title="Appearance" icon={SwatchIcon}>
-                <SettingRow label="Theme" description="Switch between light and dark themes">
-                    <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
-                        <button onClick={() => handleToggleDarkMode(false)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${!settings.darkMode ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>
-                            Light
-                        </button>
-                        <button onClick={() => handleToggleDarkMode(true)} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${settings.darkMode ? 'bg-slate-700 shadow-sm text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>
-                            Dark
-                        </button>
-                    </div>
-                </SettingRow>
-                <div>
-                    <div className="flex items-center gap-2 mb-4">
-                         <p className="font-bold text-slate-800 dark:text-white">Accent Color</p>
-                    </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
-                        {COLORS.map(color => (
-                            <button 
-                                key={color.value}
-                                onClick={() => handleColorChange(color.value)}
-                                className={`relative group p-1 rounded-xl border-2 transition-all ${settings.primaryColor === color.value ? 'border-slate-800 dark:border-white scale-105' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-600'}`}
-                            >
-                                <div className="h-12 w-full rounded-lg" style={{ backgroundColor: color.hex }}></div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </Section>
 
             <div className="text-center pt-8 text-slate-400 text-xs">
-                <p>FocusFlow v1.6</p>
+                <p>FocusFlow v1.7</p>
             </div>
         </div>
     </div>

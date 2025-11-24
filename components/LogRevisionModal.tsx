@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { ClockIcon, BookOpenIcon, ListCheckIcon } from './Icons';
 import { StudySession, ToDoItem } from '../types';
@@ -28,6 +29,17 @@ const LogRevisionModal: React.FC<LogRevisionModalProps> = ({ isOpen, onClose, on
   const [notes, setNotes] = useState('');
   const [toDoList, setToDoList] = useState<ToDoItem[]>([]);
   const [newToDo, setNewToDo] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {

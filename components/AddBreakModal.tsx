@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, CoffeeIcon } from './Icons';
 
@@ -14,6 +15,17 @@ export const AddBreakModal: React.FC<AddBreakModalProps> = ({ isOpen, onClose, o
     const [startTime, setStartTime] = useState(initialStartTime);
     const [endTime, setEndTime] = useState('');
     const [notes, setNotes] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen) {

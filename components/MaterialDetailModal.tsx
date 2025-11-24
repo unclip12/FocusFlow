@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { StudyMaterial, MaterialChatMessage } from '../types';
 import { XMarkIcon, CheckCircleIcon, TrashIcon, ChatBubbleLeftRightIcon, DocumentTextIcon } from './Icons';
@@ -15,6 +16,13 @@ export const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({ materi
     const [chats, setChats] = useState<MaterialChatMessage[]>([]);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [title, setTitle] = useState(material.title);
+
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, []);
 
     useEffect(() => {
         loadChats();

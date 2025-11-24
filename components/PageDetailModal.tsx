@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CATEGORIES, TrackableItem } from '../types';
-import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon } from './Icons';
+import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon, SparklesIcon } from './Icons';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { explainTopic, generateQuiz, speakText } from '../services/geminiService';
 import { uploadFile } from '../services/firebase';
@@ -28,6 +28,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
 
   // New state for extended editing
   const [subtopicsInput, setSubtopicsInput] = useState('');
+  const [keyPointsInput, setKeyPointsInput] = useState(''); // Added for Key Points
   const [isUploading, setIsUploading] = useState(false);
 
   // AI Features State
@@ -46,6 +47,17 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [stopSpeaking, setStopSpeaking] = useState<(() => void) | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen || !pageNumber) return null;
 
   // Aggregate Data
@@ -56,6 +68,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
     if (kbEntry) {
         setEditForm(JSON.parse(JSON.stringify(kbEntry))); // Deep copy
         setSubtopicsInput((kbEntry.topics || []).map(t => t.name).join('\n'));
+        setKeyPointsInput((kbEntry.keyPoints || []).join('\n')); // Initialize Key Points
         setIsEditing(true);
     }
   };
@@ -64,6 +77,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       setIsEditing(false);
       setEditForm(null);
       setSubtopicsInput('');
+      setKeyPointsInput('');
       setIsUploading(false);
   };
   
@@ -80,7 +94,9 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
             };
         });
 
-        const finalForm = { ...editForm, topics: updatedTopics };
+        const updatedKeyPoints = keyPointsInput.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+
+        const finalForm = { ...editForm, topics: updatedTopics, keyPoints: updatedKeyPoints };
         onUpdateEntry(finalForm);
         handleCancelEdit();
     }
@@ -149,6 +165,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
 
   // Content
   const topics = displayEntry?.topics || [];
+  const keyPoints = displayEntry?.keyPoints || [];
   const notes = isEditing ? editForm?.notes : (session?.notes || kbEntry?.notes || '');
   
   const attachments = displayEntry?.attachments || [];
@@ -170,10 +187,15 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
           setStopSpeaking(null);
       } else {
           setIsSpeaking(true);
-          // Prioritize explanation, otherwise read topic summary
-          const textToRead = explanation 
-            ? `Explanation for ${topic}. ${explanation}` 
-            : `Topic: ${topic}. Subject: ${subject}. ${notes ? 'Notes: ' + notes : ''}`;
+          // Prioritize explanation, otherwise read key points, otherwise topic
+          let textToRead = '';
+          if (explanation) {
+              textToRead = `Explanation for ${topic}. ${explanation}`;
+          } else if (keyPoints.length > 0) {
+              textToRead = `High Yield Key Points for ${topic}. ${keyPoints.join('. ')}`;
+          } else {
+              textToRead = `Topic: ${topic}. Subject: ${subject}. ${notes ? 'Notes: ' + notes : ''}`;
+          }
             
           const stopFn = await speakText(textToRead);
           setStopSpeaking(() => stopFn);
@@ -335,6 +357,35 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                   {/* LEFT COL: Resources & Visuals */}
                   <div className="lg:col-span-2 space-y-6">
                       
+                      {/* Key Points Section (NEW) */}
+                      <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
+                           <h3 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-3 flex items-center gap-2 tracking-wider">
+                               <SparklesIcon className="w-4 h-4" /> High Yield Key Points
+                           </h3>
+                           {isEditing ? (
+                               <textarea 
+                                   value={keyPointsInput} 
+                                   onChange={e => setKeyPointsInput(e.target.value)} 
+                                   placeholder="Paste key points here (one per line)..." 
+                                   className="w-full h-32 p-3 bg-white dark:bg-slate-800 rounded-xl text-sm border border-indigo-200 dark:border-indigo-900 focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" 
+                               />
+                           ) : keyPoints.length > 0 ? (
+                               <ul className="space-y-2">
+                                   {keyPoints.map((point, i) => (
+                                       <li key={i} className="text-sm text-slate-800 dark:text-slate-200 flex items-start gap-3 leading-relaxed">
+                                           <span className="text-indigo-500 mt-1 font-bold text-lg">•</span> 
+                                           <span>{point}</span>
+                                       </li>
+                                   ))}
+                               </ul>
+                           ) : (
+                               <div className="text-center py-4 border-2 border-dashed border-indigo-200 dark:border-indigo-900/30 rounded-xl bg-white/50 dark:bg-slate-800/50">
+                                   <p className="text-sm text-indigo-400 italic">No key points added yet.</p>
+                                   <p className="text-xs text-slate-400 mt-1">Use the AI Chatbot to extract them automatically!</p>
+                               </div>
+                           )}
+                      </div>
+
                       {/* Attachments Gallery */}
                       <div>
                           <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-3 flex items-center gap-2 tracking-wider">
@@ -513,81 +564,83 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {/* ... Quiz Overlay Code ... */}
+          {/* Quiz Overlay - Updated for proper scrolling */}
           {(isQuizActive || showQuizResult) && (
               <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl flex flex-col animate-fade-in">
-                  <div className="p-4 flex justify-end">
+                  <div className="p-4 flex justify-end shrink-0">
                       <button onClick={closeQuiz} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><XMarkIcon className="w-6 h-6 text-slate-500" /></button>
                   </div>
                   
-                  <div className="flex-1 flex items-center justify-center p-4">
-                      {showQuizResult ? (
-                          <div className="text-center space-y-6 animate-scale-up">
-                              <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full shadow-lg shadow-green-500/30 mb-4">
-                                  <CheckCircleIcon className="w-12 h-12 text-white" />
+                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                      <div className="flex min-h-full items-center justify-center">
+                          {showQuizResult ? (
+                              <div className="text-center space-y-6 animate-scale-up">
+                                  <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full shadow-lg shadow-green-500/30 mb-4">
+                                      <CheckCircleIcon className="w-12 h-12 text-white" />
+                                  </div>
+                                  <h3 className="text-3xl font-bold text-slate-800 dark:text-white">Quiz Complete!</h3>
+                                  <p className="text-lg text-slate-600 dark:text-slate-300">
+                                      You scored <span className="font-bold text-primary">{quizScore}</span> out of <span className="font-bold">{quizQuestions.length}</span>
+                                  </p>
+                                  <button onClick={closeQuiz} className="px-8 py-3 bg-slate-800 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold shadow-lg hover:scale-105 transition-transform">
+                                      Finish Review
+                                  </button>
                               </div>
-                              <h3 className="text-3xl font-bold text-slate-800 dark:text-white">Quiz Complete!</h3>
-                              <p className="text-lg text-slate-600 dark:text-slate-300">
-                                  You scored <span className="font-bold text-primary">{quizScore}</span> out of <span className="font-bold">{quizQuestions.length}</span>
-                              </p>
-                              <button onClick={closeQuiz} className="px-8 py-3 bg-slate-800 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold shadow-lg hover:scale-105 transition-transform">
-                                  Finish Review
-                              </button>
-                          </div>
-                      ) : (
-                          <div className="w-full max-w-2xl">
-                              <div className="flex justify-between text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-                                  <span>Question {currentQuestionIndex + 1} of {quizQuestions.length}</span>
-                                  <span>Score: {quizScore}</span>
-                              </div>
-                              <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-6">
-                                  <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 leading-relaxed">{quizQuestions[currentQuestionIndex].question}</h3>
-                                  <div className="space-y-3">
-                                      {quizQuestions[currentQuestionIndex].options.map((opt, idx) => {
-                                          const isSelected = selectedOption === idx;
-                                          const isCorrect = idx === quizQuestions[currentQuestionIndex].correctAnswer;
-                                          const showStatus = selectedOption !== null;
-                                          
-                                          let btnClass = "w-full p-4 rounded-xl text-left font-medium transition-all border-2 ";
-                                          if (showStatus) {
-                                              if (isCorrect) btnClass += "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300";
-                                              else if (isSelected) btnClass += "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300";
-                                              else btnClass += "border-slate-100 dark:border-slate-700 opacity-50";
-                                          } else {
-                                              btnClass += "border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10";
-                                          }
+                          ) : (
+                              <div className="w-full max-w-2xl">
+                                  <div className="flex justify-between text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+                                      <span>Question {currentQuestionIndex + 1} of {quizQuestions.length}</span>
+                                      <span>Score: {quizScore}</span>
+                                  </div>
+                                  <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-6">
+                                      <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 leading-relaxed">{quizQuestions[currentQuestionIndex].question}</h3>
+                                      <div className="space-y-3">
+                                          {quizQuestions[currentQuestionIndex].options.map((opt, idx) => {
+                                              const isSelected = selectedOption === idx;
+                                              const isCorrect = idx === quizQuestions[currentQuestionIndex].correctAnswer;
+                                              const showStatus = selectedOption !== null;
+                                              
+                                              let btnClass = "w-full p-4 rounded-xl text-left font-medium transition-all border-2 ";
+                                              if (showStatus) {
+                                                  if (isCorrect) btnClass += "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300";
+                                                  else if (isSelected) btnClass += "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300";
+                                                  else btnClass += "border-slate-100 dark:border-slate-700 opacity-50";
+                                              } else {
+                                                  btnClass += "border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10";
+                                              }
 
-                                          return (
-                                              <button 
-                                                  key={idx} 
-                                                  onClick={() => handleAnswer(idx)}
-                                                  disabled={selectedOption !== null}
-                                                  className={btnClass}
-                                              >
-                                                  {opt}
+                                              return (
+                                                  <button 
+                                                      key={idx} 
+                                                      onClick={() => handleAnswer(idx)}
+                                                      disabled={selectedOption !== null}
+                                                      className={btnClass}
+                                                  >
+                                                      {opt}
+                                                  </button>
+                                              );
+                                          })}
+                                      </div>
+                                  </div>
+                                  
+                                  {selectedOption !== null && (
+                                      <div className="animate-fade-in-up">
+                                          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 mb-6">
+                                              <p className="text-sm text-blue-800 dark:text-blue-200 font-medium leading-relaxed">
+                                                  <span className="font-bold uppercase text-xs block mb-1 opacity-70">Explanation</span>
+                                                  {quizQuestions[currentQuestionIndex].explanation}
+                                              </p>
+                                          </div>
+                                          <div className="flex justify-end">
+                                              <button onClick={nextQuestion} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-colors">
+                                                  {currentQuestionIndex < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'} <ArrowRightIcon className="w-4 h-4" />
                                               </button>
-                                          );
-                                      })}
-                                  </div>
+                                          </div>
+                                      </div>
+                                  )}
                               </div>
-                              
-                              {selectedOption !== null && (
-                                  <div className="animate-fade-in-up">
-                                      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 mb-6">
-                                          <p className="text-sm text-blue-800 dark:text-blue-200 font-medium leading-relaxed">
-                                              <span className="font-bold uppercase text-xs block mb-1 opacity-70">Explanation</span>
-                                              {quizQuestions[currentQuestionIndex].explanation}
-                                          </p>
-                                      </div>
-                                      <div className="flex justify-end">
-                                          <button onClick={nextQuestion} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-colors">
-                                              {currentQuestionIndex < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'} <ArrowRightIcon className="w-4 h-4" />
-                                          </button>
-                                      </div>
-                                  </div>
-                              )}
-                          </div>
-                      )}
+                          )}
+                      </div>
                   </div>
               </div>
           )}

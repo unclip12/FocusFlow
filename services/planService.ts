@@ -1,6 +1,5 @@
-
 import { getDayPlan, saveDayPlan } from './firebase';
-import { Block, DayPlan, BlockTask, BlockType } from '../types';
+import { Block, DayPlan, BlockType, BlockTask } from '../types';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
@@ -21,21 +20,227 @@ const parseTimeToMinutes = (timeStr: string): number => {
     }
 };
 
+// Standard Minutes (00:00 is 0). 
+const getStandardMinutes = (timeStr: string): number => {
+    return parseTimeToMinutes(timeStr);
+};
+
 const formatTime = (minutes: number): string => {
     let h = Math.floor(minutes / 60);
     const m = Math.round(minutes % 60);
-    if (h >= 24) h -= 24;
+    // Normalize 24h
+    while (h >= 24) h -= 24;
+    while (h < 0) h += 24;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
+const getNextDate = (dateStr: string): string => {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// --- AUTOMATED BACKLOG MIGRATION LOGIC ---
+
+/**
+ * Recursive function to push blocks into a specific date, shift existing blocks,
+ * and handle overflow past 12:00 AM (Midnight) into the next day.
+ */
+const pushBacklogToDate = async (targetDate: string, backlogBlocks: Block[]) => {
+    if (backlogBlocks.length === 0) return;
+
+    let plan = await getDayPlan(targetDate);
+    if (!plan) {
+        plan = {
+            date: targetDate,
+            blocks: [],
+            startTimePlanned: '08:00',
+            estimatedEndTime: '09:00',
+            totalStudyMinutesPlanned: 0,
+            totalBreakMinutes: 0,
+            faPages: [], faPagesCount: 0, faStudyMinutesPlanned: 0,
+            videos: [], anki: null, qbank: null, breaks: [],
+            notesFromUser: 'Auto-generated for Backlog', notesFromAI: '', attachments: [], blockDurationSetting: 30
+        };
+    }
+
+    const existingBlocks = plan.blocks || [];
+    
+    // 1. Prepare Backlog Blocks (Reset status, set title tag)
+    const newBlocksToInsert = backlogBlocks.map(b => ({
+        ...b,
+        id: generateId(), // New ID for the new day
+        date: targetDate,
+        status: 'NOT_STARTED' as const,
+        actualStartTime: undefined,
+        actualEndTime: undefined,
+        actualDurationMinutes: undefined,
+        segments: [],
+        interruptions: [],
+        title: b.title.includes('(Carry Over)') ? b.title : `${b.title} (Carry Over)`
+    }));
+
+    // 2. Merge & Sort for Domino Effect
+    // We place backlog at 8:00 AM initially.
+    // Then we iterate and push anything that overlaps.
+    
+    const START_OF_DAY_MINS = 8 * 60; // 08:00 AM
+    const MIDNIGHT_CUTOFF_MINS = 24 * 60; // 12:00 AM (Next Day boundary)
+
+    // Sort existing by planned time
+    const sortedExisting = [...existingBlocks].sort((a, b) => 
+        parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime)
+    );
+
+    const finalBlocksForToday: Block[] = [];
+    const overflowBlocksForTomorrow: Block[] = [];
+
+    let currentCursorMins = START_OF_DAY_MINS;
+
+    // A. Place Backlog Blocks First sequentially starting at 8 AM
+    for (const block of newBlocksToInsert) {
+        const duration = block.plannedDurationMinutes;
+        const startMins = currentCursorMins;
+        const endMins = startMins + duration;
+
+        // Check Midnight Overflow immediately for backlog
+        if (endMins > MIDNIGHT_CUTOFF_MINS) {
+            overflowBlocksForTomorrow.push(block); // Pushes with stale times, will be fixed in recursive call
+        } else {
+            finalBlocksForToday.push({
+                ...block,
+                plannedStartTime: formatTime(startMins),
+                plannedEndTime: formatTime(endMins)
+            });
+            currentCursorMins = endMins;
+        }
+    }
+
+    // B. Place Existing Blocks (Domino Shift)
+    // We reset cursor to the end of the last backlog block, but we must compare 
+    // with the existing block's original start time.
+    // If OriginalStart < CurrentCursor, we must push it to CurrentCursor.
+    // If OriginalStart >= CurrentCursor, we leave it there (gap preserved), but update Cursor to its end.
+    
+    for (const block of sortedExisting) {
+        // If this block was already done, we ideally shouldn't move it if we are rewriting history,
+        // but for "Future/Today" planning, existing blocks likely aren't done if 8 AM is the start.
+        // If they ARE done (e.g. user woke up at 6 AM), we shouldn't move them.
+        if (block.status === 'DONE') {
+            finalBlocksForToday.push(block);
+            continue; 
+        }
+
+        const originalStart = parseTimeToMinutes(block.plannedStartTime);
+        const duration = block.plannedDurationMinutes;
+        
+        let newStart = originalStart;
+        
+        // If the "Backlog Wave" has reached this block's time slot
+        if (newStart < currentCursorMins) {
+            newStart = currentCursorMins;
+        }
+
+        const newEnd = newStart + duration;
+
+        // Check Overflow
+        if (newEnd > MIDNIGHT_CUTOFF_MINS) {
+            overflowBlocksForTomorrow.push(block);
+        } else {
+            finalBlocksForToday.push({
+                ...block,
+                plannedStartTime: formatTime(newStart),
+                plannedEndTime: formatTime(newEnd)
+            });
+            // Update cursor to end of this block so next one pushes against it
+            currentCursorMins = newEnd;
+        }
+    }
+
+    // 3. Save Today
+    const updatedPlan = recalculatePlanStats(plan, finalBlocksForToday);
+    await saveDayPlan(updatedPlan);
+
+    // 4. Recurse for Overflow
+    if (overflowBlocksForTomorrow.length > 0) {
+        const nextDay = getNextDate(targetDate);
+        await pushBacklogToDate(nextDay, overflowBlocksForTomorrow);
+    }
+};
+
+/**
+ * Main entry point to check and migrate tasks.
+ * Call this on app load.
+ */
+export const checkAndMigrateOverdueTasks = async () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    // Definition: Day changes at 04:00 AM.
+    // If now is 02:00 AM on Nov 24, "Today" (logical) is Nov 23. We don't migrate yet.
+    // If now is 08:00 AM on Nov 24, "Today" (logical) is Nov 24. "Yesterday" was Nov 23.
+    // We check if Nov 23 has leftovers.
+
+    // Calculate "Logical Today"
+    const logicalToday = new Date(now);
+    if (currentHour < 4) {
+        logicalToday.setDate(logicalToday.getDate() - 1);
+    }
+    
+    // We want to check the *previous* logical day for leftovers.
+    const logicalYesterday = new Date(logicalToday);
+    logicalYesterday.setDate(logicalYesterday.getDate() - 1); // Go back 1 day
+
+    // Format YYYY-MM-DD
+    const yesterdayStr = logicalYesterday.toISOString().split('T')[0]; // Crude but effective for local calculation if timezone aligned, better utilize getAdjustedDate logic internally
+    const year = logicalYesterday.getFullYear();
+    const month = String(logicalYesterday.getMonth() + 1).padStart(2, '0');
+    const day = String(logicalYesterday.getDate()).padStart(2, '0');
+    const adjustedYesterdayStr = `${year}-${month}-${day}`;
+
+    const targetTodayStr = getNextDate(adjustedYesterdayStr); // Should match logicalToday in YYYY-MM-DD
+
+    // 1. Get Yesterday's Plan
+    const yesterdaysPlan = await getDayPlan(adjustedYesterdayStr);
+    
+    if (!yesterdaysPlan || !yesterdaysPlan.blocks) return;
+
+    const incompleteBlocks = yesterdaysPlan.blocks.filter(b => 
+        b.status === 'NOT_STARTED' || b.status === 'PAUSED' || b.completionStatus === 'PARTIAL' || b.completionStatus === 'NOT_DONE'
+    );
+
+    if (incompleteBlocks.length === 0) return;
+
+    console.log(`Found ${incompleteBlocks.length} incomplete blocks from ${adjustedYesterdayStr}. Migrating to ${targetTodayStr}...`);
+
+    // 2. Clean up Yesterday (Remove incomplete blocks so they don't stay there forever)
+    const keptBlocks = yesterdaysPlan.blocks.filter(b => !incompleteBlocks.includes(b));
+    const updatedYesterday = recalculatePlanStats(yesterdaysPlan, keptBlocks);
+    await saveDayPlan(updatedYesterday);
+
+    // 3. Push to Today (Recursive)
+    await pushBacklogToDate(targetTodayStr, incompleteBlocks);
+};
+
+
+// --- EXISTING SERVICES BELOW ---
+
 /**
  * Recalculates total study/break minutes and start/end times based on current blocks.
- * Used to keep DayPlan stats in sync when blocks are added or removed.
+ * Strictly excludes BREAKS from study time.
  */
 const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
-    // Ensure sorted by time
-    const sortedBlocks = [...blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+    // Sort Chronologically (00:00 -> 23:59)
+    const sortedBlocks = [...blocks].sort((a, b) => getStandardMinutes(a.plannedStartTime) - getStandardMinutes(b.plannedStartTime));
     
+    // Re-index blocks based on new sort order
+    sortedBlocks.forEach((b, idx) => {
+        b.index = idx;
+    });
+
     let totalStudy = 0;
     let totalBreak = 0;
 
@@ -43,13 +248,12 @@ const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
         if (b.type === 'BREAK') {
             totalBreak += b.plannedDurationMinutes;
         } else {
+            // Strictly exclude BREAK types from study time
             totalStudy += b.plannedDurationMinutes;
         }
     });
 
     // Determine start/end from blocks if possible
-    // We preserve original planned start time if blocks exist, or default to it.
-    // But estimated end time should strictly follow the last block.
     let newStart = plan.startTimePlanned;
     let newEnd = plan.estimatedEndTime;
 
@@ -57,7 +261,6 @@ const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
         newStart = sortedBlocks[0].plannedStartTime;
         newEnd = sortedBlocks[sortedBlocks.length - 1].plannedEndTime;
     } else {
-        // If no blocks, reset stats. Keep start time if set, but end time equals start (0 duration).
         if (newStart) newEnd = newStart;
     }
 
@@ -72,52 +275,81 @@ const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
 };
 
 /**
- * Shift subsequent blocks if a block runs overtime OR finishes early.
+ * Shifts subsequent blocks. Detects if blocks are pushed past midnight (overflow).
+ * Returns blocks that stay on current day and blocks that move to next day.
  */
-const shiftSchedule = (blocks: Block[], startIndex: number, minutesToShift: number): Block[] => {
-    // If minutesToShift is 0, no change
-    if (minutesToShift === 0) return blocks;
+const shiftScheduleWithOverflow = (blocks: Block[], startIndex: number, minutesToShift: number, currentDate: string): { currentDayBlocks: Block[], nextDayBlocks: Block[] } => {
+    const currentDayBlocks: Block[] = [];
+    const nextDayBlocks: Block[] = [];
+    const nextDateStr = getNextDate(currentDate);
 
-    const updatedBlocks = [...blocks];
-    
-    // Iterate through all blocks AFTER the finished one
-    for (let i = startIndex + 1; i < updatedBlocks.length; i++) {
-        const block = updatedBlocks[i];
+    // Add blocks before start index (they don't move)
+    for(let i=0; i<=startIndex; i++) {
+        currentDayBlocks.push(blocks[i]);
+    }
+
+    // Process blocks after start index
+    for(let i=startIndex+1; i<blocks.length; i++) {
+        const block = blocks[i];
+        
         // Do not shift completed blocks or skipped ones
-        if (block.status === 'DONE' || block.status === 'SKIPPED') continue;
+        if (block.status === 'DONE' || block.status === 'SKIPPED') {
+            currentDayBlocks.push(block);
+            continue;
+        }
 
         const oldStart = parseTimeToMinutes(block.plannedStartTime);
         const oldEnd = parseTimeToMinutes(block.plannedEndTime);
         
-        const newStart = oldStart + minutesToShift;
-        const newEnd = oldEnd + minutesToShift;
+        const newStartRaw = oldStart + minutesToShift;
+        const newEndRaw = oldEnd + minutesToShift;
 
-        updatedBlocks[i] = {
-            ...block,
-            plannedStartTime: formatTime(newStart),
-            plannedEndTime: formatTime(newEnd)
-        };
+        // Check overflow (>= 1440 minutes means it goes to next day)
+        if (newStartRaw >= 1440) {
+            // Move to next day
+            nextDayBlocks.push({
+                ...block,
+                date: nextDateStr,
+                plannedStartTime: formatTime(newStartRaw), // formatTime handles modulo 1440
+                plannedEndTime: formatTime(newEndRaw)
+            });
+        } else {
+            // Stay in current day
+            currentDayBlocks.push({
+                ...block,
+                plannedStartTime: formatTime(newStartRaw),
+                plannedEndTime: formatTime(newEndRaw)
+            });
+        }
     }
-    return updatedBlocks;
+    
+    return { currentDayBlocks, nextDayBlocks };
+};
+
+/**
+ * Helper to add moved blocks to the next day's plan
+ */
+const appendBlocksToNextDay = async (currentDate: string, blocksToAdd: Block[]) => {
+    // Reuse the robust logic we built for backlog migration
+    const nextDate = getNextDate(currentDate);
+    await pushBacklogToDate(nextDate, blocksToAdd);
 };
 
 
 /**
  * Update a specific block in a day's plan.
- * Used for generic updates like pausing.
  */
 export const updateBlockInPlan = async (date: string, blockId: string, updates: Partial<Block>): Promise<DayPlan | null> => {
     try {
         const plan = await getDayPlan(date);
         if (!plan || !plan.blocks) {
-            console.warn(`Plan not found for date: ${date}`);
             return null;
         }
 
         const nowTime = getFormattedTime();
         let blockFound = false;
 
-        const updatedBlocks = plan.blocks.map(b => {
+        const tempBlocks = plan.blocks.map(b => {
             if (b.id === blockId) {
                 blockFound = true;
                 const updatedBlock = { ...b, ...updates };
@@ -126,10 +358,11 @@ export const updateBlockInPlan = async (date: string, blockId: string, updates: 
                 if (updates.status === 'PAUSED' && b.status === 'IN_PROGRESS') {
                     if (updatedBlock.segments && updatedBlock.segments.length > 0) {
                         const lastSeg = updatedBlock.segments[updatedBlock.segments.length - 1];
-                        if (!lastSeg.end) lastSeg.end = nowTime;
+                        if (!lastSeg.end) lastSeg.end = nowTime; // Closes current segment
                     }
                     const interruptions = updatedBlock.interruptions ? [...updatedBlock.interruptions] : [];
-                    interruptions.push({ start: nowTime, reason: updates.actualNotes?.replace('Paused: ', '') || 'User paused' });
+                    const reason = updates.actualNotes?.startsWith('Paused:') ? updates.actualNotes.replace('Paused: ', '') : 'Paused';
+                    interruptions.push({ start: nowTime, reason: reason });
                     updatedBlock.interruptions = interruptions;
                 }
 
@@ -138,15 +371,9 @@ export const updateBlockInPlan = async (date: string, blockId: string, updates: 
             return b;
         });
 
-        if (!blockFound) {
-            console.warn(`Block ${blockId} not found in plan for ${date}`);
-            return null;
-        }
+        if (!blockFound) return null;
 
-        // Ensure chronological order
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-
-        const updatedPlan = { ...plan, blocks: updatedBlocks };
+        const updatedPlan = recalculatePlanStats(plan, tempBlocks);
         await saveDayPlan(updatedPlan);
         return updatedPlan;
 
@@ -157,14 +384,12 @@ export const updateBlockInPlan = async (date: string, blockId: string, updates: 
 };
 
 /**
- * Start a virtual block (one that exists in UI but not DB yet).
- * This materializes it into the DB and starts it.
+ * Start a virtual block.
  */
 export const startVirtualBlock = async (date: string, block: Block): Promise<DayPlan | null> => {
     try {
         let plan = await getDayPlan(date);
         
-        // If plan doesn't exist, create skeleton
         if (!plan) {
             plan = {
                 date: date,
@@ -179,23 +404,17 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
             };
         }
 
-        // Determine new persistent index
-        const maxIndex = plan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
-        const newIndex = maxIndex + 1;
-
         const nowTime = getFormattedTime();
         
-        // Prepare the new block (remove virtual flag)
         const newBlock: Block = {
             ...block,
-            index: newIndex,
+            index: 0, 
             status: 'IN_PROGRESS',
             actualStartTime: nowTime,
             segments: [{ start: nowTime }],
-            isVirtual: false // Materialize
+            isVirtual: false
         };
 
-        // Insert into blocks
         let updatedBlocks = plan.blocks ? [...plan.blocks] : [];
         
         // Pause any currently running block
@@ -214,7 +433,6 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
 
         updatedBlocks.push(newBlock);
         
-        // Recalculate stats with new block included
         const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
         updatedPlan.startTimeActual = plan.startTimeActual || nowTime;
 
@@ -228,7 +446,7 @@ export const startVirtualBlock = async (date: string, block: Block): Promise<Day
 };
 
 /**
- * Start or resume a block (and pause any other active blocks)
+ * Start or resume a block
  */
 export const startBlock = async (date: string, blockId: string): Promise<DayPlan | null> => {
     try {
@@ -237,7 +455,7 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
 
         const nowTime = getFormattedTime();
         
-        const updatedBlocks = plan.blocks.map(b => {
+        const tempBlocks = plan.blocks.map(b => {
             // Target block: Start it
             if (b.id === blockId) {
                 const isResuming = b.status === 'PAUSED';
@@ -259,7 +477,7 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
                 return updatedBlock;
             }
             
-            // If another block is running, pause it automatically
+            // Pause others
             if (b.status === 'IN_PROGRESS' && b.id !== blockId) {
                  if (b.segments && b.segments.length > 0) {
                     const lastSeg = b.segments[b.segments.length - 1];
@@ -272,10 +490,9 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
             return b;
         });
 
-        // Ensure chronological order
-        updatedBlocks.sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-
-        const updatedPlan = { ...plan, blocks: updatedBlocks, startTimeActual: plan.startTimeActual || nowTime };
+        const updatedPlan = recalculatePlanStats(plan, tempBlocks);
+        if (!updatedPlan.startTimeActual) updatedPlan.startTimeActual = nowTime;
+        
         await saveDayPlan(updatedPlan);
         return updatedPlan;
     } catch (e) {
@@ -285,8 +502,7 @@ export const startBlock = async (date: string, blockId: string): Promise<DayPlan
 };
 
 /**
- * Finish a block with granular task updates.
- * Automatically shifts future blocks if time overrun occurs.
+ * Finish a block
  */
 export const finishBlock = async (
     date: string, 
@@ -297,8 +513,8 @@ export const finishBlock = async (
         carryForwardPages: number[],
         notes: string,
         interruptions?: { start: string, end: string, reason: string }[],
-        tasks?: BlockTask[], // Updated tasks with execution status
-        rescheduledTo?: string, // The time or context where tasks were pushed
+        tasks?: BlockTask[],
+        rescheduledTo?: string,
         generatedLogIds?: string[],
         generatedTimeLogIds?: string[]
     },
@@ -310,50 +526,56 @@ export const finishBlock = async (
 
         const endTime = endTimeStr || new Date().toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
 
-        let updatedBlocks = [...plan.blocks];
-        const currentBlockIndex = updatedBlocks.findIndex(b => b.id === blockId);
+        let currentBlocks = [...plan.blocks];
+        const currentBlockIndex = currentBlocks.findIndex(b => b.id === blockId);
         if (currentBlockIndex === -1) return null;
         
-        const b = updatedBlocks[currentBlockIndex];
+        const b = currentBlocks[currentBlockIndex];
         
-        // Close last segment if open
+        // Close last segment
         let finalSegments = b.segments ? [...b.segments] : [];
         if (finalSegments.length > 0 && !finalSegments[finalSegments.length-1].end) {
             finalSegments[finalSegments.length-1].end = endTime;
         }
         
-        // Merge AI-identified breaks
         let finalInterruptions = b.interruptions || [];
         if (reflection.interruptions) {
             finalInterruptions = [...finalInterruptions, ...reflection.interruptions];
         }
         
-        // Calculate actual total duration
-        let actualDurationMinutes = 0;
-        if (b.actualStartTime) {
-            actualDurationMinutes = parseTimeToMinutes(endTime) - parseTimeToMinutes(b.actualStartTime);
-            if (actualDurationMinutes < 0) actualDurationMinutes += 24 * 60; // Crosses midnight
+        // Effective Time Calculation
+        let actualEffectiveMinutes = 0;
+        
+        if (b.type === 'BREAK') {
+            const sTime = parseTimeToMinutes(b.actualStartTime || b.plannedStartTime);
+            let eTime = parseTimeToMinutes(endTime);
+            if (eTime < sTime) eTime += 24*60;
+            actualEffectiveMinutes = eTime - sTime;
+        } else {
+            for (const segment of finalSegments) {
+                if (segment.start && segment.end) {
+                    const sTime = parseTimeToMinutes(segment.start);
+                    let eTime = parseTimeToMinutes(segment.end);
+                    if (isNaN(sTime) || isNaN(eTime)) continue;
+                    if (eTime < sTime) eTime += 24*60;
+                    actualEffectiveMinutes += (eTime - sTime);
+                }
+            }
         }
 
-        // Calculate total break duration from interruptions
-        const totalBreakDuration = finalInterruptions.reduce((total, interruption) => {
-            if (interruption.start && interruption.end) {
-                let breakMins = parseTimeToMinutes(interruption.end) - parseTimeToMinutes(interruption.start);
-                if (breakMins < 0) breakMins += 24 * 60;
-                return total + breakMins;
-            }
-            return total;
-        }, 0);
+        // Calculate Overrun
+        const plannedEndMins = parseTimeToMinutes(b.plannedEndTime);
+        const actualEndMins = parseTimeToMinutes(endTime);
+        let wallClockOverrun = actualEndMins - plannedEndMins;
+        
+        if (wallClockOverrun < -720) wallClockOverrun += 1440;
+        if (wallClockOverrun > 720) wallClockOverrun -= 1440;
 
-        const actualStudyTime = actualDurationMinutes - totalBreakDuration;
-        const overrun = actualStudyTime - b.plannedDurationMinutes;
-
-        // Update the completed block
-        updatedBlocks[currentBlockIndex] = {
+        currentBlocks[currentBlockIndex] = {
             ...b,
             status: 'DONE',
             actualEndTime: endTime,
-            actualDurationMinutes: actualDurationMinutes,
+            actualDurationMinutes: actualEffectiveMinutes,
             completionStatus: reflection.status,
             actualPagesCovered: reflection.pagesCovered,
             carryForwardPages: reflection.carryForwardPages,
@@ -366,17 +588,25 @@ export const finishBlock = async (
             generatedTimeLogIds: reflection.generatedTimeLogIds
         };
 
-        // --- TIME SHIFTING LOGIC ---
-        // Shifts schedule if overrun is positive (late) or negative (finished early)
-        if (overrun !== 0) {
-            updatedBlocks = shiftSchedule(updatedBlocks, currentBlockIndex, overrun);
+        // Shift subsequent blocks & Handle Overflow
+        if (wallClockOverrun !== 0) {
+            const { currentDayBlocks, nextDayBlocks } = shiftScheduleWithOverflow(currentBlocks, currentBlockIndex, wallClockOverrun, date);
+            
+            // Save current day
+            const updatedPlan = recalculatePlanStats(plan, currentDayBlocks);
+            await saveDayPlan(updatedPlan);
+
+            // Move overflow blocks to next day
+            if (nextDayBlocks.length > 0) {
+                await appendBlocksToNextDay(date, nextDayBlocks);
+            }
+            
+            return updatedPlan;
+        } else {
+            const updatedPlan = recalculatePlanStats(plan, currentBlocks);
+            await saveDayPlan(updatedPlan);
+            return updatedPlan;
         }
-
-        // Recalculate stats (end time might shift due to overrun)
-        const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
-
-        await saveDayPlan(updatedPlan);
-        return updatedPlan;
 
     } catch (e) {
         console.error("planService: finishBlock failed", e);
@@ -385,8 +615,8 @@ export const finishBlock = async (
 };
 
 /**
- * Inserts a new block at a specific time and shifts overlapping/future blocks.
- * Supports optional block type and description.
+ * Inserts a new block and shifts subsequent blocks.
+ * Handles overflow to next day.
  */
 export const insertBlockAndShift = async (
     date: string, 
@@ -395,7 +625,10 @@ export const insertBlockAndShift = async (
     tasks: BlockTask[],
     title: string = 'New Study Block',
     type: BlockType = 'MIXED',
-    description: string = ''
+    description: string = '',
+    customId?: string,
+    initialStatus: 'NOT_STARTED' | 'DONE' = 'NOT_STARTED',
+    initialOverrides: Partial<Block> = {}
 ): Promise<DayPlan | null> => {
     try {
         let plan = await getDayPlan(date);
@@ -418,14 +651,9 @@ export const insertBlockAndShift = async (
         const newBlockStart = parseTimeToMinutes(startTimeStr);
         const newBlockEnd = newBlockStart + durationMinutes;
         
-        // Determine new persistent index
-        const maxIndex = plan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
-        const newIndex = maxIndex + 1;
-
-        // 1. Create the new block
         const newBlock: Block = {
-            id: generateId(),
-            index: newIndex,
+            id: customId || generateId(),
+            index: 0, // Will be recalculated
             date: date,
             plannedStartTime: formatTime(newBlockStart),
             plannedEndTime: formatTime(newBlockEnd),
@@ -433,51 +661,46 @@ export const insertBlockAndShift = async (
             title: title,
             description: description || (type === 'BREAK' ? 'Break' : 'Manual Entry'),
             plannedDurationMinutes: durationMinutes,
-            status: 'NOT_STARTED',
-            tasks: tasks
+            status: initialStatus,
+            tasks: tasks,
+            ...initialOverrides
         };
 
-        let updatedBlocks = [...plan.blocks];
+        const tempBlocks = [...plan.blocks, newBlock];
         
-        // 2. Insert and Shift
-        const doneBlocks = updatedBlocks.filter(b => b.status === 'DONE');
-        const pendingBlocks = updatedBlocks.filter(b => b.status !== 'DONE');
+        // Sort first to find insertion point
+        const sorted = tempBlocks.sort((a, b) => getStandardMinutes(a.plannedStartTime) - getStandardMinutes(b.plannedStartTime));
+        const newBlockIndex = sorted.findIndex(b => b.id === newBlock.id);
         
-        // Sort pending blocks by start time
-        pendingBlocks.sort((a,b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
-
-        const shiftDelta = durationMinutes;
-        
-        const shiftedPendingBlocks = pendingBlocks.map(b => {
-            const bStart = parseTimeToMinutes(b.plannedStartTime);
-            if (bStart >= newBlockStart) {
-                const bEnd = parseTimeToMinutes(b.plannedEndTime);
-                return {
-                    ...b,
-                    plannedStartTime: formatTime(bStart + shiftDelta),
-                    plannedEndTime: formatTime(bEnd + shiftDelta)
-                };
+        // Calculate necessary shift
+        let shiftAmount = 0;
+        if (newBlockIndex !== -1 && newBlockIndex < sorted.length - 1) {
+            // Check if next block overlaps
+            const nextBlock = sorted[newBlockIndex + 1];
+            if (nextBlock.status !== 'DONE') {
+                const nextStart = parseTimeToMinutes(nextBlock.plannedStartTime);
+                const myEnd = parseTimeToMinutes(newBlock.plannedEndTime);
+                if (nextStart < myEnd) {
+                    shiftAmount = myEnd - nextStart;
+                }
             }
-            // If block ends after new start, it overlaps, push it.
-            const bEnd = parseTimeToMinutes(b.plannedEndTime);
-            if (bEnd > newBlockStart) {
-                 return {
-                    ...b,
-                    plannedStartTime: formatTime(bStart + shiftDelta),
-                    plannedEndTime: formatTime(bEnd + shiftDelta)
-                };
+        }
+
+        if (shiftAmount > 0) {
+            const { currentDayBlocks, nextDayBlocks } = shiftScheduleWithOverflow(sorted, newBlockIndex, shiftAmount, date);
+            
+            const updatedPlan = recalculatePlanStats(plan, currentDayBlocks);
+            await saveDayPlan(updatedPlan);
+            
+            if (nextDayBlocks.length > 0) {
+                await appendBlocksToNextDay(date, nextDayBlocks);
             }
-            return b;
-        });
-
-        // Combine
-        const allBlocks = [...doneBlocks, newBlock, ...shiftedPendingBlocks];
-        
-        // Recalculate stats and re-sort
-        const updatedPlan = recalculatePlanStats(plan, allBlocks);
-
-        await saveDayPlan(updatedPlan);
-        return updatedPlan;
+            return updatedPlan;
+        } else {
+            const updatedPlan = recalculatePlanStats(plan, sorted);
+            await saveDayPlan(updatedPlan);
+            return updatedPlan;
+        }
 
     } catch (e) {
         console.error("insertBlockAndShift failed", e);
@@ -485,20 +708,12 @@ export const insertBlockAndShift = async (
     }
 };
 
-/**
- * Moves tasks to the immediately next pending block.
- */
 export const moveTasksToNextBlock = async (date: string, currentBlockId: string, tasksToMove: BlockTask[]): Promise<DayPlan | null> => {
     try {
         const plan = await getDayPlan(date);
         if (!plan || !plan.blocks) return null;
 
-        const currentIdx = plan.blocks.findIndex(b => b.id === currentBlockId);
-        if (currentIdx === -1) return null;
-
-        // Find next pending block by time
-        // Note: we use time sort order now because indices might not be sequential if deleted
-        const sortedBlocks = [...plan.blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+        const sortedBlocks = [...plan.blocks].sort((a, b) => getStandardMinutes(a.plannedStartTime) - getStandardMinutes(b.plannedStartTime));
         const currentSortedIdx = sortedBlocks.findIndex(b => b.id === currentBlockId);
         
         const nextBlock = sortedBlocks.find((b, i) => i > currentSortedIdx && b.status !== 'DONE' && b.type !== 'BREAK');
@@ -515,11 +730,10 @@ export const moveTasksToNextBlock = async (date: string, currentBlockId: string,
                 return b;
             });
             
-            const updatedPlan = { ...plan, blocks: updatedBlocks };
+            const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
             await saveDayPlan(updatedPlan);
             return updatedPlan;
         } else {
-            console.warn("No next block found to move tasks to.");
             return null;
         }
 
@@ -529,14 +743,10 @@ export const moveTasksToNextBlock = async (date: string, currentBlockId: string,
     }
 };
 
-/**
- * Moves tasks to a future date's plan (Reschedule to specific date).
- */
 export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: string, tasksToMove: BlockTask[]): Promise<void> => {
     try {
         let targetPlan = await getDayPlan(targetDate);
         
-        // Create target plan skeleton if not exists
         if (!targetPlan) {
             targetPlan = {
                 date: targetDate,
@@ -551,24 +761,18 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
             };
         }
 
-        // Determine new persistent index for target plan
-        const maxIndex = targetPlan.blocks?.reduce((max, b) => Math.max(max, b.index), -1) ?? -1;
-        const newIndex = maxIndex + 1;
-
-        // Create a new block for these tasks in the target plan
-        // We'll append it to the end or default time if empty
         let newStartTime = '08:00';
         if (targetPlan.blocks && targetPlan.blocks.length > 0) {
-            newStartTime = targetPlan.blocks[targetPlan.blocks.length - 1].plannedEndTime;
+            const lastBlock = [...targetPlan.blocks].sort((a,b) => getStandardMinutes(a.plannedStartTime) - getStandardMinutes(b.plannedStartTime)).pop();
+            if(lastBlock) newStartTime = lastBlock.plannedEndTime;
         }
         
-        // Default 60 min block for rescheduled items
         const newStartMins = parseTimeToMinutes(newStartTime);
         const newEndMins = newStartMins + 60;
         
         const newBlock: Block = {
             id: generateId(),
-            index: newIndex,
+            index: 0,
             date: targetDate,
             plannedStartTime: formatTime(newStartMins),
             plannedEndTime: formatTime(newEndMins),
@@ -582,7 +786,6 @@ export const moveTasksToFuturePlan = async (sourceDate: string, targetDate: stri
 
         const updatedBlocks = [...(targetPlan.blocks || []), newBlock];
         
-        // Recalculate stats
         const updatedTargetPlan = recalculatePlanStats(targetPlan, updatedBlocks);
 
         await saveDayPlan(updatedTargetPlan);
@@ -598,10 +801,8 @@ export const deleteBlock = async (date: string, blockId: string): Promise<DayPla
         const plan = await getDayPlan(date);
         if (!plan || !plan.blocks) return null;
 
-        // Just filter out the block. Do NOT re-index remaining blocks to preserve their IDs.
         const updatedBlocks = plan.blocks.filter(b => b.id !== blockId);
         
-        // Recalculate stats (IMPORTANT: this fixes the stale summary bug)
         const updatedPlan = recalculatePlanStats(plan, updatedBlocks);
         
         await saveDayPlan(updatedPlan);

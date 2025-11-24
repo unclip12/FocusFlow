@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { DayPlan, Block, BlockTask } from '../types';
 import { XMarkIcon, PlusIcon, TrashIcon, ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, VideoIcon, CoffeeIcon } from './Icons';
@@ -16,6 +17,17 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClose, onSave, initialDate, existingPlan }) => {
     const [blocks, setBlocks] = useState<Block[]>([]);
     const [startTime, setStartTime] = useState('08:00'); // Just for default new blocks
+
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen) {

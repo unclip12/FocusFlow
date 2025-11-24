@@ -1,4 +1,5 @@
 
+
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, addDoc, query, orderBy, writeBatch, where } from "firebase/firestore";
@@ -417,6 +418,14 @@ export const saveKnowledgeBase = async (kb: KnowledgeBaseEntry[]) => {
             batch.set(docRef, cleanData(entry));
         });
         await batch.commit();
+    });
+};
+
+export const deleteKnowledgeBaseEntry = async (pageNumber: string) => {
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'knowledgeBase', pageNumber);
+        await deleteDoc(docRef);
     });
 };
 

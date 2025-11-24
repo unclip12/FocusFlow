@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useMemo } from 'react';
 import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, RevisionLog } from '../types';
 import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon, FireIcon } from './Icons';
@@ -82,7 +84,7 @@ const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) 
     const isStudy = log.type === 'STUDY';
 
     return (
-        <div className={`group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 ${isStudy ? '' : 'border-l-4 border-l-green-400'} card-3d`}>
+        <div className={`group relative bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 ${isStudy ? '' : 'border-l-4 border-l-green-400'} card-3d`}>
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="flex-shrink-0">
                     <PageBadge
@@ -287,7 +289,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
 
   return (
     <div className="animate-fade-in space-y-8">
-        <div className="card-3d rounded-3xl p-6 border border-white/50 dark:border-slate-700/50 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md">
+        <div className="card-3d rounded-3xl p-6 border border-white/50 dark:border-slate-700/50 bg-surface/80 dark:bg-slate-800/80 backdrop-blur-md">
              <div className="flex justify-between items-start mb-6">
                 <div>
                     <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white flex items-center gap-2 tracking-tight">
@@ -354,7 +356,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                         <select
                             value={sortBy}
                             onChange={e => setSortBy(e.target.value as SortOption)}
-                            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+                            className="bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
                             aria-label="Sort by"
                         >
                             <option value="TIME">Date</option>
@@ -363,7 +365,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                         </select>
                         <button
                             onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
-                            className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50 transition-colors"
+                            className="p-1.5 bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50 transition-colors"
                             aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
                         >
                             {sortOrder === 'ASC' ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
@@ -385,7 +387,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                         <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                         <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
                             <CheckCircleIcon className="w-16 h-16 text-green-200 dark:text-green-900 mx-auto mb-4" />
                             <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">All Caught Up!</h3>
                             <p className="text-slate-400 dark:text-slate-500">No revisions due right now.</p>
@@ -405,7 +407,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                         <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                         <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
                             <p className="text-slate-400 dark:text-slate-500">No upcoming revisions scheduled.</p>
                         </div>
                     )
@@ -421,7 +423,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                        <div className="p-12 text-center bg-white dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                        <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
                             <p className="text-slate-400 dark:text-slate-500">No past logs found.</p>
                         </div>
                     )

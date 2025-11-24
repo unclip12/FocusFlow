@@ -860,7 +860,7 @@ export const chatWithMentor = async (
     activeMaterialText?: string,
     retrievedContext?: string, // New param for RAG
     aiSettings?: AISettings | null,
-    modelName: string = 'gemini-3-pro-preview'
+    modelName: string = 'gemini-2.5-flash'
 ): Promise<{ text: string, toolCalls?: any[] }> => {
     if (!ai) return { text: "AI Service unavailable." };
 

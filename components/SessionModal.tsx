@@ -76,6 +76,17 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
   const [editLogNotes, setEditLogNotes] = useState('');
   const [editLogAnkiDelta, setEditLogAnkiDelta] = useState(0);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   // Reset or populate form when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -384,7 +395,7 @@ const SessionModal: React.FC<SessionModalProps> = ({ isOpen, onClose, onSave, in
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xl w-full max-w-lg animate-fade-in-up my-2 sm:my-8 flex flex-col max-h-[95vh] sm:max-h-[85vh]">
         
         {/* Header */}

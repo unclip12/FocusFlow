@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
-import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings } from '../types';
+import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings, TrackableItem } from '../types';
 import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
-import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, PhotoIcon } from './Icons';
-import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan } from '../services/firebase';
+import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, PhotoIcon, DatabaseIcon, PlusIcon } from './Icons';
+import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan, saveKnowledgeBase } from '../services/firebase';
 import { generateBlocks } from '../services/blockGenerator';
 import { startBlock, updateBlockInPlan, finishBlock } from '../services/planService';
 import { processLogEntries } from '../services/faLoggerService';
@@ -370,6 +369,127 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
       }
   };
 
+  // --- DATA IMPORT HANDLER ---
+  const handleImportAction = async (action: 'KB' | 'PLAN' | 'BOTH', data: any) => {
+      try {
+          // Support batch array import
+          const importItems = Array.isArray(data) ? data : [data];
+          
+          // 1. Update Knowledge Base
+          if (action === 'KB' || action === 'BOTH') {
+              // Work on a copy of the current KB
+              let updatedKB = [...knowledgeBase];
+              
+              for (const item of importItems) {
+                  const { pageNumber, title, system, subject, topics, keyPoints } = item;
+                  const pageStr = String(pageNumber);
+                  
+                  const newTopics: TrackableItem[] = Array.isArray(topics) ? topics.map((t: string) => ({
+                      id: generateId(),
+                      name: t,
+                      revisionCount: 0,
+                      lastStudiedAt: null,
+                      nextRevisionAt: null,
+                      currentRevisionIndex: 0,
+                      logs: []
+                  })) : [];
+
+                  const existingIndex = updatedKB.findIndex(k => k.pageNumber === pageStr);
+                  
+                  if (existingIndex >= 0) {
+                      // Update existing
+                      const kbEntry = updatedKB[existingIndex];
+                      updatedKB[existingIndex] = {
+                          ...kbEntry,
+                          title: title || kbEntry.title,
+                          system: system || kbEntry.system,
+                          subject: subject || kbEntry.subject,
+                          // Merge topics simply by appending new ones that don't exist
+                          topics: [...kbEntry.topics, ...newTopics.filter(nt => !kbEntry.topics.some(et => et.name === nt.name))],
+                          keyPoints: keyPoints || kbEntry.keyPoints || []
+                      };
+                  } else {
+                      // Create new
+                      updatedKB.push({
+                          pageNumber: pageStr,
+                          title: title || `Page ${pageStr}`,
+                          subject: subject || 'Uncategorized',
+                          system: system || 'General',
+                          revisionCount: 0,
+                          firstStudiedAt: null,
+                          lastStudiedAt: null,
+                          nextRevisionAt: null,
+                          currentRevisionIndex: 0,
+                          ankiTotal: 0,
+                          ankiCovered: 0,
+                          videoLinks: [],
+                          tags: [],
+                          notes: '',
+                          logs: [],
+                          topics: newTopics,
+                          attachments: [],
+                          keyPoints: keyPoints || []
+                      });
+                  }
+              }
+              
+              await onUpdateKnowledgeBase(updatedKB);
+              await saveKnowledgeBase(updatedKB); // Force Firestore sync
+          }
+
+          // 2. Update Today's Plan
+          if (action === 'PLAN' || action === 'BOTH') {
+              // Loop and add items
+              for (const item of importItems) {
+                  const { pageNumber, title, topics } = item;
+                  const pageStr = String(pageNumber);
+                  
+                  onAddToPlan({
+                      date: getAdjustedDate(new Date()),
+                      type: 'PAGE',
+                      pageNumber: pageStr,
+                      topic: title || `Study Page ${pageStr}`,
+                      estimatedMinutes: 45,
+                      isCompleted: false,
+                      ankiCount: 0,
+                      totalMinutesSpent: 0,
+                      subTasks: Array.isArray(topics) ? topics.map((t: string) => ({ id: generateId(), text: t, done: false })) : []
+                  });
+              }
+          }
+
+          // Log confirmation
+          const count = importItems.length;
+          const msg: MentorMessage = {
+              id: generateId(),
+              role: 'model',
+              text: `✅ Successfully processed ${count} page${count > 1 ? 's' : ''} into ${action === 'BOTH' ? 'Knowledge Base and Plan' : (action === 'KB' ? 'Knowledge Base' : 'Today\'s Plan')}.`,
+              timestamp: new Date().toISOString(),
+              isSystemAction: true
+          };
+          setMentorMessages(prev => [...prev, msg]);
+          await saveMentorMessage(msg);
+
+      } catch (e) {
+          console.error("Import error", e);
+          const err: MentorMessage = {
+              id: generateId(),
+              role: 'model',
+              text: "❌ Error importing data. Please check the format.",
+              timestamp: new Date().toISOString()
+          };
+          setMentorMessages(prev => [...prev, err]);
+      }
+  };
+
+  const cleanJsonInput = (input: string): string => {
+      // Remove markdown code blocks
+      let text = input.replace(/```json/g, '').replace(/```/g, '');
+      // Replace smart quotes with standard double quotes
+      text = text.replace(/[\u201C\u201D]/g, '"');
+      return text.trim();
+  };
+
   const handleSend = async () => {
       if (!input.trim() && !attachedImage) return;
       
@@ -392,6 +512,59 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         setMentorMessages(prev => [...prev, userMsg]);
         await saveMentorMessage(userMsg);
         
+        // 1. Try JSON Parsing for Knowledge Base Update
+        try {
+            const cleanedText = cleanJsonInput(textToSend);
+            
+            // Find potential JSON start/end
+            const firstBrace = cleanedText.indexOf('{');
+            const lastBrace = cleanedText.lastIndexOf('}');
+            const firstBracket = cleanedText.indexOf('[');
+            const lastBracket = cleanedText.lastIndexOf(']');
+            
+            let jsonCandidate = "";
+            
+            // Determine if Object or Array is more likely (earliest start)
+            // Case 1: Array
+            if (firstBracket !== -1 && lastBracket > firstBracket && (firstBrace === -1 || firstBracket < firstBrace)) {
+                jsonCandidate = cleanedText.substring(firstBracket, lastBracket + 1);
+            } 
+            // Case 2: Object
+            else if (firstBrace !== -1 && lastBrace > firstBrace) {
+                jsonCandidate = cleanedText.substring(firstBrace, lastBrace + 1);
+            }
+
+            if (jsonCandidate) {
+                const data = JSON.parse(jsonCandidate);
+                
+                // Validate: Single Object vs Array
+                const isValidSingle = !Array.isArray(data) && data.pageNumber && (data.topics || data.title);
+                const isValidArray = Array.isArray(data) && data.length > 0 && data[0].pageNumber;
+
+                if (isValidSingle || isValidArray) {
+                    const count = Array.isArray(data) ? data.length : 1;
+                    const firstPage = Array.isArray(data) ? data[0].pageNumber : data.pageNumber;
+                    
+                    const confirmMsg: MentorMessage = {
+                        id: generateId(),
+                        role: 'model',
+                        text: `I recognized structured data for **${count} page(s)** starting from Page ${firstPage}.\n\nWhat would you like to do with this batch?`,
+                        timestamp: new Date().toISOString(),
+                        isSystemAction: true,
+                        actionType: 'CONFIRM_IMPORT',
+                        actionPayload: data
+                    };
+                    setMentorMessages(prev => [...prev, confirmMsg]);
+                    await saveMentorMessage(confirmMsg);
+                    setIsTyping(false);
+                    return;
+                }
+            }
+        } catch (e) {
+            // Not JSON, continue to schedule parser
+        }
+
+        // 2. Schedule Parsing (Existing Logic)
         const parsedPlans = parseSchedule(textToSend, getAdjustedDate(new Date()));
         
         if (parsedPlans && parsedPlans.length > 0) {
@@ -425,7 +598,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
             const errorMsg: MentorMessage = {
                 id: generateId(),
                 role: 'model',
-                text: "I couldn't find any valid schedule blocks. Please ensure you use the format: 'HH:MM - HH:MM -> Action Details'.",
+                text: "I couldn't parse that command.\n\n**To update Knowledge Base:** Paste a JSON object (or Array) with `pageNumber`, `title`, `topics`, `keyPoints`.\n**To create a schedule:** Use 'HH:MM - HH:MM -> Task'.",
                 timestamp: new Date().toISOString(),
             };
             setMentorMessages(prev => [...prev, errorMsg]);
@@ -734,7 +907,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="bg-slate-100 dark:bg-slate-900 border-none text-xs font-bold text-slate-600 dark:text-slate-300 rounded-lg py-1.5 pl-2 pr-6 cursor-pointer focus:ring-0 outline-none"
                 >
-                    <option value="gemini-3-pro-preview">Gemini 3.0 Pro</option>
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                     <option value="chatbot">Chat Bot (Local)</option>
                 </select>
@@ -789,9 +961,10 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                              <div className="flex flex-col w-full">
                                  <div className="flex items-center gap-2">
                                      <CheckCircleIcon className="w-4 h-4" /> 
-                                     <span className="font-bold">Action Completed</span>
+                                     <span className="font-bold">{msg.actionType === 'CONFIRM_IMPORT' ? 'Data Recognized' : 'Action Completed'}</span>
                                  </div>
                                  <p className="mt-1 opacity-90">{msg.text}</p>
+                                 
                                  {msg.actionType === 'VIEW_PLAN' && msg.actionPayload?.date && (
                                      <button 
                                         onClick={() => onViewDayPlan(msg.actionPayload.date)}
@@ -802,6 +975,29 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                         </span>
                                         <ArrowRightIcon className="w-3 h-3" />
                                      </button>
+                                 )}
+
+                                 {msg.actionType === 'CONFIRM_IMPORT' && msg.actionPayload && (
+                                     <div className="mt-3 flex flex-wrap gap-2">
+                                         <button 
+                                            onClick={() => handleImportAction('KB', msg.actionPayload)}
+                                            className="flex items-center gap-1 bg-white/60 hover:bg-white text-indigo-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                                         >
+                                             <DatabaseIcon className="w-3 h-3" /> Update Knowledge Base
+                                         </button>
+                                         <button 
+                                            onClick={() => handleImportAction('PLAN', msg.actionPayload)}
+                                            className="flex items-center gap-1 bg-white/60 hover:bg-white text-blue-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                                         >
+                                             <PlusIcon className="w-3 h-3" /> Add to Today's Plan
+                                         </button>
+                                         <button 
+                                            onClick={() => handleImportAction('BOTH', msg.actionPayload)}
+                                            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                                         >
+                                             <CheckCircleIcon className="w-3 h-3" /> Do Both
+                                         </button>
+                                     </div>
                                  )}
                              </div>
                         ) : (

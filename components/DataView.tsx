@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { StudyMaterial, Attachment } from '../types';
 import { CloudArrowUpIcon, DocumentTextIcon, CheckCircleIcon, TrashIcon, EyeIcon, PhotoIcon, DocumentIcon, PlusIcon, ChatBubbleLeftRightIcon } from './Icons';
@@ -56,26 +55,51 @@ export const DataView: React.FC = () => {
             try {
                 setUploadStatus('Processing file locally...');
                 
-                // Read file to base64 locally, bypassing Firebase Storage
-                const base64data = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
+                let extractedText: string | null = null;
+                let sourceType: 'PDF' | 'IMAGE' | 'TEXT' = 'TEXT';
 
-                setUploadStatus('Extracting text with AI (this may take a moment)...');
-                
-                const mimeType = file.type === 'application/pdf' ? 'application/pdf' : file.type;
-                const extractedText = await extractTextFromMedia(base64data, mimeType);
+                // Expanded Text Detection
+                const isTextFile = file.type.startsWith('text/') || 
+                                   /\.(txt|md|json|csv|js|ts|tsx|jsx|py|rb|html|css|xml|yml|yaml)$/i.test(file.name);
+
+                if (isTextFile) {
+                    sourceType = 'TEXT';
+                    extractedText = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.onerror = reject;
+                        reader.readAsText(file);
+                    });
+                } else {
+                    // PDF or Image path: Read as Base64 for AI processing
+                    sourceType = file.type === 'application/pdf' ? 'PDF' : 'IMAGE';
+                    const base64data = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+
+                    setUploadStatus('Extracting text with AI (this may take a moment)...');
+                    
+                    const mimeType = file.type === 'application/pdf' ? 'application/pdf' : file.type;
+                    extractedText = await extractTextFromMedia(base64data, mimeType);
+                }
                 
                 if (extractedText) {
+                    // FIRESTORE SIZE LIMIT CHECK (~1MB safe limit)
+                    // 1 char is roughly 1-4 bytes depending on encoding, assuming UTF-8 average roughly 1 byte for english
+                    if (extractedText.length > 950000) {
+                        alert("Warning: File content exceeds the 1MB storage limit. It will be truncated.");
+                        extractedText = extractedText.substring(0, 950000);
+                    }
+
                     setUploadStatus('Saving info...');
                     const newMaterial: StudyMaterial = {
                         id: generateId(),
                         title: file.name,
                         text: extractedText,
-                        sourceType: file.type === 'application/pdf' ? 'PDF' : 'IMAGE',
+                        sourceType: sourceType,
                         createdAt: new Date().toISOString(),
                         isActive: false,
                         tokenEstimate: extractedText.length / 4, // Rough estimate
@@ -93,22 +117,31 @@ export const DataView: React.FC = () => {
             } finally {
                 setIsUploading(false);
                 setUploadStatus('');
+                e.target.value = ''; // Reset input to allow selecting same file again
             }
         }
     };
 
     const handlePasteSave = async () => {
         if (!pastedText.trim()) return;
+        
+        // Size Check for Paste
+        let textToSave = pastedText;
+        if (textToSave.length > 950000) {
+             alert("Warning: Pasted content exceeds the 1MB storage limit. It will be truncated.");
+             textToSave = textToSave.substring(0, 950000);
+        }
+
         setIsUploading(true);
         try {
             const newMaterial: StudyMaterial = {
                 id: generateId(),
                 title: `Pasted Text - ${new Date().toLocaleDateString()}`,
-                text: pastedText,
+                text: textToSave,
                 sourceType: 'TEXT',
                 createdAt: new Date().toISOString(),
                 isActive: false,
-                tokenEstimate: pastedText.length / 4,
+                tokenEstimate: textToSave.length / 4,
                 source: 'PASTE'
             };
             await saveStudyMaterial(newMaterial);
@@ -195,7 +228,7 @@ export const DataView: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-slate-800 dark:text-white">Upload Document</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">PDF or Image. Text will be extracted.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">PDF, Images, or Text files (txt, md, json, code).</p>
                     </div>
                     
                     {isUploading ? (
@@ -203,7 +236,12 @@ export const DataView: React.FC = () => {
                     ) : (
                         <label className="cursor-pointer px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm transition-all shadow-lg shadow-indigo-200 dark:shadow-none">
                             Select File
-                            <input type="file" className="hidden" accept="application/pdf,image/*" onChange={handleFileUpload} />
+                            <input 
+                                type="file" 
+                                className="hidden" 
+                                accept=".pdf,image/*,text/*,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css" 
+                                onChange={handleFileUpload} 
+                            />
                         </label>
                     )}
                 </div>
@@ -213,7 +251,7 @@ export const DataView: React.FC = () => {
                     <textarea 
                         value={pastedText}
                         onChange={e => setPastedText(e.target.value)}
-                        placeholder="Or paste study notes here..."
+                        placeholder="Or paste raw text notes here..."
                         className="flex-1 w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none text-sm text-slate-700 dark:text-slate-300 mb-3"
                     />
                     <button 

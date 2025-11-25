@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, HistoryRecord } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon } from './Icons';
+import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, HistoryRecord, NotificationTrigger } from '../types';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, ClockIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
 import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
@@ -52,6 +53,67 @@ const SettingRow: React.FC<{ label: string, description: string, children: React
         </div>
     </div>
 );
+
+const TriggerList: React.FC<{ 
+    category: NotificationTrigger['category'], 
+    triggers: NotificationTrigger[], 
+    onAdd: (trigger: NotificationTrigger) => void, 
+    onRemove: (id: string) => void 
+}> = ({ category, triggers, onAdd, onRemove }) => {
+    const [offset, setOffset] = useState<number>(15);
+    const [timing, setTiming] = useState<'BEFORE' | 'AFTER'>('BEFORE');
+
+    // Default timing logic per category
+    useEffect(() => {
+        if (category === 'OVERDUE') setTiming('AFTER');
+        else setTiming('BEFORE');
+    }, [category]);
+
+    const handleAdd = () => {
+        onAdd({
+            id: Date.now().toString(),
+            category,
+            timing,
+            offsetMinutes: offset,
+            enabled: true
+        });
+    };
+
+    return (
+        <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700/50">
+            <div className="flex flex-wrap gap-2 mb-3">
+                {triggers.filter(t => t.category === category).map(t => (
+                    <div key={t.id} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span>{t.offsetMinutes}m {t.timing === 'BEFORE' ? 'Before' : 'After'}</span>
+                        <button onClick={() => onRemove(t.id)} className="text-slate-400 hover:text-red-500"><TrashIcon className="w-3 h-3" /></button>
+                    </div>
+                ))}
+                {triggers.filter(t => t.category === category).length === 0 && <span className="text-xs text-slate-400 italic p-1">No active triggers</span>}
+            </div>
+            
+            <div className="flex gap-2 items-center">
+                <input 
+                    type="number" 
+                    value={offset} 
+                    onChange={e => setOffset(Math.max(1, parseInt(e.target.value)))}
+                    className="w-16 p-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold text-center"
+                />
+                <span className="text-xs text-slate-500">min</span>
+                <select 
+                    value={timing} 
+                    onChange={e => setTiming(e.target.value as 'BEFORE' | 'AFTER')}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                >
+                    <option value="BEFORE">Before</option>
+                    <option value="AFTER">After</option>
+                </select>
+                <button onClick={handleAdd} className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors">
+                    <PlusIcon className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+};
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSettings, secretId, displayName, onUpdateDisplayName, onRestoreHistory }) => {
   const [localName, setLocalName] = useState(displayName);
@@ -193,6 +255,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       }
   };
 
+  // --- NOTIFICATION HANDLERS ---
+  const handleAddTrigger = (trigger: NotificationTrigger) => {
+      const newTriggers = [...(settings.notifications.customTriggers || []), trigger];
+      onUpdateSettings({
+          ...settings,
+          notifications: { ...settings.notifications, customTriggers: newTriggers }
+      });
+  };
+
+  const handleRemoveTrigger = (id: string) => {
+      const newTriggers = (settings.notifications.customTriggers || []).filter(t => t.id !== id);
+      onUpdateSettings({
+          ...settings,
+          notifications: { ...settings.notifications, customTriggers: newTriggers }
+      });
+  };
+
+  const ensureDefaultTriggers = () => {
+      if (!settings.notifications.customTriggers || settings.notifications.customTriggers.length === 0) {
+          const defaults: NotificationTrigger[] = [
+              { id: 'def-1', category: 'FIRST_BLOCK', timing: 'BEFORE', offsetMinutes: 30, enabled: true },
+              { id: 'def-2', category: 'BLOCK_START', timing: 'BEFORE', offsetMinutes: 1, enabled: true },
+              { id: 'def-3', category: 'BLOCK_END', timing: 'BEFORE', offsetMinutes: 1, enabled: true },
+              { id: 'def-4', category: 'OVERDUE', timing: 'AFTER', offsetMinutes: 5, enabled: true },
+          ];
+          onUpdateSettings({
+              ...settings,
+              notifications: { ...settings.notifications, customTriggers: defaults }
+          });
+      }
+  };
+
+  useEffect(() => {
+      ensureDefaultTriggers();
+  }, []);
+
   return (
       <div className="animate-fade-in space-y-8 pb-20">
           <DeleteConfirmationModal 
@@ -218,6 +316,77 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
               {/* LEFT COLUMN */}
               <div className="space-y-8">
                   
+                  {/* Notifications */}
+                  <Section title="Notifications" icon={BellIcon}>
+                      <SettingRow label="Enable Notifications" description="Allow push alerts">
+                          <div className="relative inline-block w-10 h-6 align-middle select-none transition duration-200 ease-in">
+                              <input 
+                                  type="checkbox" 
+                                  name="toggle" 
+                                  id="notif-toggle" 
+                                  checked={settings.notifications.enabled}
+                                  onChange={() => {
+                                      const isEnabled = !settings.notifications.enabled;
+                                      onUpdateSettings({ ...settings, notifications: { ...settings.notifications, enabled: isEnabled } });
+                                      if (isEnabled) requestNotificationPermission();
+                                  }}
+                                  className="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out checked:translate-x-full"
+                                  style={{ borderColor: settings.notifications.enabled ? '#6366f1' : '#e2e8f0' }}
+                              />
+                              <label htmlFor="notif-toggle" className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer ${settings.notifications.enabled ? 'bg-indigo-500' : 'bg-slate-300'}`}></label>
+                          </div>
+                      </SettingRow>
+
+                      {settings.notifications.enabled && (
+                          <>
+                              <SettingRow label="First Block of Day" description="Get ready before you start">
+                                  <div className="w-full sm:w-64">
+                                      <TriggerList 
+                                          category="FIRST_BLOCK" 
+                                          triggers={settings.notifications.customTriggers || []} 
+                                          onAdd={handleAddTrigger} 
+                                          onRemove={handleRemoveTrigger} 
+                                      />
+                                  </div>
+                              </SettingRow>
+
+                              <SettingRow label="Upcoming & Ongoing" description="Alerts for block start/end">
+                                  <div className="w-full sm:w-64 space-y-2">
+                                      <div>
+                                          <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Before Start</p>
+                                          <TriggerList 
+                                              category="BLOCK_START" 
+                                              triggers={settings.notifications.customTriggers || []} 
+                                              onAdd={handleAddTrigger} 
+                                              onRemove={handleRemoveTrigger} 
+                                          />
+                                      </div>
+                                      <div>
+                                          <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Before End</p>
+                                          <TriggerList 
+                                              category="BLOCK_END" 
+                                              triggers={settings.notifications.customTriggers || []} 
+                                              onAdd={handleAddTrigger} 
+                                              onRemove={handleRemoveTrigger} 
+                                          />
+                                      </div>
+                                  </div>
+                              </SettingRow>
+
+                              <SettingRow label="Accountability" description="Nagging if tasks aren't marked finished">
+                                  <div className="w-full sm:w-64">
+                                      <TriggerList 
+                                          category="OVERDUE" 
+                                          triggers={settings.notifications.customTriggers || []} 
+                                          onAdd={handleAddTrigger} 
+                                          onRemove={handleRemoveTrigger} 
+                                      />
+                                  </div>
+                              </SettingRow>
+                          </>
+                      )}
+                  </Section>
+
                   {/* Profile */}
                   <Section title="Profile" icon={UserCircleIcon}>
                       <SettingRow label="Display Name" description="How the AI addresses you">

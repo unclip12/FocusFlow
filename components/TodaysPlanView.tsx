@@ -1,10 +1,7 @@
 
 
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry, RevisionSettings } from '../types';
+import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry, RevisionSettings, NotificationTrigger } from '../types';
 import { getDayPlan, saveDayPlan, getRevisionSettings, saveKnowledgeBase } from '../services/firebase';
 import { saveTimeLog, deleteTimeLog } from '../services/timeLogService';
 import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock, startVirtualBlock, moveTasksToFuturePlan } from '../services/planService';
@@ -18,6 +15,7 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { PauseReasonModal } from './PauseReasonModal';
 import { processLogEntries } from '../services/faLoggerService';
 import { calculateNextRevisionDate } from '../services/srsService';
+import { sendLocalNotification, getNotificationTone } from '../services/notificationService';
 
 // --- HELPERS ---
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -286,7 +284,6 @@ const TimeSeal: React.FC<{ planned: number, actual: number }> = ({ planned, actu
             </svg>
             <div className={`absolute inset-2 rounded-full opacity-40 blur-md`} style={{ animation: `pulse-glow-${isSaved ? 'green' : 'red'} ${pulseDuration} infinite alternate`, background: isSaved ? `radial-gradient(circle, rgba(34,197,94,0.8) 0%, rgba(16,185,129,0) 70%)` : `radial-gradient(circle, rgba(239,68,68,0.8) 0%, rgba(236,72,153,0) 70%)` }}></div>
             <div className={`relative z-10 w-full h-full rounded-full border-[3px] border-double flex flex-col items-center justify-center bg-white/10 backdrop-blur-[1px] shadow-sm ${isSaved ? 'border-green-600 text-green-700' : 'border-red-600 text-red-700'}`}>
-                <div className={`absolute inset-1 rounded-full border border-dashed opacity-50 ${isSaved ? 'border-green-600' : 'border-red-600'}`}></div>
                 <div className="font-black text-2xl leading-none tracking-tighter drop-shadow-sm flex items-center">{isSaved ? '+' : '-'}{Math.round(absDiff)}<span className="text-xs ml-0.5 align-top mt-1">m</span></div>
                 <div className="text-[9px] font-bold uppercase tracking-widest opacity-90 mt-0.5">{isSaved ? 'SAVED' : 'OVER'}</div>
             </div>
@@ -613,13 +610,6 @@ const BlockCard: React.FC<{
     const effectiveEndMins = endMins < startMins ? endMins + 24*60 : endMins; 
     
     // Fill Logic
-    // 1. If Done -> 100% Green (Success)
-    // 2. If Not Done / Rescheduled -> 100% Red (Fail)
-    // 3. If Not Started:
-    //    - If time > end -> 100% Orange (Missed)
-    //    - If time > start -> Percentage Orange/Glowing (Late/Missed Progress)
-    //    - If time < start -> 0% (Future)
-    
     let lineFillColor = 'bg-slate-200/50 dark:bg-slate-700/50';
     let lineFillHeight = '0%';
     let lineGlow = '';
@@ -1199,16 +1189,100 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
     const [pausingBlockId, setPausingBlockId] = useState<string | null>(null);
     const [pausingBlockTitle, setPausingBlockTitle] = useState('');
 
-    // Timer Effect for updating current time visual
+    // Notification Sent Tracking (Prevent spam)
+    const sentNotificationsRef = useRef<Set<string>>(new Set());
+
+    // Timer Effect for updating current time visual & Notifications
     useEffect(() => {
         const updateTime = () => {
             const now = new Date();
             setCurrentTimeMinutes(now.getHours() * 60 + now.getMinutes());
         };
         updateTime(); // Initial set
-        const interval = setInterval(updateTime, 60000); // Update every minute
+        const interval = setInterval(updateTime, 10000); // Update every 10 sec for smoother UI
         return () => clearInterval(interval);
     }, []);
+
+    // Notification Loop Logic
+    useEffect(() => {
+        if (!plan || !settings.notifications.enabled || !plan.blocks) return;
+
+        const checkNotifications = () => {
+            const now = new Date();
+            const currentMin = now.getHours() * 60 + now.getMinutes();
+            const nowIsoMinute = now.toISOString().substring(0, 16); // YYYY-MM-DDTHH:mm precision
+
+            // Use custom triggers or fallback to empty if not defined
+            const triggers = settings.notifications.customTriggers || [];
+            if (triggers.length === 0) return;
+
+            const sortedBlocks = [...plan.blocks].sort((a, b) => parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime));
+            
+            // Identify the "First Block" (Start >= 06:00) to apply specific triggers
+            const firstTask = sortedBlocks.find(b => parseTimeToMinutes(b.plannedStartTime) >= 6 * 60 && b.type !== 'BREAK');
+
+            sortedBlocks.forEach((block) => {
+                const startMin = parseTimeToMinutes(block.plannedStartTime);
+                const endMin = parseTimeToMinutes(block.plannedEndTime);
+                
+                // Helper: Avoid duplicate sends per minute/trigger
+                const sendOnce = (triggerId: string, title: string, body: string) => {
+                    const key = `${block.id}-${triggerId}-${nowIsoMinute}`;
+                    if (!sentNotificationsRef.current.has(key)) {
+                        sendLocalNotification(title, body);
+                        sentNotificationsRef.current.add(key);
+                    }
+                };
+
+                triggers.forEach(trigger => {
+                    if (!trigger.enabled) return;
+
+                    // 1. FIRST BLOCK TRIGGERS
+                    if (trigger.category === 'FIRST_BLOCK' && firstTask && block.id === firstTask.id) {
+                        const targetTime = trigger.timing === 'BEFORE' ? startMin - trigger.offsetMinutes : startMin + trigger.offsetMinutes;
+                        if (currentMin === targetTime) {
+                            sendOnce(trigger.id, 'First Task', `"${block.title}" starts in ${trigger.offsetMinutes} mins.`);
+                        }
+                    }
+
+                    // 2. BLOCK START TRIGGERS (Ongoing/Upcoming)
+                    // Usually applied to all blocks unless it's the first one covered above (optional, but usually inclusive)
+                    if (trigger.category === 'BLOCK_START') {
+                        // Don't double notify if it's the first block and we have a specific trigger for that, 
+                        // but simpler to just allow general rules to apply too.
+                        const targetTime = trigger.timing === 'BEFORE' ? startMin - trigger.offsetMinutes : startMin + trigger.offsetMinutes;
+                        if (currentMin === targetTime) {
+                            sendOnce(trigger.id, 'Upcoming Block', `"${block.title}" starts in ${trigger.offsetMinutes} mins.`);
+                        }
+                    }
+
+                    // 3. BLOCK END TRIGGERS
+                    if (trigger.category === 'BLOCK_END') {
+                        const targetTime = trigger.timing === 'BEFORE' ? endMin - trigger.offsetMinutes : endMin + trigger.offsetMinutes;
+                        
+                        // Only fire if in progress or about to start (relevant context)
+                        if (currentMin === targetTime && (block.status === 'IN_PROGRESS' || block.status === 'NOT_STARTED')) {
+                            sendOnce(trigger.id, 'Finishing Soon', `"${block.title}" ends in ${trigger.offsetMinutes} mins.`);
+                        }
+                    }
+
+                    // 4. OVERDUE / ACCOUNTABILITY TRIGGERS
+                    // Logic: Current time passed end time by offset, and block isn't done.
+                    if (trigger.category === 'OVERDUE' && block.status !== 'DONE' && block.status !== 'SKIPPED') {
+                        const targetTime = trigger.timing === 'AFTER' ? endMin + trigger.offsetMinutes : endMin - trigger.offsetMinutes; // Usually AFTER
+                        
+                        if (currentMin === targetTime) {
+                            sendOnce(trigger.id, 'Overdue Task', `"${block.title}" is overdue by ${trigger.offsetMinutes} mins. Please complete it!`);
+                        }
+                    }
+                });
+            });
+        };
+
+        const intervalId = setInterval(checkNotifications, 10000); // Check every 10 seconds
+        return () => clearInterval(intervalId);
+
+    }, [plan, settings]);
 
     useEffect(() => {
         setCurrentDate(targetDate || getAdjustedDate(new Date()));
@@ -1829,7 +1903,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 <div className="flex gap-2 items-center">
                     <button 
                         onClick={() => onUpdateSettings({ ...settings, darkMode: !settings.darkMode })}
-                        className="p-2 rounded-xl hover:bg-yellow-50 dark:hover:bg-yellow-900/20 text-slate-400 hover:text-yellow-500 transition-colors hover:shadow-sm" 
+                        className="p-2 rounded-xl hover:bg-yellow-50 dark:hover:bg-yellow-900/20 text-slate-400 hover:text-yellow-50 transition-colors hover:shadow-sm" 
                         title="Toggle Dark Mode"
                     >
                         {settings.darkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}

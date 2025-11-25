@@ -524,6 +524,14 @@ export const APP_THEMES: AppTheme[] = [
     },
 ];
 
+export interface NotificationTrigger {
+    id: string;
+    category: 'FIRST_BLOCK' | 'BLOCK_START' | 'BLOCK_END' | 'OVERDUE';
+    timing: 'BEFORE' | 'AFTER';
+    offsetMinutes: number;
+    enabled: boolean;
+}
+
 export interface NotificationConfig {
     enabled: boolean;
     mode: 'normal' | 'strict'; // C-Mode is strict
@@ -533,6 +541,7 @@ export interface NotificationConfig {
         mentorNudges: boolean;
         dailySummary: boolean;
     };
+    customTriggers?: NotificationTrigger[]; // New custom triggers
 }
 
 export interface QuietHoursConfig {

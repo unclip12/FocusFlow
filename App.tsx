@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan } from './services/firebase';
@@ -280,20 +281,21 @@ export default function App() {
         const theme = APP_THEMES.find(t => t.id === activeThemeId) || APP_THEMES[0];
         
         const root = document.documentElement;
+        const isDark = settings.darkMode;
         
-        // Apply CSS Variables
-        root.style.setProperty('--app-bg', theme.bgGradient);
-        root.style.setProperty('--color-background', theme.backgroundRGB);
-        root.style.setProperty('--color-surface', theme.surfaceRGB);
+        // Apply CSS Variables based on mode
+        root.style.setProperty('--app-bg', isDark ? theme.darkBgGradient : theme.bgGradient);
+        root.style.setProperty('--color-background', isDark ? theme.darkBackgroundRGB : theme.backgroundRGB);
+        root.style.setProperty('--color-surface', isDark ? theme.darkSurfaceRGB : theme.surfaceRGB);
         
-        if (theme.isDark) {
+        if (isDark) {
             root.classList.add('dark');
         } else {
             root.classList.remove('dark');
         }
     };
     applyTheme();
-  }, [settings.themeId]);
+  }, [settings.themeId, settings.darkMode]);
 
   const handleUpdateDisplayName = async (newName: string) => {
       setDisplayName(newName);

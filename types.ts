@@ -380,25 +380,148 @@ export type ThemeColor = 'indigo' | 'emerald' | 'rose' | 'amber' | 'sky' | 'viol
 export interface AppTheme {
     id: string;
     name: string;
-    bgGradient: string; // CSS background property
-    isDark: boolean;
-    surfaceRGB: string; // "R G B" for Tailwind surface variable
-    backgroundRGB: string; // "R G B" for Tailwind background variable
+    bgGradient: string; // Light Mode BG
+    darkBgGradient: string; // Dark Mode BG
+    surfaceRGB: string; // Light Mode Surface
+    darkSurfaceRGB: string; // Dark Mode Surface
+    backgroundRGB: string; // Light Mode Background (fallback)
+    darkBackgroundRGB: string; // Dark Mode Background (fallback)
+    isDark?: boolean; // Kept for compatibility, logic handled by App settings
 }
 
 export const APP_THEMES: AppTheme[] = [
-    { id: 'default', name: 'Flow White', bgGradient: 'linear-gradient(to bottom right, #f1f5f9, #e2e8f0)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '241 245 249' },
-    { id: 'midnight', name: 'Midnight Deep', bgGradient: 'linear-gradient(to bottom, #0f172a, #1e293b)', isDark: true, surfaceRGB: '30 41 59', backgroundRGB: '15 23 42' },
-    { id: 'pastel-sunset', name: 'Pastel Sunset', bgGradient: 'linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '250 240 245' },
-    { id: 'mint-fresh', name: 'Fresh Mint', bgGradient: 'linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '235 250 250' },
-    { id: 'deep-ocean', name: 'Deep Ocean', bgGradient: 'linear-gradient(to top, #1e3c72 0%, #2a5298 100%)', isDark: true, surfaceRGB: '30 58 138', backgroundRGB: '23 37 84' },
-    { id: 'soft-lilac', name: 'Soft Lilac', bgGradient: 'linear-gradient(to top, #c471f5 0%, #fa71cd 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '250 240 250' },
-    { id: 'warm-peach', name: 'Warm Peach', bgGradient: 'linear-gradient(to right, #fa709a 0%, #fee140 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '255 245 245' },
-    { id: 'night-sky', name: 'Night Sky', bgGradient: 'linear-gradient(to bottom, #020024 0%, #090979 35%, #00d4ff 100%)', isDark: true, surfaceRGB: '17 24 39', backgroundRGB: '2 6 23' },
-    { id: 'citrus-burst', name: 'Citrus Burst', bgGradient: 'linear-gradient(to right, #f83600 0%, #f9d423 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '255 250 240' },
-    { id: 'mystic-forest', name: 'Mystic Forest', bgGradient: 'linear-gradient(to bottom, #134e5e 0%, #71b280 100%)', isDark: true, surfaceRGB: '6 78 59', backgroundRGB: '2 44 34' },
-    { id: 'royal-violet', name: 'Royal Violet', bgGradient: 'linear-gradient(to right, #654ea3, #eaafc8)', isDark: true, surfaceRGB: '76 29 149', backgroundRGB: '46 16 101' },
-    { id: 'cloudy-sky', name: 'Cloudy Sky', bgGradient: 'linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%)', isDark: false, surfaceRGB: '255 255 255', backgroundRGB: '248 250 252' },
+    { 
+        id: 'default', 
+        name: 'Flow White', 
+        bgGradient: 'linear-gradient(to bottom right, #f1f5f9, #e2e8f0)', 
+        darkBgGradient: 'linear-gradient(to bottom, #0f172a, #1e293b)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '30 41 59',
+        backgroundRGB: '241 245 249',
+        darkBackgroundRGB: '15 23 42',
+        isDark: false 
+    },
+    { 
+        id: 'midnight', 
+        name: 'Midnight Deep', 
+        bgGradient: 'linear-gradient(to bottom, #94a3b8, #cbd5e1)', 
+        darkBgGradient: 'linear-gradient(to bottom, #020617, #0f172a)',
+        surfaceRGB: '255 255 255',
+        darkSurfaceRGB: '15 23 42', 
+        backgroundRGB: '241 245 249',
+        darkBackgroundRGB: '2 6 23',
+        isDark: true 
+    },
+    { 
+        id: 'pastel-sunset', 
+        name: 'Pastel Sunset', 
+        bgGradient: 'linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)', 
+        darkBgGradient: 'linear-gradient(120deg, #4a254c 0%, #2a1b3d 100%)', // Muted dark purple
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '45 30 60', // Dark purple surface
+        backgroundRGB: '250 240 245',
+        darkBackgroundRGB: '30 20 40',
+        isDark: false 
+    },
+    { 
+        id: 'mint-fresh', 
+        name: 'Fresh Mint', 
+        bgGradient: 'linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)', 
+        darkBgGradient: 'linear-gradient(120deg, #0f3d2e 0%, #103e52 100%)', // Dark Teal
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '20 50 45',
+        backgroundRGB: '235 250 250',
+        darkBackgroundRGB: '10 35 35',
+        isDark: false 
+    },
+    { 
+        id: 'deep-ocean', 
+        name: 'Deep Ocean', 
+        bgGradient: 'linear-gradient(to top, #accbee 0%, #e7f0fd 100%)', 
+        darkBgGradient: 'linear-gradient(to top, #1e3c72 0%, #2a5298 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '30 58 138',
+        backgroundRGB: '240 248 255',
+        darkBackgroundRGB: '23 37 84',
+        isDark: true 
+    },
+    { 
+        id: 'soft-lilac', 
+        name: 'Soft Lilac', 
+        bgGradient: 'linear-gradient(to top, #c471f5 0%, #fa71cd 100%)', 
+        darkBgGradient: 'linear-gradient(to top, #4a1c63 0%, #5c1f45 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '50 30 60',
+        backgroundRGB: '250 240 250',
+        darkBackgroundRGB: '35 15 40',
+        isDark: false 
+    },
+    { 
+        id: 'warm-peach', 
+        name: 'Warm Peach', 
+        bgGradient: 'linear-gradient(to right, #fa709a 0%, #fee140 100%)', 
+        darkBgGradient: 'linear-gradient(to right, #661f36 0%, #664d00 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '60 30 30',
+        backgroundRGB: '255 245 245',
+        darkBackgroundRGB: '40 15 15',
+        isDark: false 
+    },
+    { 
+        id: 'night-sky', 
+        name: 'Night Sky', 
+        bgGradient: 'linear-gradient(to bottom, #a1c4fd 0%, #c2e9fb 100%)', 
+        darkBgGradient: 'linear-gradient(to bottom, #020024 0%, #090979 35%, #00d4ff 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '17 24 39',
+        backgroundRGB: '240 248 255',
+        darkBackgroundRGB: '2 6 23',
+        isDark: true 
+    },
+    { 
+        id: 'citrus-burst', 
+        name: 'Citrus Burst', 
+        bgGradient: 'linear-gradient(to right, #f83600 0%, #f9d423 100%)', 
+        darkBgGradient: 'linear-gradient(to right, #6e2c00 0%, #5c4d00 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '60 40 20',
+        backgroundRGB: '255 250 240',
+        darkBackgroundRGB: '40 25 10',
+        isDark: false 
+    },
+    { 
+        id: 'mystic-forest', 
+        name: 'Mystic Forest', 
+        bgGradient: 'linear-gradient(to bottom, #d4fc79 0%, #96e6a1 100%)', 
+        darkBgGradient: 'linear-gradient(to bottom, #134e5e 0%, #71b280 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '6 78 59',
+        backgroundRGB: '240 255 245',
+        darkBackgroundRGB: '2 44 34',
+        isDark: true 
+    },
+    { 
+        id: 'royal-violet', 
+        name: 'Royal Violet', 
+        bgGradient: 'linear-gradient(to right, #654ea3, #eaafc8)', 
+        darkBgGradient: 'linear-gradient(to right, #2e1f45, #4a2a3b)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '40 20 60',
+        backgroundRGB: '250 245 255',
+        darkBackgroundRGB: '20 10 30',
+        isDark: true 
+    },
+    { 
+        id: 'cloudy-sky', 
+        name: 'Cloudy Sky', 
+        bgGradient: 'linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%)', 
+        darkBgGradient: 'linear-gradient(to top, #374151 0%, #1f2937 100%)',
+        surfaceRGB: '255 255 255', 
+        darkSurfaceRGB: '55 65 81',
+        backgroundRGB: '248 250 252',
+        darkBackgroundRGB: '31 41 55',
+        isDark: false 
+    },
 ];
 
 export interface NotificationConfig {

@@ -425,6 +425,7 @@ export interface AppSettings {
     fontSize: 'small' | 'medium' | 'large';
     notifications: NotificationConfig;
     quietHours: QuietHoursConfig;
+    ankiHost?: string; // New: Host URL for AnkiConnect
 }
 
 // --- NEW AI & REVISION SETTINGS ---
@@ -480,7 +481,10 @@ export interface TrackableItem {
 
   logs: RevisionLog[];
   notes?: string;
-  attachments?: Attachment[];
+  attachments?: Attachment[]; // New: Specific attachments for this subtopic
+  
+  // New field for detailed content breakdown (e.g. bullet points)
+  content?: string[]; 
 
   // Hierarchy for topics
   subTopics?: TrackableItem[];
@@ -502,6 +506,7 @@ export interface KnowledgeBaseEntry {
   // Page-level content
   ankiTotal: number;
   ankiCovered: number;
+  ankiTag?: string; // New: Link to specific Anki Deck/Tag
   videoLinks: VideoResource[];
   tags: string[];
   notes: string;
@@ -511,6 +516,15 @@ export interface KnowledgeBaseEntry {
 
   // New nested structure for topics & subtopics
   topics: TrackableItem[];
+}
+
+// --- HISTORY & UNDO TYPES ---
+export interface HistoryRecord {
+    id: string;
+    timestamp: string;
+    type: 'KB_UPDATE'; // Extendable for other types
+    description: string;
+    snapshot: KnowledgeBaseEntry; // The state of the item BEFORE the change
 }
 
 export const REVISION_SCHEDULES: Record<string, number[]> = {

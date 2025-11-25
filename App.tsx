@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan } from './services/firebase';
@@ -23,6 +17,7 @@ import {
 import { getData, saveData } from './services/dbService';
 import { calculateNextRevisionDate } from './services/srsService';
 import { checkAndMigrateOverdueTasks } from './services/planService';
+import { performFullIntegrityCheck } from './services/faLoggerService';
 
 
 // Components
@@ -173,9 +168,22 @@ export default function App() {
         const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
         setKnowledgeBase(localKB);
 
+        // 1. Fetch Firestore
         const firestoreKB = await getKnowledgeBase();
-        setKnowledgeBase(firestoreKB);
-        await saveData('knowledgeBase_v2', firestoreKB);
+        
+        // 2. AUTO-RUN INTEGRITY CHECK ON LOAD
+        // This ensures any stale states from previous versions are fixed immediately
+        const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB);
+        
+        // 3. Update State
+        setKnowledgeBase(checkedKB);
+        await saveData('knowledgeBase_v2', checkedKB);
+
+        // 4. If check found errors, save fixed version back to DB
+        if (updated) {
+            console.log("Self-healing: KB Integrity issues found and fixed.");
+            await saveKnowledgeBase(checkedKB);
+        }
 
         // Automated Task Migration on Load
         await checkAndMigrateOverdueTasks();
@@ -301,6 +309,36 @@ export default function App() {
       setKnowledgeBase(newKB);
       await saveKnowledgeBase(newKB); // Save to Firestore
       await saveData('knowledgeBase_v2', newKB); // Also save to local IndexedDB
+  };
+
+  // --- INTEGRITY CHECK HANDLER ---
+  const handleIntegrityCheck = async () => {
+      const { updated, data: checkedKB } = performFullIntegrityCheck(knowledgeBase);
+      if (updated) {
+          await updateKB(checkedKB);
+          alert("System scan complete. Inconsistencies fixed.");
+      } else {
+          alert("System scan complete. All data is consistent.");
+      }
+  };
+
+  // --- RESTORE LOGIC FOR UNDO ---
+  const handleRestoreData = async (type: string, data: any) => {
+      if (type === 'KB_UPDATE') {
+          // Restore a Knowledge Base Entry snapshot
+          const entry = data as KnowledgeBaseEntry;
+          const updatedKB = knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k);
+          
+          // If the entry was deleted (not found in current), re-add it
+          if (!updatedKB.find(k => k.pageNumber === entry.pageNumber)) {
+              updatedKB.push(entry);
+          }
+          
+          setKnowledgeBase(updatedKB);
+          await saveKnowledgeBase(updatedKB);
+          await saveData('knowledgeBase_v2', updatedKB);
+          alert(`Restored: ${entry.title}`);
+      }
   };
 
   const handleDeleteKBEntry = async (pageNumber: string) => {
@@ -684,6 +722,7 @@ export default function App() {
                     }}
                     onDeleteEntry={handleDeleteKBEntry}
                     onViewPage={handleViewPage}
+                    onRefreshData={handleIntegrityCheck} // New prop
                 />
             )}
 
@@ -716,6 +755,7 @@ export default function App() {
                     secretId={secretId}
                     displayName={displayName}
                     onUpdateDisplayName={handleUpdateDisplayName}
+                    onRestoreHistory={handleRestoreData} // NEW
                 />
             )}
 

@@ -88,6 +88,12 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
     loadMaterials();
   }, [mode]);
 
+  useEffect(() => {
+    if (mode === 'BUDDY' && selectedModel === 'chatbot') {
+        setSelectedModel('gemini-2.5-flash');
+    }
+  }, [mode, selectedModel]);
+
   const loadSettings = async () => {
     const [aiData, revData] = await Promise.all([getAISettings(), getRevisionSettings()]);
     if(aiData) setAiSettings(aiData);
@@ -375,6 +381,10 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
           // Support batch array import
           const importItems = Array.isArray(data) ? data : [data];
           
+          // To report feedback to user
+          let detectedSystem = '';
+          let detectedSubject = '';
+
           // 1. Update Knowledge Base
           if (action === 'KB' || action === 'BOTH') {
               // Work on a copy of the current KB
@@ -384,28 +394,72 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                   const { pageNumber, title, system, subject, topics, keyPoints } = item;
                   const pageStr = String(pageNumber);
                   
-                  const newTopics: TrackableItem[] = Array.isArray(topics) ? topics.map((t: string) => ({
-                      id: generateId(),
-                      name: t,
-                      revisionCount: 0,
-                      lastStudiedAt: null,
-                      nextRevisionAt: null,
-                      currentRevisionIndex: 0,
-                      logs: []
-                  })) : [];
+                  // Capture meta for feedback
+                  if (system && !detectedSystem) detectedSystem = system;
+                  if (subject && !detectedSubject) detectedSubject = subject;
+
+                  let newTopics: TrackableItem[] = [];
+
+                  if (Array.isArray(topics) && topics.length > 0 && typeof topics[0] === 'string') {
+                      // Format: { topics: ["Name"], keyPoints: ["Point 1", "Point 2"] }
+                      newTopics = topics.map((topicName: string) => ({
+                          id: generateId(),
+                          name: topicName,
+                          content: keyPoints, // Assign the keyPoints as content
+                          revisionCount: 0,
+                          lastStudiedAt: null,
+                          nextRevisionAt: null,
+                          currentRevisionIndex: 0,
+                          logs: []
+                      }));
+                  } else if (Array.isArray(topics)) {
+                      // Complex object format
+                      newTopics = topics.map((t: any) => {
+                          const name = typeof t === 'string' ? t : t.name;
+                          const content = typeof t === 'object' && t.content ? t.content : undefined;
+                          
+                          return {
+                              id: generateId(),
+                              name: name,
+                              content: content, // Store detailed content
+                              revisionCount: 0,
+                              lastStudiedAt: null,
+                              nextRevisionAt: null,
+                              currentRevisionIndex: 0,
+                              logs: []
+                          };
+                      });
+                  }
 
                   const existingIndex = updatedKB.findIndex(k => k.pageNumber === pageStr);
                   
                   if (existingIndex >= 0) {
                       // Update existing
                       const kbEntry = updatedKB[existingIndex];
+                      
+                      // Smart Merge Topics: Update content if topic exists, append if new
+                      const mergedTopics = [...kbEntry.topics];
+                      for (const newTopic of newTopics) {
+                          const existingTopicIdx = mergedTopics.findIndex(t => t.name === newTopic.name);
+                          if (existingTopicIdx >= 0) {
+                              // Update existing content if new content is provided
+                              if (newTopic.content && newTopic.content.length > 0) {
+                                  mergedTopics[existingTopicIdx] = {
+                                      ...mergedTopics[existingTopicIdx],
+                                      content: newTopic.content
+                                  };
+                              }
+                          } else {
+                              mergedTopics.push(newTopic);
+                          }
+                      }
+
                       updatedKB[existingIndex] = {
                           ...kbEntry,
                           title: title || kbEntry.title,
                           system: system || kbEntry.system,
                           subject: subject || kbEntry.subject,
-                          // Merge topics simply by appending new ones that don't exist
-                          topics: [...kbEntry.topics, ...newTopics.filter(nt => !kbEntry.topics.some(et => et.name === nt.name))],
+                          topics: mergedTopics,
                           keyPoints: keyPoints || kbEntry.keyPoints || []
                       };
                   } else {
@@ -428,7 +482,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                           logs: [],
                           topics: newTopics,
                           attachments: [],
-                          keyPoints: keyPoints || []
+                          keyPoints: keyPoints || [] 
                       });
                   }
               }
@@ -444,6 +498,9 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                   const { pageNumber, title, topics } = item;
                   const pageStr = String(pageNumber);
                   
+                  // Map topics for subtasks, checking if object or string
+                  const subTaskTexts = Array.isArray(topics) ? topics.map((t: any) => typeof t === 'string' ? t : t.name) : [];
+
                   onAddToPlan({
                       date: getAdjustedDate(new Date()),
                       type: 'PAGE',
@@ -453,17 +510,23 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                       isCompleted: false,
                       ankiCount: 0,
                       totalMinutesSpent: 0,
-                      subTasks: Array.isArray(topics) ? topics.map((t: string) => ({ id: generateId(), text: t, done: false })) : []
+                      subTasks: subTaskTexts.map((t: string) => ({ id: generateId(), text: t, done: false }))
                   });
               }
           }
 
-          // Log confirmation
+          // Log confirmation with specific details
           const count = importItems.length;
+          let confirmText = `✅ Successfully processed ${count} page${count > 1 ? 's' : ''} into ${action === 'BOTH' ? 'Knowledge Base and Plan' : (action === 'KB' ? 'Knowledge Base' : 'Today\'s Plan')}.`;
+          
+          if (detectedSystem || detectedSubject) {
+              confirmText += `\n\n**Categorized as:**\nSystem: ${detectedSystem || 'Unchanged'}\nSubject: ${detectedSubject || 'Unchanged'}`;
+          }
+
           const msg: MentorMessage = {
               id: generateId(),
               role: 'model',
-              text: `✅ Successfully processed ${count} page${count > 1 ? 's' : ''} into ${action === 'BOTH' ? 'Knowledge Base and Plan' : (action === 'KB' ? 'Knowledge Base' : 'Today\'s Plan')}.`,
+              text: confirmText,
               timestamp: new Date().toISOString(),
               isSystemAction: true
           };
@@ -487,6 +550,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
       let text = input.replace(/```json/g, '').replace(/```/g, '');
       // Replace smart quotes with standard double quotes
       text = text.replace(/[\u201C\u201D]/g, '"');
+      // Replace non-breaking spaces which can break JSON parsing
+      text = text.replace(/\u00A0/g, ' ');
       return text.trim();
   };
 
@@ -545,10 +610,15 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                     const count = Array.isArray(data) ? data.length : 1;
                     const firstPage = Array.isArray(data) ? data[0].pageNumber : data.pageNumber;
                     
+                    // Check for deep content
+                    const hasDeepContent = Array.isArray(data) 
+                        ? data.some((d:any) => d.topics?.some((t:any) => t.content && t.content.length > 0) || (d.keyPoints && d.keyPoints.length > 0)) 
+                        : (data.topics?.some((t:any) => t.content && t.content.length > 0) || (data.keyPoints && data.keyPoints.length > 0));
+
                     const confirmMsg: MentorMessage = {
                         id: generateId(),
                         role: 'model',
-                        text: `I recognized structured data for **${count} page(s)** starting from Page ${firstPage}.\n\nWhat would you like to do with this batch?`,
+                        text: `I recognized structured data for **${count} page(s)** starting from Page ${firstPage}.${hasDeepContent ? ' \n\n✨ **Deep content detected** (bullet points & details).' : ''}\n\nWhat would you like to do with this batch?`,
                         timestamp: new Date().toISOString(),
                         isSystemAction: true,
                         actionType: 'CONFIRM_IMPORT',
@@ -908,7 +978,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                     className="bg-slate-100 dark:bg-slate-900 border-none text-xs font-bold text-slate-600 dark:text-slate-300 rounded-lg py-1.5 pl-2 pr-6 cursor-pointer focus:ring-0 outline-none"
                 >
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                    <option value="chatbot">Chat Bot (Local)</option>
+                    {mode === 'MENTOR' && <option value="chatbot">Chat Bot (Local)</option>}
                 </select>
 
                 {mode === 'MENTOR' && (

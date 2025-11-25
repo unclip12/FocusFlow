@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CATEGORIES, TrackableItem } from '../types';
-import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon, SparklesIcon } from './Icons';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CATEGORIES, TrackableItem, AppSettings } from '../types';
+import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon, SparklesIcon, ArrowPathIcon, LinkIcon, ListCheckIcon } from './Icons';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { explainTopic, generateQuiz, speakText } from '../services/geminiService';
 import { uploadFile } from '../services/firebase';
+import { getData } from '../services/dbService';
+import { CollapsibleTopic } from './KnowledgeBaseView'; 
+import { syncAnkiToDb, openAnkiBrowser, AnkiStats } from '../services/ankiService';
+import { SubtopicDetailModal } from './SubtopicDetailModal';
+import { recalculateEntryStats } from '../services/faLoggerService';
 
 interface PageDetailModalProps {
   isOpen: boolean;
@@ -26,9 +32,12 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<KnowledgeBaseEntry | null>(null);
 
+  // Subtopic Modal State
+  const [viewingSubtopic, setViewingSubtopic] = useState<TrackableItem | null>(null);
+
   // New state for extended editing
   const [subtopicsInput, setSubtopicsInput] = useState('');
-  const [keyPointsInput, setKeyPointsInput] = useState(''); // Added for Key Points
+  const [keyPointsInput, setKeyPointsInput] = useState(''); 
   const [isUploading, setIsUploading] = useState(false);
 
   // AI Features State
@@ -47,9 +56,16 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [stopSpeaking, setStopSpeaking] = useState<(() => void) | null>(null);
 
+  // Anki Integration
+  const [ankiStats, setAnkiStats] = useState<AnkiStats | null>(null);
+  const [isSyncingAnki, setIsSyncingAnki] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Load settings for Anki Host
+      getData<AppSettings>('settings').then(s => s && setAppSettings(s));
     } else {
       document.body.style.overflow = '';
     }
@@ -58,17 +74,56 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
     };
   }, [isOpen]);
 
-  if (!isOpen || !pageNumber) return null;
-
-  // Aggregate Data
+  // Calculate derived data unconditionally to satisfy Hook Rules
   const kbEntry = knowledgeBase.find(k => k.pageNumber === pageNumber);
   const session = sessions.find(s => s.pageNumber === pageNumber);
+
+  const displayEntry = isEditing ? editForm : kbEntry;
+
+  const topic = displayEntry?.title || session?.topic || 'Unknown Topic';
+  const subject = displayEntry?.subject || session?.category || 'General';
+  const system = displayEntry?.system || session?.system || 'General Principles';
+  
+  // Stats
+  const revisionCount = displayEntry?.revisionCount || session?.history.filter(h => h.type === 'REVISION').length || 0;
+  const lastStudied = displayEntry?.lastStudiedAt ? new Date(displayEntry.lastStudiedAt).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : (session?.lastStudied ? new Date(session.lastStudied).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Never');
+  const firstStudied = displayEntry?.firstStudiedAt ? new Date(displayEntry.firstStudiedAt).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Unknown';
+  
+  // Anki
+  const ankiTotal = isEditing ? (editForm?.ankiTotal || 0) : (displayEntry?.ankiTotal || session?.ankiTotal || 0);
+  const ankiCovered = isEditing ? (editForm?.ankiCovered || 0) : (displayEntry?.ankiCovered || session?.ankiCovered || 0);
+  const ankiTag = displayEntry?.ankiTag;
+
+  // Content
+  const topics = displayEntry?.topics || [];
+  const keyPoints = displayEntry?.keyPoints || [];
+  const notes = isEditing ? editForm?.notes : (session?.notes || kbEntry?.notes || '');
+
+  const baseRevisionCount = useMemo(() => {
+      if (topics.length === 0) return revisionCount;
+      return Math.min(...topics.map(t => t.revisionCount));
+  }, [topics, revisionCount]);
+  
+  // AGGREGATED ATTACHMENTS (Page + Subtopics)
+  const attachments = useMemo(() => {
+      if (isEditing && editForm) {
+          return editForm.attachments || [];
+      }
+      const pageAtts = kbEntry?.attachments || [];
+      const subAtts = kbEntry?.topics?.flatMap(t => t.attachments || []) || [];
+      return [...pageAtts, ...subAtts];
+  }, [kbEntry, isEditing, editForm]);
+
+  const videoLinks = displayEntry?.videoLinks || [];
+
+  // --- EARLY RETURN MUST BE AFTER ALL HOOKS ---
+  if (!isOpen || !pageNumber) return null;
 
   const handleStartEdit = () => {
     if (kbEntry) {
         setEditForm(JSON.parse(JSON.stringify(kbEntry))); // Deep copy
         setSubtopicsInput((kbEntry.topics || []).map(t => t.name).join('\n'));
-        setKeyPointsInput((kbEntry.keyPoints || []).join('\n')); // Initialize Key Points
+        setKeyPointsInput((kbEntry.keyPoints || []).join('\n')); 
         setIsEditing(true);
     }
   };
@@ -100,6 +155,19 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
         onUpdateEntry(finalForm);
         handleCancelEdit();
     }
+  };
+
+  const handleDeleteLog = (logId: string) => {
+      if (!kbEntry) return;
+      if (confirm("Are you sure you want to delete this log entry?")) {
+          const remainingLogs = kbEntry.logs.filter(l => l.id !== logId);
+          const tempEntry = { ...kbEntry, logs: remainingLogs };
+          
+          // Use central service to recalculate stats (including resetting to red/0 if empty)
+          const updatedEntry = recalculateEntryStats(tempEntry);
+          
+          onUpdateEntry(updatedEntry);
+      }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,32 +216,9 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       onClose();
   }
 
-  const displayEntry = isEditing ? editForm : kbEntry;
-
-  const topic = displayEntry?.title || session?.topic || 'Unknown Topic';
-  const subject = displayEntry?.subject || session?.category || 'General';
-  const system = displayEntry?.system || session?.system || 'General Principles';
-  
-  // Stats
-  const revisionCount = displayEntry?.revisionCount || session?.history.filter(h => h.type === 'REVISION').length || 0;
-  const lastStudied = displayEntry?.lastStudiedAt ? new Date(displayEntry.lastStudiedAt).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : (session?.lastStudied ? new Date(session.lastStudied).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Never');
-  const firstStudied = displayEntry?.firstStudiedAt ? new Date(displayEntry.firstStudiedAt).toLocaleString([], { year: '2-digit', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Unknown';
-  
-  // Anki
-  const ankiTotal = isEditing ? (editForm?.ankiTotal || 0) : (displayEntry?.ankiTotal || session?.ankiTotal || 0);
-  const ankiCovered = isEditing ? (editForm?.ankiCovered || 0) : (displayEntry?.ankiCovered || session?.ankiCovered || 0);
-
-  // Content
-  const topics = displayEntry?.topics || [];
-  const keyPoints = displayEntry?.keyPoints || [];
-  const notes = isEditing ? editForm?.notes : (session?.notes || kbEntry?.notes || '');
-  
-  const attachments = displayEntry?.attachments || [];
-  const videoLinks = displayEntry?.videoLinks || [];
-
   // --- HANDLERS ---
   const handleExplain = async () => {
-      if (explanation) return; // Already generated
+      if (explanation) return; 
       setIsExplaining(true);
       const text = await explainTopic(topic);
       setExplanation(text);
@@ -187,7 +232,6 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
           setStopSpeaking(null);
       } else {
           setIsSpeaking(true);
-          // Prioritize explanation, otherwise read key points, otherwise topic
           let textToRead = '';
           if (explanation) {
               textToRead = `Explanation for ${topic}. ${explanation}`;
@@ -219,7 +263,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   };
 
   const handleAnswer = (optionIndex: number) => {
-      if (selectedOption !== null) return; // Prevent changing answer
+      if (selectedOption !== null) return; 
       setSelectedOption(optionIndex);
       if (optionIndex === quizQuestions[currentQuestionIndex].correctAnswer) {
           setQuizScore(s => s + 1);
@@ -241,7 +285,20 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       setShowQuizResult(false);
   };
 
-  // Bold Text Formatter for AI Explanation
+  const handleSyncAnki = async () => {
+      if (!appSettings || !kbEntry) return;
+      setIsSyncingAnki(true);
+      const stats = await syncAnkiToDb(appSettings, kbEntry, onUpdateEntry);
+      if (stats) setAnkiStats(stats);
+      else alert("Failed to sync with Anki. Check if Anki is open on your host computer.");
+      setIsSyncingAnki(false);
+  };
+
+  const handleOpenAnki = async () => {
+      if (!appSettings || !ankiTag) return;
+      await openAnkiBrowser(appSettings, `tag:${ankiTag}`);
+  };
+
   const formatText = (text: string) => {
       const parts = text.split(/(\*\*.*?\*\*)/g);
       return parts.map((part, idx) => {
@@ -252,8 +309,26 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       });
   };
 
+  const handleUpdateSubtopic = (updatedSubtopic: TrackableItem) => {
+      if (!kbEntry) return;
+      const updatedTopics = kbEntry.topics.map(t => t.id === updatedSubtopic.id ? updatedSubtopic : t);
+      const updatedEntry = { ...kbEntry, topics: updatedTopics };
+      onUpdateEntry(updatedEntry);
+      setViewingSubtopic(updatedSubtopic);
+  };
+
   return (
     <>
+      {viewingSubtopic && kbEntry && (
+          <SubtopicDetailModal 
+              isOpen={!!viewingSubtopic}
+              onClose={() => setViewingSubtopic(null)}
+              subtopic={viewingSubtopic}
+              parentEntry={kbEntry}
+              onUpdate={handleUpdateSubtopic}
+          />
+      )}
+
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={handleClose}>
         <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
           
@@ -357,7 +432,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                   {/* LEFT COL: Resources & Visuals */}
                   <div className="lg:col-span-2 space-y-6">
                       
-                      {/* Key Points Section (NEW) */}
+                      {/* Key Points Section */}
                       <div className="bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
                            <h3 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-3 flex items-center gap-2 tracking-wider">
                                <SparklesIcon className="w-4 h-4" /> High Yield Key Points
@@ -394,7 +469,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                           {isEditing && editForm ? (
                               <div className="space-y-3">
                                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                                      {attachments.map(att => (
+                                      {(editForm.attachments || []).map(att => (
                                           <div key={att.id} className="relative group aspect-video bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                                               {att.type === 'IMAGE' ? <img src={att.data} alt={att.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><DocumentIcon className="w-8 h-8 text-red-400" /></div>}
                                               <button type="button" onClick={() => removeAttachment(att.id)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
@@ -423,50 +498,27 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                           )}
                       </div>
 
-                      {/* Notes & Subtopics */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md p-5 rounded-2xl border border-white/40 dark:border-slate-700 shadow-sm">
-                               <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1 tracking-wider">
-                                   <BookOpenIcon className="w-3 h-3" /> Subtopics Covered
-                               </h3>
-                               {isEditing ? (
-                                   <textarea value={subtopicsInput} onChange={e => setSubtopicsInput(e.target.value)} placeholder="One subtopic per line..." className="w-full h-24 p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm border-slate-200 dark:border-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none" />
-                               ) : topics.length > 0 ? (
-                                   <ul className="space-y-2">
-                                       {topics.map((topic, i) => (
-                                           <li key={i} className="text-sm text-slate-700 dark:text-slate-300 flex items-start gap-2 font-medium">
-                                               <span className="text-indigo-400 mt-1.5">•</span> {topic.name}
-                                           </li>
-                                       ))}
-                                   </ul>
-                               ) : (
-                                   <p className="text-sm text-slate-400 italic">No subtopics defined.</p>
-                               )}
-                          </div>
-
-                          <div className="bg-amber-50/60 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm backdrop-blur-sm">
-                               <h3 className="text-xs font-bold text-amber-600 dark:text-amber-500 uppercase mb-3 flex items-center gap-1 tracking-wider">
-                                   <FireIcon className="w-3 h-3" /> Flashcards
-                               </h3>
-                               {isEditing && editForm ? (
-                                   <div className="flex items-center gap-2">
-                                       <input type="number" value={editForm.ankiCovered} onChange={e => setEditForm({...editForm, ankiCovered: parseInt(e.target.value) || 0})} className="w-16 p-1 text-center font-bold text-lg rounded bg-white/50 dark:bg-slate-700 border" />
-                                       <span className="text-slate-500">/</span>
-                                       <input type="number" value={editForm.ankiTotal} onChange={e => setEditForm({...editForm, ankiTotal: parseInt(e.target.value) || 0})} className="w-16 p-1 text-center font-bold text-lg rounded bg-white/50 dark:bg-slate-700 border" />
-                                       <span className="text-xs text-slate-500">Cards</span>
-                                   </div>
-                               ) : (
-                                   <>
-                                       <div className="flex items-end gap-2 mb-3">
-                                           <span className="text-4xl font-extrabold text-slate-800 dark:text-white">{ankiCovered}</span>
-                                           <span className="text-sm text-slate-500 mb-1.5 font-bold opacity-70">/ {ankiTotal} Done</span>
-                                       </div>
-                                       <div className="w-full bg-amber-200/50 dark:bg-amber-900/50 rounded-full h-3 overflow-hidden">
-                                           <div className="bg-amber-500 h-full transition-all shadow-[0_0_10px_rgba(245,158,11,0.5)]" style={{ width: `${ankiTotal > 0 ? (ankiCovered / ankiTotal) * 100 : 0}%` }} />
-                                       </div>
-                                   </>
-                               )}
-                          </div>
+                      {/* Subtopics Covered - Expanded to Full Width */}
+                      <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md p-5 rounded-2xl border border-white/40 dark:border-slate-700 shadow-sm">
+                           <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1 tracking-wider">
+                               <BookOpenIcon className="w-3 h-3" /> Subtopics Covered
+                           </h3>
+                           {isEditing ? (
+                               <textarea value={subtopicsInput} onChange={e => setSubtopicsInput(e.target.value)} placeholder="One subtopic per line..." className="w-full h-32 p-3 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm border-slate-200 dark:border-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                           ) : topics.length > 0 ? (
+                               <div className="space-y-1">
+                                   {topics.map((topic, i) => (
+                                       <CollapsibleTopic 
+                                            key={i} 
+                                            topic={topic}
+                                            baseRevisionCount={baseRevisionCount}
+                                            onOpenModal={() => setViewingSubtopic(topic)}
+                                       />
+                                   ))}
+                               </div>
+                           ) : (
+                               <p className="text-sm text-slate-400 italic">No subtopics defined.</p>
+                           )}
                       </div>
 
                       {/* Persistent Notes */}
@@ -523,6 +575,65 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                            </div>
                        </div>
 
+                       {/* Flashcards Box */}
+                       <div className="bg-amber-50/60 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm backdrop-blur-sm">
+                           <h3 className="text-xs font-bold text-amber-600 dark:text-amber-500 uppercase mb-3 flex items-center gap-1 tracking-wider">
+                               <FireIcon className="w-3 h-3" /> Flashcards
+                           </h3>
+                           
+                           {isEditing && editForm ? (
+                               <div className="space-y-3">
+                                   <div className="flex items-center gap-2">
+                                       <input type="number" value={editForm.ankiCovered} onChange={e => setEditForm({...editForm, ankiCovered: parseInt(e.target.value) || 0})} className="w-16 p-1 text-center font-bold text-lg rounded bg-white/50 dark:bg-slate-700 border" />
+                                       <span className="text-slate-500">/</span>
+                                       <input type="number" value={editForm.ankiTotal} onChange={e => setEditForm({...editForm, ankiTotal: parseInt(e.target.value) || 0})} className="w-16 p-1 text-center font-bold text-lg rounded bg-white/50 dark:bg-slate-700 border" />
+                                       <span className="text-xs text-slate-500">Cards</span>
+                                   </div>
+                                   <div>
+                                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Anki Tag (for sync)</label>
+                                       <input 
+                                            type="text" 
+                                            value={editForm.ankiTag || ''} 
+                                            onChange={e => setEditForm({...editForm, ankiTag: e.target.value})} 
+                                            placeholder="tag:#AK_Step1::Biochem"
+                                            className="w-full p-2 text-xs font-mono rounded bg-white/50 dark:bg-slate-700 border focus:ring-1 focus:ring-amber-500" 
+                                        />
+                                   </div>
+                                </div>
+                           ) : (
+                               <>
+                                   <div className="flex items-end gap-2 mb-3">
+                                       <span className="text-4xl font-extrabold text-slate-800 dark:text-white">{ankiCovered}</span>
+                                       <span className="text-sm text-slate-500 mb-1.5 font-bold opacity-70">/ {ankiTotal} Done</span>
+                                   </div>
+                                   <div className="w-full bg-amber-200/50 dark:bg-amber-900/50 rounded-full h-3 overflow-hidden mb-4">
+                                       <div className="bg-amber-500 h-full transition-all shadow-[0_0_10px_rgba(245,158,11,0.5)]" style={{ width: `${ankiTotal > 0 ? (ankiCovered / ankiTotal) * 100 : 0}%` }} />
+                                   </div>
+                                   
+                                   {/* Anki Integration Buttons */}
+                                   {ankiTag && (
+                                       <div className="flex gap-2">
+                                           <button 
+                                                onClick={handleSyncAnki} 
+                                                disabled={isSyncingAnki}
+                                                className="flex-1 text-[10px] font-bold bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+                                           >
+                                               <ArrowPathIcon className={`w-3 h-3 ${isSyncingAnki ? 'animate-spin' : ''}`} />
+                                               Sync Stats
+                                           </button>
+                                           <button 
+                                                onClick={handleOpenAnki} 
+                                                className="flex-1 text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 py-2 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex items-center justify-center gap-1"
+                                           >
+                                               <LinkIcon className="w-3 h-3" />
+                                               Open on Host
+                                           </button>
+                                       </div>
+                                   )}
+                               </>
+                           )}
+                       </div>
+
                        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-2xl border border-white/40 dark:border-slate-700 shadow-sm overflow-hidden">
                            <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Session Log</h3>
@@ -530,19 +641,39 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                            <div className="max-h-[300px] overflow-y-auto p-3 space-y-2 custom-scrollbar">
                                {kbEntry?.logs && kbEntry.logs.length > 0 ? (
                                    [...kbEntry.logs].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((log) => (
-                                       <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-sm shadow-sm hover:scale-[1.02] transition-transform">
+                                       <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-sm shadow-sm hover:scale-[1.02] transition-transform group relative">
                                            <div className="flex justify-between mb-1">
                                                <span className="font-bold text-slate-700 dark:text-slate-300">{new Date(log.timestamp).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
-                                               {log.durationMinutes && <span className="text-xs text-slate-400 font-mono">{log.durationMinutes}m</span>}
+                                               <div className="flex items-center gap-2">
+                                                   {log.durationMinutes && <span className="text-xs text-slate-400 font-mono">{log.durationMinutes}m</span>}
+                                                   <button 
+                                                       onClick={() => handleDeleteLog(log.id)} 
+                                                       className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                                       title="Delete Log"
+                                                   >
+                                                       <TrashIcon className="w-3.5 h-3.5" />
+                                                   </button>
+                                               </div>
                                            </div>
                                            <div className="flex items-center gap-2">
                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${log.type === 'STUDY' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                                                    {log.type === 'STUDY' ? 'First Study' : `Revision #${log.revisionIndex}`}
                                                </span>
                                            </div>
-                                            {log.topics && log.topics.length > 0 && log.topics[0] && (
+                                            {/* Show specific subtopics studied in this session */}
+                                            {log.topics && log.topics.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                    {log.topics.map((topicName, i) => (
+                                                        <span key={i} className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 flex items-center gap-1">
+                                                            <ListCheckIcon className="w-2.5 h-2.5" />
+                                                            Focused on: {topicName}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {log.notes && (
                                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 italic border-l-2 border-slate-200 pl-2">
-                                                    Notes: "{log.topics.join(', ')}"
+                                                    "{log.notes}"
                                                 </p>
                                             )}
                                        </div>
@@ -564,7 +695,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {/* Quiz Overlay - Updated for proper scrolling */}
+          {/* Quiz Overlay */}
           {(isQuizActive || showQuizResult) && (
               <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl flex flex-col animate-fade-in">
                   <div className="p-4 flex justify-end shrink-0">

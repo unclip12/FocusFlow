@@ -4,28 +4,27 @@ import React from 'react';
 export const AppLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
   <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
     <defs>
-      <linearGradient id="logo_gradient" x1="0%" y1="100%" x2="100%" y2="0%">
-        <stop offset="0%" stopColor="#4F46E5" /> 
-        <stop offset="100%" stopColor="#34D399" /> 
+      <linearGradient id="logo_gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#6366F1" /> {/* Indigo 500 */}
+        <stop offset="100%" stopColor="#8B5CF6" /> {/* Violet 500 */}
       </linearGradient>
     </defs>
-    <rect width="100" height="100" rx="24" fill="url(#logo_gradient)" />
-    {/* P-shape with arrow */}
+    <rect width="100" height="100" rx="22" fill="url(#logo_gradient)" />
+    
+    {/* Flow Ring */}
     <path 
-      d="M32 72V28H55C68 28 74 34 74 46C74 56 68 62 58 62H48M58 62L68 52M58 62L68 72" 
+      d="M50 22C34.536 22 22 34.536 22 50C22 65.464 34.536 78 50 78C65.464 78 78 65.464 78 50" 
       stroke="white" 
       strokeWidth="8" 
       strokeLinecap="round" 
-      strokeLinejoin="round"
+      strokeOpacity="0.9"
     />
-    {/* Arrow head detail */}
-    <path 
-        d="M60 56L68 62L60 68"
-        stroke="white"
-        strokeWidth="8" 
-        strokeLinecap="round"
-        strokeLinejoin="round"
-    />
+    
+    {/* Focus Dot */}
+    <circle cx="50" cy="50" r="10" fill="white" />
+    
+    {/* Accent Tip */}
+    <circle cx="78" cy="50" r="5" fill="#C4B5FD" />
   </svg>
 );
 

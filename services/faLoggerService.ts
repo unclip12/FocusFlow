@@ -1,3 +1,4 @@
+
 // services/faLoggerService.ts
 import { KnowledgeBaseEntry, RevisionLog, Attachment, TrackableItem, RevisionSettings } from '../types';
 import { calculateNextRevisionDate } from './srsService';
@@ -10,6 +11,7 @@ export interface ParsedLogEntry {
   topics: string[];
   attachment?: Attachment;
   date?: string; // YYYY-MM-DD
+  timestamp?: string; // ISO String for exact time
 }
 
 export const parseFALoggerInput = (input: string): ParsedLogEntry[] => {
@@ -66,6 +68,117 @@ interface LogResult {
     updatedEntry: KnowledgeBaseEntry;
 }
 
+/**
+ * Recalculates the entire state of a KnowledgeBaseEntry based on its logs.
+ * STRICT RESET: If logs are empty, it forces stats to 0/null.
+ */
+export const recalculateEntryStats = (entry: KnowledgeBaseEntry): KnowledgeBaseEntry => {
+    const logs = entry.logs || [];
+    
+    // STRICT RESET if no logs exist
+    if (logs.length === 0) {
+        const resetTopics = (entry.topics || []).map(t => ({
+            ...t,
+            revisionCount: 0,
+            currentRevisionIndex: 0,
+            lastStudiedAt: null,
+            nextRevisionAt: null
+        }));
+
+        return {
+            ...entry,
+            logs: [],
+            revisionCount: 0,
+            currentRevisionIndex: 0,
+            firstStudiedAt: null,
+            lastStudiedAt: null, // This turns the badge Red
+            nextRevisionAt: null,
+            topics: resetTopics,
+            // We optionally keep attachments/notes as they might be static resources
+        };
+    }
+
+    // 1. Page Level Stats
+    const sortedLogs = [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const lastStudiedAt = sortedLogs.length > 0 ? sortedLogs[0].timestamp : null;
+    // Find the very first log ever
+    const allLogsChronological = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const firstStudiedAt = allLogsChronological.length > 0 ? allLogsChronological[0].timestamp : null;
+    
+    // Count Revisions (logs where type is explicitly REVISION)
+    // Initial study does NOT count as a revision.
+    const revisionCount = logs.filter(l => l.type === 'REVISION').length;
+    const currentRevisionIndex = revisionCount; 
+
+    // 2. Topic Level Stats
+    const updatedTopics = entry.topics.map(topic => {
+        // Find logs that explicitly mention this topic
+        const topicLogs = logs.filter(l => 
+            l.topics && l.topics.some(t => t.trim().toLowerCase() === topic.name.trim().toLowerCase())
+        );
+
+        if (topicLogs.length === 0) {
+            // RESET TOPIC: No logs remain for this specific topic
+            return {
+                ...topic,
+                revisionCount: 0,
+                currentRevisionIndex: 0,
+                lastStudiedAt: null, 
+                nextRevisionAt: null
+            };
+        } else {
+            // RECALCULATE TOPIC
+            const sortedTopicLogs = [...topicLogs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const topicLastStudied = sortedTopicLogs[0].timestamp;
+            const topicRevCount = topicLogs.filter(l => l.type === 'REVISION').length;
+            
+            return {
+                ...topic,
+                revisionCount: topicRevCount,
+                currentRevisionIndex: topicRevCount,
+                lastStudiedAt: topicLastStudied
+            };
+        }
+    });
+
+    return {
+        ...entry,
+        logs: logs,
+        revisionCount,
+        currentRevisionIndex,
+        lastStudiedAt,
+        firstStudiedAt,
+        topics: updatedTopics
+    };
+};
+
+/**
+ * Scans the entire Knowledge Base and ensures visual states match the log data.
+ * Returns the updated array if changes were made.
+ */
+export const performFullIntegrityCheck = (allEntries: KnowledgeBaseEntry[]): { updated: boolean, data: KnowledgeBaseEntry[] } => {
+    let hasChanges = false;
+    
+    const fixedEntries = allEntries.map(entry => {
+        const recalculated = recalculateEntryStats(entry);
+        
+        // Simple check to see if anything changed logic-wise
+        const changed = 
+            recalculated.revisionCount !== entry.revisionCount ||
+            recalculated.lastStudiedAt !== entry.lastStudiedAt ||
+            recalculated.firstStudiedAt !== entry.firstStudiedAt ||
+            JSON.stringify(recalculated.topics) !== JSON.stringify(entry.topics);
+
+        if (changed) {
+            hasChanges = true;
+            return recalculated;
+        }
+        return entry;
+    });
+
+    return { updated: hasChanges, data: fixedEntries };
+};
+
 export const processLogEntries = (parsedEntries: ParsedLogEntry[], currentKB: KnowledgeBaseEntry[], revisionSettings: RevisionSettings): { results: LogResult[], updatedKB: KnowledgeBaseEntry[] } => {
     const results: LogResult[] = [];
     let kbMap = new Map<string, KnowledgeBaseEntry>(currentKB.map(entry => [entry.pageNumber, JSON.parse(JSON.stringify(entry))])); // Deep copy for safety
@@ -73,7 +186,16 @@ export const processLogEntries = (parsedEntries: ParsedLogEntry[], currentKB: Kn
     for (const entry of parsedEntries) {
         const pageStr = String(entry.pageNumber);
         let kbEntry = kbMap.get(pageStr);
-        const now = entry.date ? new Date(entry.date + 'T12:00:00') : new Date(); // Use provided date or now
+        
+        let now: Date;
+        if (entry.timestamp) {
+            now = new Date(entry.timestamp);
+        } else if (entry.date) {
+            now = new Date(entry.date + 'T12:00:00');
+        } else {
+            now = new Date();
+        }
+        
         const nowISO = now.toISOString();
 
         if (!kbEntry) {
@@ -98,29 +220,56 @@ export const processLogEntries = (parsedEntries: ParsedLogEntry[], currentKB: Kn
             };
         }
 
-        // Topic Association Logic
+        // Determine Event Type
+        const hasPreviousLogs = kbEntry.logs.length > 0;
+        const eventType = entry.isExplicitRevision || hasPreviousLogs ? 'REVISION' : 'STUDY';
+
+        // Topic Association Logic & Subtopic SRS
         if (entry.topics.length > 0) {
             if (!kbEntry.title || kbEntry.title.startsWith('First Aid Page')) {
                 kbEntry.title = entry.topics[0];
             }
-            const existingTopicNames = new Set(kbEntry.topics.map(t => t.name));
+
+            const sessionTopicNames = new Set(entry.topics.map(t => t.trim()));
+            
+            kbEntry.topics = kbEntry.topics.map(t => {
+                if (sessionTopicNames.has(t.name.trim())) {
+                    const currentRev = t.revisionCount || 0;
+                    const newRevCount = eventType === 'REVISION' ? currentRev + 1 : currentRev;
+                    const nextIndex = eventType === 'REVISION' ? currentRev : 0;
+
+                    const nextDate = calculateNextRevisionDate(now, nextIndex, revisionSettings);
+                    
+                    return {
+                        ...t,
+                        revisionCount: newRevCount,
+                        currentRevisionIndex: nextIndex, 
+                        lastStudiedAt: nowISO, 
+                        nextRevisionAt: nextDate ? nextDate.toISOString() : null
+                    };
+                }
+                return t;
+            });
+
             entry.topics.forEach(topicName => {
-                if (!existingTopicNames.has(topicName)) {
+                const cleanName = topicName.trim();
+                const exists = kbEntry!.topics.some(t => t.name.trim() === cleanName);
+                if (!exists) {
+                    const nextDate = calculateNextRevisionDate(now, 0, revisionSettings);
                     const newTopic: TrackableItem = {
                         id: generateId(),
-                        name: topicName,
-                        revisionCount: 0,
-                        lastStudiedAt: null,
-                        nextRevisionAt: null,
+                        name: cleanName,
+                        revisionCount: 0, 
+                        lastStudiedAt: nowISO,
+                        nextRevisionAt: nextDate ? nextDate.toISOString() : null,
                         currentRevisionIndex: 0,
                         logs: []
                     };
-                    kbEntry.topics.push(newTopic);
+                    kbEntry!.topics.push(newTopic);
                 }
             });
         }
         
-        // Attachment handling
         if (entry.attachment) {
             if (!kbEntry.attachments) {
                 kbEntry.attachments = [];
@@ -130,30 +279,42 @@ export const processLogEntries = (parsedEntries: ParsedLogEntry[], currentKB: Kn
             }
         }
         
-        const hasPreviousLogs = kbEntry.logs.length > 0;
-        const eventType = entry.isExplicitRevision || hasPreviousLogs ? 'REVISION' : 'STUDY';
+        let earliestNextRev: string | null = null;
+        kbEntry.topics.forEach(t => {
+            if (t.nextRevisionAt) {
+                if (!earliestNextRev || new Date(t.nextRevisionAt) < new Date(earliestNextRev)) {
+                    earliestNextRev = t.nextRevisionAt;
+                }
+            }
+        });
 
+        // Calculate Page Level Revision Logic
+        // If STUDY: index stays 0. If REVISION: increment index.
+        const newRevIndex = eventType === 'STUDY' ? 0 : kbEntry.currentRevisionIndex + 1;
+        
         const newLog: RevisionLog = {
             id: generateId(),
             timestamp: nowISO,
-            revisionIndex: eventType === 'STUDY' ? 0 : kbEntry.currentRevisionIndex + 1,
+            revisionIndex: newRevIndex,
             type: eventType,
             topics: entry.topics,
             source: 'MODAL'
         };
 
         const updatedLogs = [...kbEntry.logs, newLog];
-        const newRevisionIndex = eventType === 'STUDY' ? 0 : kbEntry.currentRevisionIndex + 1;
+        // Only count logs that are strictly revisions
         const newRevisionCount = updatedLogs.filter(l => l.type === 'REVISION').length;
+        
+        const genericNextRev = calculateNextRevisionDate(now, newRevIndex, revisionSettings);
 
         const updatedEntry: KnowledgeBaseEntry = {
             ...kbEntry,
             logs: updatedLogs,
             revisionCount: newRevisionCount,
-            currentRevisionIndex: newRevisionIndex,
+            currentRevisionIndex: newRevIndex,
             lastStudiedAt: nowISO,
             firstStudiedAt: kbEntry.firstStudiedAt || nowISO,
-            nextRevisionAt: calculateNextRevisionDate(now, newRevisionIndex, revisionSettings)?.toISOString() || null,
+            nextRevisionAt: earliestNextRev || (genericNextRev ? genericNextRev.toISOString() : null),
         };
         
         let confirmationMessage = '';
@@ -164,9 +325,8 @@ export const processLogEntries = (parsedEntries: ParsedLogEntry[], currentKB: Kn
             confirmationMessage = `Logged pg ${pageStr} as REVISION. This is your ${newRevisionCount}${suffix} revision. 🔁`;
         }
 
-        if(entry.date) {
-            confirmationMessage += ` (for ${entry.date})`;
-        }
+        const timeDisplay = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        confirmationMessage += ` at ${timeDisplay}`;
 
         results.push({
             pageNumber: entry.pageNumber,

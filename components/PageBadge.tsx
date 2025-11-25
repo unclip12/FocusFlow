@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 import { Attachment } from '../types';
 import { ArrowPathIcon } from './Icons';
@@ -8,40 +7,68 @@ interface PageBadgeProps {
   pageNumber: string;
   attachments?: Attachment[];
   revisionCount?: number;
+  progress?: number; // 0 to 100 representing completion (subtopics or page status)
   onClick: () => void;
   className?: string;
 }
 
-export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = [], revisionCount = 0, onClick, className = '' }) => {
+export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = [], revisionCount = 0, progress = 0, onClick, className = '' }) => {
   const hasImages = attachments.some(a => a.type === 'IMAGE');
-  const firstImage = attachments.find(a => a.type === 'IMAGE');
+  
+  // Ensure progress is clamped 0-100
+  const fillPercent = Math.min(100, Math.max(0, progress));
+  const isComplete = fillPercent === 100;
+  const isUntouched = fillPercent === 0;
 
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`group relative flex flex-col items-center justify-center min-w-[60px] h-14 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-indigo-400 hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden ${className}`}
-      title="View Page Details (Notes, Visuals, History)"
+      className={`group relative flex flex-col items-center justify-center min-w-[60px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 ${className}`}
+      style={{
+          boxShadow: isComplete 
+            ? '0 0 15px rgba(34, 197, 94, 0.6)' // Green Glow if full
+            : isUntouched 
+                ? '0 0 10px rgba(239, 68, 68, 0.3)' // Red Glow if empty
+                : '0 4px 6px rgba(0,0,0,0.1)' // Normal shadow
+      }}
+      title={`Page ${pageNumber}: ${Math.round(fillPercent)}% Completed`}
     >
-      {/* Background Image Preview (if available) */}
-      {firstImage && (
-          <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
-              <img src={firstImage.data} alt="" className="w-full h-full object-cover grayscale group-hover:grayscale-0" />
-          </div>
+      {/* 1. Background: Red if 0%, Light Green if > 0% */}
+      <div className={`absolute inset-0 transition-colors ${fillPercent > 0 ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-500 dark:bg-red-600'}`}></div>
+
+      {/* 2. Liquid Fill (Finished / Green) */}
+      <div 
+        className="absolute bottom-0 left-0 right-0 bg-green-500 dark:bg-green-500 transition-all duration-700 ease-out"
+        style={{ height: `${fillPercent}%` }}
+      >
+          {/* Subtle wave effect at the top of the liquid */}
+          {fillPercent > 0 && fillPercent < 100 && (
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-white/30 w-full"></div>
+          )}
+      </div>
+
+      {/* 3. Background Image Preview Overlay (if available) - Low Opacity */}
+      {hasImages && (
+          <div className="absolute inset-0 opacity-20 bg-black/20 pointer-events-none"></div>
       )}
 
-      <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase z-10">PG</span>
-      <span className="text-lg font-bold text-slate-700 dark:text-slate-200 z-10 leading-none">{pageNumber}</span>
+      {/* 4. Content Layer (Z-Index High to stay visible) */}
+      <div className="relative z-10 flex flex-col items-center">
+          <span className="text-[9px] text-white/80 font-black uppercase drop-shadow-md">PG</span>
+          <span className={`text-xl font-black drop-shadow-md leading-none tracking-tighter ${fillPercent > 0 && fillPercent < 50 ? 'text-slate-700 dark:text-white' : 'text-white'}`}>{pageNumber}</span>
+      </div>
       
-      {/* Indicators */}
-      <div className="absolute top-1 right-1 flex flex-col gap-0.5 z-10">
+      {/* 5. Indicators */}
+      <div className="absolute top-1 right-1 flex flex-col gap-0.5 z-20">
           {attachments.length > 0 && (
-             <div className={`w-2 h-2 rounded-full ${hasImages ? 'bg-purple-500' : 'bg-slate-400'}`}></div>
+             <div className={`w-1.5 h-1.5 rounded-full shadow-sm ${hasImages ? 'bg-purple-200' : 'bg-white'}`}></div>
           )}
       </div>
       
+      {/* 6. Revision Count Footer */}
       {revisionCount > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 bg-green-500/10 border-t border-green-500/20 h-3 flex items-center justify-center">
-             <div className="flex items-center gap-0.5 text-[8px] font-bold text-green-600 dark:text-green-400">
+        <div className="absolute bottom-0 left-0 right-0 bg-black/20 h-3.5 flex items-center justify-center z-20 backdrop-blur-[1px]">
+             <div className="flex items-center gap-0.5 text-[8px] font-bold text-white">
                  <ArrowPathIcon className="w-2 h-2" /> {revisionCount}
              </div>
         </div>

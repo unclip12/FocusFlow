@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon } from './Icons';
+import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, HistoryRecord } from '../types';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
 import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { checkAnkiConnection } from '../services/ankiService';
+import { getHistory } from '../services/historyService';
 
 interface SettingsViewProps {
     settings: AppSettings;
@@ -13,6 +15,7 @@ interface SettingsViewProps {
     secretId?: string;
     displayName: string;
     onUpdateDisplayName: (name: string) => void;
+    onRestoreHistory?: (type: string, data: any) => void; // NEW
 }
 
 const COLORS: { name: string, value: ThemeColor, hex: string, rgb: string }[] = [
@@ -50,7 +53,7 @@ const SettingRow: React.FC<{ label: string, description: string, children: React
     </div>
 );
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSettings, secretId, displayName, onUpdateDisplayName }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSettings, secretId, displayName, onUpdateDisplayName, onRestoreHistory }) => {
   const [localName, setLocalName] = useState(displayName);
   
   // New AI and Revision state
@@ -76,6 +79,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const [isRestoring, setIsRestoring] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
+  // Anki State
+  const [ankiHostInput, setAnkiHostInput] = useState(settings.ankiHost || 'http://localhost:8765');
+  const [ankiStatus, setAnkiStatus] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
+  const [ankiError, setAnkiError] = useState<string | null>(null);
+  const [showAnkiHelp, setShowAnkiHelp] = useState(false);
+
+  // History State
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+
+  const isHttps = window.location.protocol === 'https:';
+
   useEffect(() => {
     setLocalName(displayName);
   }, [displayName]);
@@ -89,6 +103,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
           ]);
           if (aiData) setAiSettings(aiData);
           if (revData) setRevisionSettings(revData);
+          
+          setHistory(getHistory());
+          
           setIsLoading(false);
       };
       loadConfig();
@@ -152,6 +169,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       setIsLoading(false);
   };
 
+  // --- Anki Handlers ---
+  const handleTestAnki = async () => {
+      setAnkiStatus('CHECKING');
+      setAnkiError(null);
+      
+      let host = ankiHostInput.trim();
+      // Do not auto-prepend http if they might be using https (ngrok)
+      if (!host.startsWith('http://') && !host.startsWith('https://')) {
+          host = `http://${host}`;
+          setAnkiHostInput(host);
+      }
+
+      const result = await checkAnkiConnection({ ...settings, ankiHost: host });
+      setAnkiStatus(result.success ? 'OK' : 'FAIL');
+      
+      if (result.success) {
+          onUpdateSettings({ ...settings, ankiHost: host });
+      } else {
+          setAnkiError(result.error || 'Unknown connection error');
+      }
+  };
+
   // --- Data Management Handlers ---
 
   const handleBackup = async () => {
@@ -195,10 +234,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   const handleResetConfirm = async () => {
       setIsResetModalOpen(false);
-      // Double confirmation via native alert for safety
-      // (Using DeleteConfirmationModal triggers the flow, but this is nuclear)
-      // We trust the modal, but let's be safe.
-      
       setIsLoading(true);
       try {
           await resetAppData();
@@ -208,6 +243,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
           console.error("Reset failed", e);
           alert("Failed to reset data. Please check your connection.");
           setIsLoading(false);
+      }
+  };
+
+  const triggerUndo = (record: HistoryRecord) => {
+      if (onRestoreHistory) {
+          onRestoreHistory(record.type, record.snapshot);
       }
   };
 
@@ -233,6 +274,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
         <div className="space-y-6">
              <Section title="Profile & Account" icon={UserCircleIcon}>
+                {/* ... Profile Fields ... */}
                 <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Your Name</label>
                     <input
@@ -259,6 +301,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     >
                         Sign Out
                     </button>
+                </div>
+            </Section>
+
+            {/* HISTORY & UNDO SECTION */}
+            <Section title="History & Undo" icon={ArrowUturnLeftIcon}>
+                <div className="space-y-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                        Recent data changes are logged here. Click "Undo" to revert specific items to their previous state.
+                        Note: Restoring old data overwrites any newer changes made to that item.
+                    </p>
+                    {history.length > 0 ? (
+                        <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                            {history.map(item => (
+                                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700 text-sm">
+                                    <div className="flex-1 min-w-0 mr-2">
+                                        <p className="font-bold text-slate-700 dark:text-slate-300 truncate">{item.description}</p>
+                                        <p className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => triggerUndo(item)}
+                                        className="px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs font-bold rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
+                                    >
+                                        Undo
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-6 text-slate-400 text-xs italic border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-xl">
+                            No recent history available.
+                        </div>
+                    )}
                 </div>
             </Section>
 
@@ -304,6 +378,70 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                                 <div className="h-12 w-full rounded-lg" style={{ backgroundColor: color.hex }}></div>
                             </button>
                         ))}
+                    </div>
+                </div>
+            </Section>
+
+            {/* INTEGRATIONS: ANKI */}
+            <Section title="Anki Integration" icon={LinkIcon}>
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                        Connect to Anki on your computer to sync deck stats.
+                    </p>
+                    
+                    {isHttps && ankiHostInput.startsWith('http:') && (
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-200">
+                            <p><strong>iOS Issue:</strong> Safari blocks HTTPS apps from talking to HTTP (your laptop). You must use a secure tunnel like <strong>ngrok</strong>.</p>
+                        </div>
+                    )}
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Anki Host URL</label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                value={ankiHostInput} 
+                                onChange={(e) => setAnkiHostInput(e.target.value)}
+                                placeholder="http://192.168.1.X:8765 or https://....ngrok-free.app"
+                                className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-sm"
+                            />
+                            <button 
+                                onClick={handleTestAnki}
+                                className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors min-w-[100px] ${ankiStatus === 'OK' ? 'bg-green-100 text-green-700' : ankiStatus === 'FAIL' ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                            >
+                                {ankiStatus === 'CHECKING' ? '...' : ankiStatus === 'OK' ? 'Connected' : ankiStatus === 'FAIL' ? 'Failed' : 'Test & Save'}
+                            </button>
+                        </div>
+                        
+                        {ankiError && (
+                            <div className="mt-2 flex items-start gap-2 text-xs text-red-500 font-medium bg-red-50 dark:bg-red-900/20 p-2 rounded-lg border border-red-100 dark:border-red-900/50">
+                                <ExclamationCircleIcon className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span>{ankiError}</span>
+                            </div>
+                        )}
+
+                        <button 
+                            onClick={() => setShowAnkiHelp(!showAnkiHelp)}
+                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-3 hover:underline flex items-center gap-1"
+                        >
+                            {showAnkiHelp ? 'Hide' : 'Show'} Connection Guide (iPad/iPhone)
+                        </button>
+
+                        {showAnkiHelp && (
+                            <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed">
+                                <p><strong className="text-slate-800 dark:text-white">Why does it fail?</strong><br/>Modern browsers force "Mixed Content" blocking. A secure website (HTTPS) cannot talk to an insecure local server (HTTP).</p>
+                                
+                                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                                    <p className="font-bold text-indigo-600 dark:text-indigo-400 mb-1">Solution: Use Ngrok (Free)</p>
+                                    <ol className="list-decimal pl-4 space-y-1">
+                                        <li>Download <strong>ngrok</strong> on your Laptop.</li>
+                                        <li>Run command: <code className="bg-slate-100 dark:bg-slate-900 px-1 rounded">ngrok http 8765</code></li>
+                                        <li>Copy the HTTPS URL it gives you (e.g. <code className="bg-slate-100 dark:bg-slate-900 px-1 rounded">https://a1b2...ngrok-free.app</code>).</li>
+                                        <li>Paste that URL above.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </Section>
@@ -465,7 +603,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
             </Section>
 
             <div className="text-center pt-8 text-slate-400 text-xs">
-                <p>FocusFlow v1.7</p>
+                <p>FocusFlow v1.8</p>
             </div>
         </div>
     </div>

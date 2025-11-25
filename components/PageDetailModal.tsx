@@ -158,14 +158,23 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   };
 
   const handleDeleteLog = (logId: string) => {
-      if (!kbEntry) return;
+      // Source of truth
+      const entry = isEditing && editForm ? editForm : kbEntry;
+      if (!entry) return;
+
       if (confirm("Are you sure you want to delete this log entry?")) {
-          const remainingLogs = kbEntry.logs.filter(l => l.id !== logId);
-          const tempEntry = { ...kbEntry, logs: remainingLogs };
+          const remainingLogs = entry.logs.filter(l => l.id !== logId);
+          const tempEntry = { ...entry, logs: remainingLogs };
           
-          // Use central service to recalculate stats (including resetting to red/0 if empty)
+          // Recalculate stats
           const updatedEntry = recalculateEntryStats(tempEntry);
           
+          // If editing, update the form state so it doesn't revert on save
+          if (isEditing) {
+              setEditForm(updatedEntry);
+          }
+          
+          // Update the global store immediately
           onUpdateEntry(updatedEntry);
       }
   };
@@ -316,6 +325,9 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       onUpdateEntry(updatedEntry);
       setViewingSubtopic(updatedSubtopic);
   };
+
+  // Use the logs from the displayEntry (which respects editForm if editing)
+  const logsToDisplay = displayEntry?.logs || [];
 
   return (
     <>
@@ -639,8 +651,8 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Session Log</h3>
                            </div>
                            <div className="max-h-[300px] overflow-y-auto p-3 space-y-2 custom-scrollbar">
-                               {kbEntry?.logs && kbEntry.logs.length > 0 ? (
-                                   [...kbEntry.logs].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((log) => (
+                               {logsToDisplay && logsToDisplay.length > 0 ? (
+                                   [...logsToDisplay].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((log) => (
                                        <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 text-sm shadow-sm hover:scale-[1.02] transition-transform group relative">
                                            <div className="flex justify-between mb-1">
                                                <span className="font-bold text-slate-700 dark:text-slate-300">{new Date(log.timestamp).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>

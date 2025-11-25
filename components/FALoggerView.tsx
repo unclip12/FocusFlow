@@ -13,11 +13,14 @@ import { calculateNextRevisionDate } from '../services/srsService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { FALogModal, FALogData } from './FALogModal';
 import { addToHistory } from '../services/historyService';
+import { ViewStates } from '../App';
 
 interface FALoggerViewProps {
     knowledgeBase: KnowledgeBaseEntry[];
     onUpdateKnowledgeBase: (newKB: KnowledgeBaseEntry[]) => Promise<void>;
     onViewPage: (pageNumber: string) => void;
+    faState: ViewStates['fa'];
+    setFaState: React.Dispatch<React.SetStateAction<ViewStates['fa']>>;
 }
 
 interface LogMessage {
@@ -35,6 +38,15 @@ const fileToBase64 = (file: File): Promise<string> => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]);
         reader.onerror = error => reject(error);
     });
+};
+
+// Helper from KnowledgeBaseView
+const calculatePageProgress = (entry: KnowledgeBaseEntry): number => {
+    if (entry.topics && entry.topics.length > 0) {
+        const completedTopics = entry.topics.filter(t => t.lastStudiedAt !== null).length;
+        return (completedTopics / entry.topics.length) * 100;
+    }
+    return entry.lastStudiedAt !== null ? 100 : 0;
 };
 
 type SortKey = 'time' | 'page' | 'topic';
@@ -114,7 +126,8 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
                     const startStr = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const endStr = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const durStr = log.durationMinutes ? `${log.durationMinutes}m` : '--';
-                    
+                    const progress = calculatePageProgress(log.kbEntry);
+
                     return (
                         <div key={log.id} className="relative w-full select-none overflow-hidden rounded-2xl group">
                             {/* Delete Action Background */}
@@ -148,6 +161,7 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
                                             pageNumber={log.pageNumber} 
                                             attachments={log.kbEntry.attachments} 
                                             revisionCount={log.kbEntry.revisionCount} 
+                                            progress={progress}
                                             onClick={() => onViewPage(log.pageNumber)} 
                                             className="shadow-sm scale-90 origin-left"
                                         />
@@ -194,7 +208,7 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
 }
 
 
-export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpdateKnowledgeBase, onViewPage }) => {
+export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpdateKnowledgeBase, onViewPage, faState, setFaState }) => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<LogMessage[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -218,10 +232,8 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     const [swipedLogId, setSwipedLogId] = useState<string | null>(null);
     const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({ mode: 'balanced', targetCount: 7 });
 
-    // Modal State
-    const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-    const [logToEdit, setLogToEdit] = useState<FALogData | null>(null);
-    const [modalMode, setModalMode] = useState<'STUDY' | 'REVISION'>('STUDY');
+    // Modal State handled by parent props (faState)
+    const { isLogModalOpen, modalMode, draftLog, logToEdit } = faState;
 
     useEffect(() => {
         getRevisionSettings().then(settings => {
@@ -278,7 +290,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
         const startTime = startDate.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
         const endTime = endDate.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
         
-        setLogToEdit({
+        const editData: FALogData = {
             logId: log.id,
             pageNumber: log.pageNumber,
             date: getAdjustedDate(startDate),
@@ -286,16 +298,30 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             endTime,
             notes: log.notes || '',
             selectedTopics: log.topics || []
-        });
-        setModalMode(log.type);
-        setIsLogModalOpen(true);
+        };
+
+        setFaState(prev => ({
+            ...prev,
+            isLogModalOpen: true,
+            logToEdit: editData,
+            modalMode: log.type,
+            draftLog: null // Clear draft when editing
+        }));
     };
 
     const handleOpenNewLog = (mode: 'STUDY' | 'REVISION') => {
-        setLogToEdit(null);
-        setModalMode(mode);
-        setIsLogModalOpen(true);
+        setFaState(prev => ({
+            ...prev,
+            isLogModalOpen: true,
+            logToEdit: null,
+            draftLog: null, // Explicitly clear draft to ensure fresh time calculation
+            modalMode: mode
+        }));
     }
+
+    const handleCloseModal = () => {
+        setFaState(prev => ({ ...prev, isLogModalOpen: false, logToEdit: null }));
+    };
 
     // --- MODAL SAVE HANDLER ---
     const handleSaveModalLog = async (data: FALogData) => {
@@ -305,16 +331,20 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
         if (newEnd < newStart) newEnd.setDate(newEnd.getDate() + 1); // Handle midnight
         const duration = Math.round((newEnd.getTime() - newStart.getTime()) / 60000);
 
+        // Note: We pass the user-selected mode implicitly by calling processLogEntries with isExplicitRevision
+        // If the user manually toggled 'Revision' in the modal, modalMode will be 'REVISION'.
+        const isExplicitRevision = modalMode === 'REVISION';
+
         const entry: ParsedLogEntry = {
             pageNumber: parseInt(data.pageNumber),
-            isExplicitRevision: modalMode === 'REVISION', 
+            isExplicitRevision: isExplicitRevision, 
             topics: data.selectedTopics,
             date: data.date,
             timestamp: newStart.toISOString() // Pass exact time!
         };
 
         if (data.logId) {
-            // UPDATE EXISTING (Logic simplified for brevity - robust handling in production should patch TimeLogs too)
+            // UPDATE EXISTING
             let updatedKB = [...knowledgeBase];
             const kbIndex = updatedKB.findIndex(k => k.pageNumber === data.pageNumber);
             
@@ -330,19 +360,24 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                         timestamp: newStart.toISOString(),
                         durationMinutes: duration,
                         notes: data.notes,
-                        topics: data.selectedTopics
+                        topics: data.selectedTopics,
+                        type: isExplicitRevision ? 'REVISION' : 'STUDY' // Allow switching type on edit
                     };
                     
                     const newLogs = [...kbEntry.logs];
                     newLogs[logIndex] = updatedLog;
                     
                     updatedKB[kbIndex] = { ...kbEntry, logs: newLogs };
+                    
+                    // Recalculate stats in case type or topics changed
+                    const finalizedEntry = recalculateEntryStats(updatedKB[kbIndex]);
+                    updatedKB[kbIndex] = finalizedEntry;
+
                     await onUpdateKnowledgeBase(updatedKB);
                 }
             }
         } else {
             // CREATE NEW
-            // Use the updated service logic to handle subtopic SRS
             const { results, updatedKB } = processLogEntries([entry], knowledgeBase, revisionSettings);
             
             // Update timestamp/duration for the newly created log
@@ -352,7 +387,6 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             if (createdKbEntry) {
                 const latestLog = createdKbEntry.logs[createdKbEntry.logs.length - 1];
                 
-                // Even though processLogEntries uses the timestamp now, we ensure fields are set
                 latestLog.timestamp = newStart.toISOString();
                 latestLog.durationMinutes = duration;
                 latestLog.notes = data.notes;
@@ -373,6 +407,31 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                 });
             }
         }
+        
+        // Clear draft after successful save
+        setFaState(prev => ({ ...prev, draftLog: null }));
+    };
+
+    // Function to handle deleting a log from within the Modal (passed as prop)
+    const handleDeleteLogFromModal = async (logId: string, pageNumber: string) => {
+        const kbEntry = knowledgeBase.find(kb => kb.pageNumber === pageNumber);
+        if (kbEntry) {
+            // Record Undo
+            addToHistory({
+                type: 'KB_UPDATE',
+                description: `Deleted log for Pg ${pageNumber}`,
+                snapshot: kbEntry
+            });
+
+            const remainingLogs = kbEntry.logs.filter(l => l.id !== logId);
+            const tempEntry = { ...kbEntry, logs: remainingLogs };
+            
+            // Recalculate (this will reset revisionCount to 0 if no logs left)
+            const updatedEntry = recalculateEntryStats(tempEntry);
+            
+            const newKB = knowledgeBase.map(kb => (kb.pageNumber === pageNumber ? updatedEntry : kb));
+            await onUpdateKnowledgeBase(newKB);
+        }
     };
 
     const requestDelete = (log: any) => {
@@ -382,30 +441,8 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     const executeDelete = async () => {
         if (!logToDelete) return;
         const log = logToDelete;
-        const kbEntry = knowledgeBase.find(kb => kb.pageNumber === log.pageNumber);
-        
-        if (kbEntry) {
-            // Record Action for Undo
-            addToHistory({
-                type: 'KB_UPDATE',
-                description: `Deleted log for Pg ${log.pageNumber}`,
-                snapshot: kbEntry
-            });
-
-            const remainingLogs = kbEntry.logs.filter(l => l.id !== log.id);
-            
-            // Construct temp entry with remaining logs to calculate new state
-            const tempEntry = { ...kbEntry, logs: remainingLogs };
-            
-            // Use helper to fully reset page status and topic status based on remaining logs
-            const updatedEntry = recalculateEntryStats(tempEntry);
-
-            // Update Global State
-            const newKB = knowledgeBase.map(kb => (kb.pageNumber === log.pageNumber ? updatedEntry : kb));
-            await onUpdateKnowledgeBase(newKB);
-        }
-        
-        // Crucial: Reset UI State immediately
+        // Use the same logic as the modal delete
+        await handleDeleteLogFromModal(log.id, log.pageNumber);
         setLogToDelete(null);
         setSwipedLogId(null);
     };
@@ -430,11 +467,13 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
 
             <FALogModal 
                 isOpen={isLogModalOpen}
-                onClose={() => { setIsLogModalOpen(false); setLogToEdit(null); }}
+                onClose={handleCloseModal}
                 onSave={handleSaveModalLog}
                 knowledgeBase={knowledgeBase}
-                initialData={logToEdit}
+                initialData={logToEdit || draftLog} // Use draft if not editing specific log
                 mode={modalMode}
+                onDeletePastLog={handleDeleteLogFromModal}
+                onStateChange={(data) => setFaState(prev => ({ ...prev, draftLog: data }))} // Update draft in real-time
             />
 
             <div className="flex items-center gap-3">

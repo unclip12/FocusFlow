@@ -5,7 +5,7 @@ import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } f
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, addDoc, query, orderBy, writeBatch, where } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
-import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker } from "../types";
+import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings } from "../types";
 import { notifySyncStart, notifySyncEnd } from "./syncService";
 
 const firebaseConfig = {
@@ -324,6 +324,25 @@ export const saveRevisionSettings = async (settings: RevisionSettings) => {
     return withSync(async () => {
         if (!auth.currentUser) return;
         const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'revisionSettings');
+        await setDoc(docRef, cleanData(settings), { merge: true });
+    });
+};
+
+// --- MAIN APP SETTINGS (THEME, NOTIFICATIONS, MENU) ---
+
+export const getAppSettings = async (): Promise<AppSettings | null> => {
+    return withSync(async () => {
+        if (!auth.currentUser) return null;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'appSettings');
+        const docSnap = await getDoc(docRef);
+        return docSnap.exists() ? docSnap.data() as AppSettings : null;
+    });
+};
+
+export const saveAppSettings = async (settings: AppSettings) => {
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = doc(db, 'users', auth.currentUser.uid, 'config', 'appSettings');
         await setDoc(docRef, cleanData(settings), { merge: true });
     });
 };

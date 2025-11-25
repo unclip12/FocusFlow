@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { KnowledgeBaseEntry, TrackableItem } from '../types';
+import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate } from '../types';
 import { XMarkIcon, BookOpenIcon, ClockIcon, PlusIcon, CheckCircleIcon, TrashIcon, HistoryIcon, ArrowPathIcon } from './Icons';
 
 interface FALogModalProps {
@@ -10,6 +10,8 @@ interface FALogModalProps {
     knowledgeBase: KnowledgeBaseEntry[];
     initialData?: FALogData | null; // If editing
     mode?: 'STUDY' | 'REVISION';
+    onDeletePastLog?: (logId: string, pageNumber: string) => void;
+    onStateChange?: (data: FALogData) => void; // New prop for reporting state
 }
 
 export interface FALogData {
@@ -22,9 +24,9 @@ export interface FALogData {
     notes: string;
 }
 
-export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave, knowledgeBase, initialData, mode = 'STUDY' }) => {
+export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave, knowledgeBase, initialData, mode = 'STUDY', onDeletePastLog, onStateChange }) => {
     const [pageNumber, setPageNumber] = useState('');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(getAdjustedDate(new Date()));
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [notes, setNotes] = useState('');
@@ -49,17 +51,28 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
         };
     }, [isOpen]);
 
-    // Initialize Data
+    // Initialize Data (from initialData or defaults)
+    // FIX: Dependency array contains ONLY [isOpen]. This prevents infinite loops when onStateChange updates parent state.
     useEffect(() => {
         if (isOpen) {
-            setDetectedMode(mode); // Reset to prop mode initially
+            setDetectedMode(mode); 
             
             if (initialData) {
-                // Edit Mode
+                // Data passed in (either edit data OR draft data from persistence)
                 setPageNumber(initialData.pageNumber);
-                setDate(initialData.date);
-                setStartTime(initialData.startTime);
-                setEndTime(initialData.endTime);
+                setDate(initialData.date || getAdjustedDate(new Date()));
+                
+                // Fallback if times are empty/invalid in draft
+                if (initialData.startTime && initialData.endTime) {
+                    setStartTime(initialData.startTime);
+                    setEndTime(initialData.endTime);
+                } else {
+                    const end = new Date();
+                    const start = new Date(end.getTime() - 60 * 60000);
+                    setStartTime(start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+                    setEndTime(end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+                }
+
                 setNotes(initialData.notes);
                 
                 const entry = knowledgeBase.find(k => k.pageNumber === initialData.pageNumber);
@@ -70,10 +83,10 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                 setExistingEntry(entry || null);
 
             } else {
-                // New Mode
+                // Clean New Mode
                 const now = new Date();
                 setPageNumber('');
-                setDate(now.toISOString().split('T')[0]);
+                setDate(getAdjustedDate(now));
                 
                 const end = new Date();
                 const start = new Date(end.getTime() - 60 * 60000); // Default 60m
@@ -88,40 +101,68 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
             }
             setNewTopicInput('');
         }
-    }, [isOpen, initialData, mode]);
+    }, [isOpen]); 
+
+    // Report changes to parent for persistence
+    useEffect(() => {
+        if (onStateChange && isOpen) {
+            const currentData: FALogData = {
+                logId: initialData?.logId,
+                pageNumber,
+                date,
+                startTime,
+                endTime,
+                notes,
+                selectedTopics: Array.from(selectedTopics)
+            };
+            onStateChange(currentData);
+        }
+    }, [pageNumber, date, startTime, endTime, notes, selectedTopics, isOpen]);
 
     // Watch Page Number for "Smart Mode" and Context Loading
     useEffect(() => {
         if (pageNumber) {
             const entry = knowledgeBase.find(k => k.pageNumber === pageNumber);
+            
             if (entry) {
                 setExistingEntry(entry);
                 
-                // If in STUDY mode but page exists, auto-switch visual to REVISION context
-                if (detectedMode === 'STUDY') {
-                    setDetectedMode('REVISION');
+                const hasHistory = entry.logs && entry.logs.length > 0;
+
+                // Only switch mode automatically if NOT loading from initialData (user might have changed it)
+                // Check if current mode matches what we expect, but don't force override if user set it manually in UI
+                if (!initialData) {
+                    if (hasHistory) {
+                        setDetectedMode('REVISION');
+                    } else {
+                        setDetectedMode('STUDY');
+                    }
                 }
 
                 // Load topics
                 const dbTopics = entry.topics.map(t => t.name);
-                // If creating new log, we might want to start fresh selection
-                // If editing, we keep initial
-                if (!initialData) {
-                    setAvailableTopics(dbTopics);
-                    setSelectedTopics(new Set());
+                // If we have initialData (draft or edit), we merge topics. If new page entry, just load DB topics.
+                if (!initialData || initialData.pageNumber !== pageNumber) { // If user changed page number mid-edit
+                     setAvailableTopics(dbTopics);
+                     // Only clear selected if we genuinely switched pages from what was in draft
+                     if (initialData && initialData.pageNumber !== pageNumber) {
+                         setSelectedTopics(new Set()); 
+                     }
                 } else {
-                    // If editing and page number changed (rare but possible), merge
+                    // Draft exists and matches page
                     const merged = Array.from(new Set([...dbTopics, ...availableTopics]));
                     setAvailableTopics(merged);
                 }
             } else {
                 setExistingEntry(null);
                 // Reset mode if we typed a new page number not in DB
-                if (!initialData) setDetectedMode(mode); 
-                if (!initialData) setAvailableTopics([]);
+                if (!initialData) {
+                    setDetectedMode('STUDY');
+                    setAvailableTopics([]);
+                }
             }
         }
-    }, [pageNumber, knowledgeBase]);
+    }, [pageNumber, knowledgeBase]); 
 
     const handleToggleTopic = (topic: string) => {
         const newSet = new Set(selectedTopics);
@@ -162,11 +203,16 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
         onClose();
     };
 
+    const handleDeleteLog = (logId: string) => {
+        if (onDeletePastLog && pageNumber) {
+            onDeletePastLog(logId, pageNumber);
+        }
+    };
+
     const getPastLogs = () => {
         if (!existingEntry) return [];
         return [...existingEntry.logs]
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-            .slice(0, 3);
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     };
 
     const getUpcomingTopics = () => {
@@ -190,11 +236,22 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                                {initialData ? 'Edit Session' : (detectedMode === 'REVISION' ? 'Log Revision' : 'Log New Study')}
+                                {initialData?.logId ? 'Edit Session' : (detectedMode === 'REVISION' ? 'Log Revision' : 'Log New Study')}
                             </h3>
-                            {existingEntry && detectedMode === 'REVISION' && !initialData && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Page exists • Switched to Revision Mode</p>
-                            )}
+                            <div className="flex gap-2 mt-1">
+                                <button 
+                                    onClick={() => setDetectedMode('STUDY')}
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors ${detectedMode === 'STUDY' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-indigo-400'}`}
+                                >
+                                    Study Mode
+                                </button>
+                                <button 
+                                    onClick={() => setDetectedMode('REVISION')}
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-colors ${detectedMode === 'REVISION' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-amber-400'}`}
+                                >
+                                    Revision Mode
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-white/50 dark:hover:bg-slate-800 rounded-full transition-colors">
@@ -305,23 +362,32 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                             {existingEntry ? (
                                 <>
                                     {/* Past Sessions */}
-                                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
+                                    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm relative">
                                         <div className="flex items-center gap-2 mb-3 text-slate-500 dark:text-slate-400">
                                             <HistoryIcon className="w-4 h-4" />
-                                            <h4 className="text-xs font-bold uppercase tracking-wider">Recent History (Pg {pageNumber})</h4>
+                                            <h4 className="text-xs font-bold uppercase tracking-wider">Past Logs (Pg {pageNumber})</h4>
                                         </div>
-                                        <div className="space-y-2">
+                                        <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
                                             {getPastLogs().map(log => (
-                                                <div key={log.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-700/50 rounded border border-slate-100 dark:border-slate-700">
-                                                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                        {new Date(log.timestamp).toLocaleDateString()}
-                                                    </span>
-                                                    <span className="text-slate-500 dark:text-slate-400 font-mono">
-                                                        {log.durationMinutes}m • {log.type === 'STUDY' ? 'Study' : `Rev #${log.revisionIndex}`}
-                                                    </span>
+                                                <div key={log.id} className="flex justify-between items-center text-xs p-2 bg-slate-50 dark:bg-slate-700/50 rounded border border-slate-100 dark:border-slate-700 group">
+                                                    <div>
+                                                        <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                                            {new Date(log.timestamp).toLocaleDateString()}
+                                                        </span>
+                                                        <span className="text-slate-500 dark:text-slate-400 font-mono">
+                                                            {log.durationMinutes}m • {log.type === 'STUDY' ? 'Study' : `Rev #${log.revisionIndex}`}
+                                                        </span>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => handleDeleteLog(log.id)} 
+                                                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                                                        title="Delete Log"
+                                                    >
+                                                        <TrashIcon className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
                                             ))}
-                                            {existingEntry.logs.length === 0 && <p className="text-xs text-slate-400 italic">No past logs found.</p>}
+                                            {existingEntry.logs.length === 0 && <p className="text-xs text-slate-400 italic">No past logs found. Page is fresh.</p>}
                                         </div>
                                     </div>
 
@@ -375,7 +441,7 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                         onClick={handleSave} 
                         className={`flex-[2] py-3 rounded-xl text-white font-bold shadow-lg transition-colors text-sm flex items-center justify-center gap-2 ${detectedMode === 'REVISION' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-200 dark:shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 dark:shadow-none'}`}
                     >
-                        <CheckCircleIcon className="w-4 h-4" /> {detectedMode === 'REVISION' ? 'Log Revision' : 'Log Study'}
+                        <CheckCircleIcon className="w-4 h-4" /> {detectedMode === 'REVISION' ? 'Log Revision' : 'Log New Study'}
                     </button>
                 </div>
             </div>

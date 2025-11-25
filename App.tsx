@@ -1,8 +1,6 @@
-
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan } from './services/firebase';
+import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan, getAppSettings, saveAppSettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
@@ -13,7 +11,10 @@ import {
   RevisionSettings,
   DayPlan,
   APP_THEMES,
-  AppTheme
+  AppTheme,
+  DEFAULT_MENU_ORDER,
+  MenuItemConfig,
+  RevisionItem
 } from './types';
 import { getData, saveData } from './services/dbService';
 import { calculateNextRevisionDate } from './services/srsService';
@@ -23,7 +24,7 @@ import { performFullIntegrityCheck } from './services/faLoggerService';
 
 // Components
 import { LoginView } from './components/LoginView';
-import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon, CheckCircleIcon } from './components/Icons';
+import { AppLogo, ChartBarIcon, CalendarPlusIcon, CalendarIcon, ArrowPathIcon, BookOpenIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, Cog6ToothIcon, FireIcon, ChevronRightIcon, Bars3Icon, XMarkIcon, ListCheckIcon, BrainIcon, ClockIcon, ClipboardDocumentCheckIcon, CheckCircleIcon, ArrowsPointingOutIcon, LayoutSidebarIcon } from './components/Icons';
 import { TodayGlance } from './components/StatsCard';
 import { ActivityGraphs } from './components/ActivityGraphs';
 import SessionModal from './components/SessionModal';
@@ -46,9 +47,26 @@ import { FALoggerView } from './components/FALoggerView';
 import { TimeLoggerView } from './components/TimeLoggerView';
 import { DailyTrackerView } from './components/DailyTrackerView';
 import { toggleMaterialActive } from './services/firebase';
+import { FALogData } from './components/FALogModal';
 
 // Services
 import { requestNotificationPermission } from './services/notificationService';
+
+// MENU DEFINITIONS
+const ALL_MENU_ITEMS = [
+    { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
+    { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
+    { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
+    { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
+    { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
+    { id: 'FA_LOGGER', label: 'FA Logger', icon: ListCheckIcon },
+    { id: 'REVISION', label: 'Revision Hub', icon: ArrowPathIcon },
+    { id: 'KNOWLEDGE_BASE', label: 'Knowledge Base', icon: BookOpenIcon },
+    { id: 'DATA', label: 'Info Files', icon: DocumentTextIcon },
+    { id: 'CHAT', label: 'AI Mentor', icon: ChatBubbleLeftRightIcon },
+    { id: 'AI_MEMORY', label: 'My AI Memory', icon: BrainIcon },
+    { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
+];
 
 const SyncIndicator = () => {
     const [status, setStatus] = useState<'HIDDEN' | 'SYNCING' | 'SYNCED'>('HIDDEN');
@@ -83,6 +101,49 @@ const SyncIndicator = () => {
     );
 };
 
+// --- PERSISTED VIEW STATE INTERFACES ---
+export interface ViewStates {
+    kb: {
+        search: string;
+        selectedSystem: string;
+        sortBy: 'PAGE' | 'TOPIC' | 'SYSTEM' | 'SUBJECT' | 'REVISIONS' | 'STUDIED' | 'LAST_STUDIED' | 'RECENTLY_ADDED';
+        sortOrder: 'ASC' | 'DESC';
+        viewMode: 'PAGE_WISE' | 'SUBTOPIC_WISE';
+    };
+    fa: {
+        isLogModalOpen: boolean;
+        modalMode: 'STUDY' | 'REVISION';
+        draftLog: FALogData | null;
+        logToEdit: FALogData | null;
+    };
+    plan: {
+        currentDate: string; // Stores the date currently being viewed in Plan
+        viewMode: 'full' | 'blocks';
+        isManualModalOpen: boolean; // Keeps modal open if navigated away
+    };
+    timeLog: {
+        selectedDate: string;
+        input: string;
+    };
+    revision: {
+        activeTab: 'DUE' | 'UPCOMING' | 'HISTORY';
+        sortBy: 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
+        sortOrder: 'ASC' | 'DESC';
+    };
+    calendar: {
+        currentMonth: Date;
+        selectedDate: Date;
+        viewMode: 'MONTH' | 'DAY';
+    };
+    chat: {
+        mode: 'MENTOR' | 'BUDDY';
+        input: string;
+    };
+    data: {
+        filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
+    };
+}
+
 export default function App() {
   // Auth
   const [user, setUser] = useState<User | null>(null);
@@ -113,8 +174,12 @@ export default function App() {
           enabled: true,
           start: '23:00',
           end: '07:00'
-      }
+      },
+      desktopLayout: 'sidebar', // Default
+      menuConfiguration: DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }))
   });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({ mode: 'balanced', targetCount: 7 });
   const [examDate, setExamDate] = useState<string | null>(null);
 
@@ -123,6 +188,49 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false); 
   const [targetPlanDate, setTargetPlanDate] = useState<string | undefined>(undefined);
+
+  // --- CENTRALIZED VIEW STATES FOR PERSISTENCE ---
+  const [viewStates, setViewStates] = useState<ViewStates>({
+      kb: {
+          search: '',
+          selectedSystem: '',
+          sortBy: 'PAGE',
+          sortOrder: 'ASC',
+          viewMode: 'PAGE_WISE'
+      },
+      fa: {
+          isLogModalOpen: false,
+          modalMode: 'STUDY',
+          draftLog: null,
+          logToEdit: null
+      },
+      plan: {
+          currentDate: getAdjustedDate(new Date()),
+          viewMode: 'blocks',
+          isManualModalOpen: false
+      },
+      timeLog: {
+          selectedDate: getAdjustedDate(new Date()),
+          input: ''
+      },
+      revision: {
+          activeTab: 'DUE',
+          sortBy: 'TIME',
+          sortOrder: 'ASC'
+      },
+      calendar: {
+          currentMonth: new Date(),
+          selectedDate: new Date(),
+          viewMode: 'MONTH'
+      },
+      chat: {
+          mode: 'MENTOR',
+          input: ''
+      },
+      data: {
+          filterSource: 'ALL'
+      }
+  });
 
   // Modals
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
@@ -160,7 +268,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      setAuthLoading(false);
+      
       if (u) {
         // Load from IndexedDB first for speed, then sync with Firestore
         const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
@@ -173,7 +281,6 @@ export default function App() {
         const firestoreKB = await getKnowledgeBase();
         
         // 2. AUTO-RUN INTEGRITY CHECK ON LOAD
-        // This ensures any stale states from previous versions are fixed immediately
         const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB);
         
         // 3. Update State
@@ -192,7 +299,59 @@ export default function App() {
         // Load Today's Plan for Dashboard Stats
         await loadTodayPlan();
 
-        const loadedSettings = await getData<AppSettings>('settings');
+        // --- SETTINGS SYNC (Improved) ---
+        try {
+            const localSettings = await getData<AppSettings>('settings');
+            
+            // Initial render with local settings if available to prevent flash of defaults
+            if (localSettings) {
+                setSettings(prev => ({
+                    ...prev,
+                    ...localSettings,
+                    notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
+                    quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
+                }));
+            }
+
+            // Fetch Cloud Settings
+            const cloudSettings = await getAppSettings();
+            const sourceSettings = cloudSettings || localSettings;
+
+            if (sourceSettings) {
+                setSettings(prev => {
+                    const merged = { 
+                        ...prev, 
+                        ...sourceSettings, 
+                        notifications: { ...prev.notifications, ...(sourceSettings.notifications || {}) }, 
+                        quietHours: { ...prev.quietHours, ...(sourceSettings.quietHours || {}) } 
+                    };
+                    
+                    // Smart Menu Merge: Preserve cloud config but append any new features
+                    if (sourceSettings.menuConfiguration) {
+                        const existingIds = new Set(sourceSettings.menuConfiguration.map((m: MenuItemConfig) => m.id));
+                        const newItems = DEFAULT_MENU_ORDER
+                            .filter(id => !existingIds.has(id))
+                            .map(id => ({ id, visible: true }));
+                        merged.menuConfiguration = [...sourceSettings.menuConfiguration, ...newItems];
+                    } else {
+                        merged.menuConfiguration = DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }));
+                    }
+
+                    return merged;
+                });
+                
+                if (cloudSettings) await saveData('settings', cloudSettings);
+                
+                if (!cloudSettings && localSettings) {
+                    await saveAppSettings(localSettings);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to sync settings", err);
+        } finally {
+            setSettingsLoaded(true);
+        }
+
         const loadedRevSettings = await getRevisionSettings();
         if (loadedRevSettings) setRevisionSettings(loadedRevSettings);
 
@@ -203,18 +362,19 @@ export default function App() {
             setDisplayName(loadedProfile.displayName);
         }
         
-        if (loadedSettings) {
-            setSettings(prev => ({ ...prev, ...loadedSettings, notifications: { ...prev.notifications, ...loadedSettings.notifications }, quietHours: { ...prev.quietHours, ...loadedSettings.quietHours } }));
-        }
         if (loadedExamDate) setExamDate(loadedExamDate);
-        
-        if (loadedSettings?.notifications?.enabled) {
-            requestNotificationPermission();
-        }
       }
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
+
+  // Request Notification Permission if enabled
+  useEffect(() => {
+      if (settingsLoaded && settings.notifications?.enabled) {
+          requestNotificationPermission();
+      }
+  }, [settingsLoaded, settings.notifications?.enabled]);
 
   // Refresh Today Plan when viewing dashboard
   useEffect(() => {
@@ -223,67 +383,69 @@ export default function App() {
       }
   }, [currentView]);
 
-  // Updated Streak Logic: Strict Check on Planned vs Completed
+  // Set plan view date if navigated from elsewhere
+  useEffect(() => {
+      if (targetPlanDate) {
+          setViewStates(prev => ({
+              ...prev,
+              plan: { ...prev.plan, currentDate: targetPlanDate }
+          }));
+      }
+  }, [targetPlanDate]);
+
+  // Calculate Active Menu Items
+  const activeMenuItems = useMemo(() => {
+      const config = settings.menuConfiguration || DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }));
+      return config
+          .filter(item => item.visible)
+          .map(item => ALL_MENU_ITEMS.find(def => def.id === item.id))
+          .filter(Boolean) as typeof ALL_MENU_ITEMS;
+  }, [settings.menuConfiguration]);
+
+  // Streak Logic
   const streak = useMemo(() => {
     if (studyPlan.length === 0) return 0;
-
     const todayStr = getAdjustedDate(new Date());
     let currentStreak = 0;
-    
-    // Group items by date
     const itemsByDate = new Map<string, StudyPlanItem[]>();
     studyPlan.forEach(item => {
         const items = itemsByDate.get(item.date) || [];
         items.push(item);
         itemsByDate.set(item.date, items);
     });
-
-    // Check backwards from today or yesterday
     let checkDate = new Date();
     let checkDateStr = getAdjustedDate(checkDate);
-
-    // If today has NO items, check yesterday
     if (!itemsByDate.has(checkDateStr)) {
         checkDate.setDate(checkDate.getDate() - 1);
         checkDateStr = getAdjustedDate(checkDate);
     }
-
     while (true) {
         const items = itemsByDate.get(checkDateStr);
-        
         if (!items || items.length === 0) {
-            if (currentStreak > 0) break; // Stop if we hit a gap after finding a streak
+            if (currentStreak > 0) break;
         } else {
             const allDone = items.every(i => i.isCompleted);
             if (allDone) {
                 currentStreak++;
             } else {
-                // If any item is incomplete on this date, streak breaks
                 break;
             }
         }
-
-        // Go to previous day
         checkDate.setDate(checkDate.getDate() - 1);
         checkDateStr = getAdjustedDate(checkDate);
-        
-        // Safety break for infinite loop
         if (currentStreak > 3650) break; 
     }
-
     return currentStreak;
   }, [studyPlan]);
 
-  // Theme Application Logic
+  // Theme Application
   useEffect(() => {
     const applyTheme = () => {
         const activeThemeId = settings.themeId || 'default';
         const theme = APP_THEMES.find(t => t.id === activeThemeId) || APP_THEMES[0];
-        
         const root = document.documentElement;
         const isDark = settings.darkMode;
         
-        // Apply CSS Variables based on mode
         root.style.setProperty('--app-bg', isDark ? theme.darkBgGradient : theme.bgGradient);
         root.style.setProperty('--color-background', isDark ? theme.darkBackgroundRGB : theme.backgroundRGB);
         root.style.setProperty('--color-surface', isDark ? theme.darkSurfaceRGB : theme.surfaceRGB);
@@ -302,6 +464,13 @@ export default function App() {
       await saveFirebaseUserProfile({ displayName: newName });
   };
 
+  const handleUpdateSettings = async (newSettings: AppSettings) => {
+      if (!settingsLoaded) return;
+      setSettings(newSettings);
+      await saveData('settings', newSettings);
+      await saveAppSettings(newSettings);
+  };
+
   const updatePlan = async (newPlan: StudyPlanItem[]) => {
       setStudyPlan(newPlan);
       await saveData('studyPlan', newPlan);
@@ -309,11 +478,10 @@ export default function App() {
 
   const updateKB = async (newKB: KnowledgeBaseEntry[]) => {
       setKnowledgeBase(newKB);
-      await saveKnowledgeBase(newKB); // Save to Firestore
-      await saveData('knowledgeBase_v2', newKB); // Also save to local IndexedDB
+      await saveKnowledgeBase(newKB);
+      await saveData('knowledgeBase_v2', newKB);
   };
 
-  // --- INTEGRITY CHECK HANDLER ---
   const handleIntegrityCheck = async () => {
       const { updated, data: checkedKB } = performFullIntegrityCheck(knowledgeBase);
       if (updated) {
@@ -324,18 +492,13 @@ export default function App() {
       }
   };
 
-  // --- RESTORE LOGIC FOR UNDO ---
   const handleRestoreData = async (type: string, data: any) => {
       if (type === 'KB_UPDATE') {
-          // Restore a Knowledge Base Entry snapshot
           const entry = data as KnowledgeBaseEntry;
           const updatedKB = knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k);
-          
-          // If the entry was deleted (not found in current), re-add it
           if (!updatedKB.find(k => k.pageNumber === entry.pageNumber)) {
               updatedKB.push(entry);
           }
-          
           setKnowledgeBase(updatedKB);
           await saveKnowledgeBase(updatedKB);
           await saveData('knowledgeBase_v2', updatedKB);
@@ -348,6 +511,35 @@ export default function App() {
       setKnowledgeBase(newKB);
       await deleteKnowledgeBaseEntry(pageNumber);
       await saveData('knowledgeBase_v2', newKB);
+  };
+
+  const handleDeleteRevision = (item: RevisionItem) => {
+    const entry = knowledgeBase.find(k => k.pageNumber === item.pageNumber);
+    if (!entry) return;
+
+    let updatedEntry = { ...entry };
+
+    if (item.type === 'PAGE') {
+        updatedEntry.nextRevisionAt = null;
+    } else if (item.type === 'TOPIC' && item.topic) {
+        updatedEntry.topics = updatedEntry.topics.map(t => {
+            if (t.id === item.topic!.id) {
+                return { ...t, nextRevisionAt: null };
+            }
+            return t;
+        });
+    } else if (item.type === 'SUBTOPIC' && item.topic && item.subTopic) {
+         updatedEntry.topics = updatedEntry.topics.map(t => {
+            if (t.id === item.topic!.id) {
+                const updatedSubTopics = t.subTopics?.map(st => 
+                    st.id === item.subTopic!.id ? { ...st, nextRevisionAt: null } : st
+                );
+                return { ...t, subTopics: updatedSubTopics };
+            }
+            return t;
+        });
+    }
+    updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? updatedEntry : k));
   };
 
   const handleAddToPlan = (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
@@ -391,8 +583,6 @@ export default function App() {
       }
   };
 
-  const todayFormatted = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  
   const handleViewPage = (page: string) => {
       setViewingPage(page);
       setIsPageDetailOpen(true);
@@ -405,18 +595,18 @@ export default function App() {
 
   const dueNowItems = useMemo(() => {
     const items: { id: string, title: string, subtitle: string, type: 'REVISION' | 'TASK', urgent: boolean }[] = [];
-    
     knowledgeBase.forEach(kb => {
         if (kb.nextRevisionAt && new Date(kb.nextRevisionAt) <= new Date()) {
             items.push({ id: kb.pageNumber, title: `Revise: ${kb.title}`, subtitle: `Page ${kb.pageNumber}`, type: 'REVISION', urgent: true });
         }
         kb.topics.forEach(t => {
             if (t.nextRevisionAt && new Date(t.nextRevisionAt) <= new Date()) {
-                items.push({ id: t.id, title: `Revise: ${t.name}`, subtitle: `Topic on Page ${kb.pageNumber}`, type: 'REVISION', urgent: true });
+                if (!items.some(i => i.id === kb.pageNumber && i.title.includes(kb.title))) {
+                     items.push({ id: `${kb.pageNumber}-${t.id}`, title: `Revise: ${t.name}`, subtitle: `Topic on Page ${kb.pageNumber}`, type: 'REVISION', urgent: true });
+                }
             }
         });
     });
-
     return items;
   }, [knowledgeBase]);
 
@@ -424,20 +614,21 @@ export default function App() {
   if (!user) return <LoginView />;
 
   const secretId = user?.email?.split('@')[0];
+  const showSidebar = settings.desktopLayout !== 'fullscreen';
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
+    <div className="h-dvh w-full flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
       <InstallPrompt />
       
-      {/* Background Blobs - Visible through glass */}
+      {/* Background Blobs */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-purple-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-teal-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '2s' }}></div>
          <div className="absolute top-[40%] left-[30%] w-[40%] h-[40%] rounded-full bg-indigo-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '4s' }}></div>
       </div>
 
-      {/* SIDEBAR (Glassy) */}
-      <aside className="hidden md:flex w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/30 dark:border-white/10 h-[calc(100vh-2rem)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.05)]">
+      {/* SIDEBAR */}
+      <aside className={`${showSidebar ? 'hidden md:flex' : 'hidden'} w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/30 dark:border-white/10 h-[calc(100vh-2rem)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overscroll-contain`}>
           <div className="p-6 flex flex-col items-start gap-2">
               <div className="flex items-center gap-3">
                   <div className="w-12 h-12 flex items-center justify-center shadow-lg rounded-2xl bg-gradient-to-br from-white/80 to-slate-100/80 dark:from-slate-800/80 dark:to-slate-900/80 border border-white/50 dark:border-white/10 backdrop-blur-sm">
@@ -445,26 +636,12 @@ export default function App() {
                   </div>
                   <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500 tracking-tight drop-shadow-sm">FocusFlow</h1>
               </div>
-              {/* Sync Indicator Desktop */}
               <div className="pl-1 mt-1">
                   <SyncIndicator />
               </div>
           </div>
           <nav className="flex-1 px-4 space-y-3 pb-4">
-              {[
-                  { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
-                  { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
-                  { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
-                  { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
-                  { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
-                  { id: 'FA_LOGGER', label: 'FA Logger', icon: ListCheckIcon },
-                  { id: 'REVISION', label: 'Revision Hub', icon: ArrowPathIcon },
-                  { id: 'KNOWLEDGE_BASE', label: 'Knowledge Base', icon: BookOpenIcon },
-                  { id: 'DATA', label: 'Info Files', icon: DocumentTextIcon },
-                  { id: 'CHAT', label: 'AI Mentor', icon: ChatBubbleLeftRightIcon },
-                  { id: 'AI_MEMORY', label: 'My AI Memory', icon: BrainIcon },
-                  { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
-              ].map((item) => (
+              {activeMenuItems.map((item) => (
                   <button
                       key={item.id}
                       onClick={() => {
@@ -484,10 +661,18 @@ export default function App() {
                   </button>
               ))}
           </nav>
+          <div className="px-4 pb-4">
+              <button 
+                  onClick={() => handleUpdateSettings({ ...settings, desktopLayout: 'fullscreen' })}
+                  className="w-full flex items-center gap-2 justify-center px-4 py-2 rounded-xl bg-slate-100/50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors"
+              >
+                  <ArrowsPointingOutIcon className="w-4 h-4" /> Full Screen
+              </button>
+          </div>
       </aside>
 
-      {/* MOBILE HEADER (Glassy) */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-white/20 dark:border-white/10 p-3 z-30 flex justify-between items-center shadow-sm">
+      {/* HEADER Mobile */}
+      <div className={`${showSidebar ? 'md:hidden' : ''} fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-b border-white/20 dark:border-white/10 p-3 z-30 flex justify-between items-center shadow-sm`}>
            <div className="flex items-center gap-2">
                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border border-white/30">
                    <AppLogo className="w-6 h-6" />
@@ -508,34 +693,19 @@ export default function App() {
            </div>
       </div>
 
-      {/* MOBILE MENU (Glassy Overlay) */}
+      {/* POP-OUT MENU */}
       {isSidebarOpen && (
-          <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)}>
-              <aside className="w-72 h-[95%] m-2 rounded-3xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl shadow-2xl p-4 animate-slide-in-left border border-white/30 overflow-y-auto" onClick={e => e.stopPropagation()}>
-                   <div className="flex justify-between items-center mb-8 px-2">
-                       <div className="flex items-center gap-2">
-                           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                               <AppLogo className="w-full h-full scale-75 text-white" />
-                           </div>
-                           <span className="font-extrabold text-xl text-slate-800 dark:text-white">FocusFlow</span>
-                       </div>
-                       <button onClick={() => setIsSidebarOpen(false)} className="p-2 bg-slate-100/50 dark:bg-slate-800/50 rounded-full btn-3d"><XMarkIcon className="w-6 h-6 text-slate-500" /></button>
-                   </div>
-                   <nav className="space-y-2">
-                      {[
-                          { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
-                          { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
-                          { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
-                          { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
-                          { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
-                          { id: 'FA_LOGGER', label: 'FA Logger', icon: ListCheckIcon },
-                          { id: 'REVISION', label: 'Revision Hub', icon: ArrowPathIcon },
-                          { id: 'KNOWLEDGE_BASE', label: 'Knowledge Base', icon: BookOpenIcon },
-                          { id: 'DATA', label: 'Info Files', icon: DocumentTextIcon },
-                          { id: 'CHAT', label: 'AI Mentor', icon: ChatBubbleLeftRightIcon },
-                          { id: 'AI_MEMORY', label: 'My AI Memory', icon: BrainIcon },
-                          { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
-                      ].map((item) => (
+          <div className="fixed inset-0 z-[100] bg-black/10 backdrop-blur-[2px]" onClick={() => setIsSidebarOpen(false)}>
+              <div 
+                  className="absolute top-16 right-4 w-64 max-h-[80vh] overflow-y-auto 
+                             bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl 
+                             border border-white/40 dark:border-slate-700/50 
+                             shadow-3d dark:shadow-3d-dark rounded-2xl 
+                             origin-top-right animate-menu-pop p-2 overscroll-contain"
+                  onClick={(e) => e.stopPropagation()}
+              >
+                   <nav className="space-y-1">
+                      {activeMenuItems.map((item) => (
                           <button
                               key={item.id}
                               onClick={() => { 
@@ -543,223 +713,260 @@ export default function App() {
                                   setCurrentView(item.id as any); 
                                   setIsSidebarOpen(false); 
                               }}
-                              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-bold text-sm btn-3d ${currentView === item.id ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white/50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400'}`}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${currentView === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                           >
-                              <item.icon className="w-5 h-5" />
+                              <item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
                               {item.label}
                           </button>
                       ))}
                   </nav>
-              </aside>
+                  {!showSidebar && (
+                      <div className="mt-2 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                          <button 
+                              onClick={() => { 
+                                  handleUpdateSettings({ ...settings, desktopLayout: 'sidebar' });
+                                  setIsSidebarOpen(false); 
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50"
+                          >
+                              <LayoutSidebarIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                              Show Sidebar
+                          </button>
+                      </div>
+                  )}
+              </div>
           </div>
       )}
 
       {/* MAIN AREA */}
-      <main className="flex-1 pt-20 md:pt-4 p-4 md:p-6 overflow-y-auto h-screen custom-scrollbar relative z-10">
-          <div className="max-w-6xl mx-auto h-full pb-20">
-            
-            {currentView === 'DASHBOARD' && (
-                <>
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                        <div>
-                            <h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight drop-shadow-sm">Hello, {displayName || 'Doctor'} 👋</h1>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">Ready to crush your goals today?</p>
+      <main className={`flex-1 pt-24 ${showSidebar ? 'md:pt-6' : 'md:pt-24'} p-4 md:p-6 overflow-y-auto custom-scrollbar relative z-10 overscroll-contain pb-24`}>
+          <div className="max-w-6xl mx-auto h-full">
+            <div key={currentView} className="animate-liquid-enter h-full">
+                {currentView === 'DASHBOARD' && (
+                    <>
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                            <div>
+                                <h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight drop-shadow-sm">Hello, {displayName || 'Doctor'} 👋</h1>
+                                <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">Ready to crush your goals today?</p>
+                            </div>
+                            <div className="flex gap-3 w-full md:w-auto">
+                                <button 
+                                    onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }}
+                                    className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"
+                                >
+                                    <CalendarIcon className="w-4 h-4" />
+                                    Today's Plan
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex gap-3 w-full md:w-auto">
-                            <button 
-                                onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }}
-                                className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"
-                            >
-                                <CalendarIcon className="w-4 h-4" />
-                                Today's Plan
-                            </button>
-                        </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                         <div className="space-y-8">
-                            {/* Pass todayPlan to StatsCard for integration */}
-                            <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} />
-                            <ActivityGraphs knowledgeBase={knowledgeBase} />
-                         </div>
-                         <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 card-3d">
-                             <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 text-lg">
-                                <div className="p-2 bg-indigo-100/80 dark:bg-indigo-900/30 rounded-lg text-indigo-600 shadow-inner">
-                                    <ListCheckIcon className="w-5 h-5" />
-                                </div>
-                                Due Now
-                             </h3>
-                             <div className="space-y-3">
-                                {dueNowItems.length > 0 ? dueNowItems.map(item => (
-                                     <div key={item.id} className={`p-4 rounded-2xl flex items-center justify-between transition-all hover:scale-[1.02] cursor-pointer shadow-sm border card-3d ${item.urgent ? 'bg-amber-50/60 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800' : 'bg-white/50 dark:bg-slate-800/50 border-white/40 dark:border-slate-700'}`}>
-                                         <div>
-                                             <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</p>
-                                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{item.subtitle}</p>
-                                         </div>
-                                         <button className="btn-3d bg-white/70 dark:bg-slate-800/70 border border-white/40 dark:border-slate-600 text-primary px-4 py-2 rounded-lg text-xs font-bold shadow-sm backdrop-blur-sm">View</button>
-                                     </div>
-                                )) : (
-                                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                                        <CheckCircleIcon className="w-12 h-12 text-green-200/80 mb-3" />
-                                        <p className="text-slate-400 font-medium">All caught up! Great job.</p>
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                            <div className="space-y-8">
+                                <TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} />
+                                <ActivityGraphs knowledgeBase={knowledgeBase} />
+                            </div>
+                            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 card-3d">
+                                <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 text-lg">
+                                    <div className="p-2 bg-indigo-100/80 dark:bg-indigo-900/30 rounded-lg text-indigo-600 shadow-inner">
+                                        <ListCheckIcon className="w-5 h-5" />
                                     </div>
-                                )}
-                             </div>
-                         </div>
-                    </div>
-                </>
-            )}
+                                    Due Now
+                                </h3>
+                                <div className="space-y-3">
+                                    {dueNowItems.length > 0 ? dueNowItems.map(item => (
+                                        <div key={item.id} className={`p-4 rounded-2xl flex items-center justify-between transition-all hover:scale-[1.02] cursor-pointer shadow-sm border card-3d ${item.urgent ? 'bg-amber-50/60 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800' : 'bg-white/50 dark:bg-slate-800/50 border-white/40 dark:border-slate-700'}`}>
+                                            <div>
+                                                <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{item.subtitle}</p>
+                                            </div>
+                                            <button className="btn-3d bg-white/70 dark:bg-slate-800/70 border border-white/40 dark:border-slate-600 text-primary px-4 py-2 rounded-lg text-xs font-bold shadow-sm backdrop-blur-sm">View</button>
+                                        </div>
+                                    )) : (
+                                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                                            <CheckCircleIcon className="w-12 h-12 text-green-200/80 mb-3" />
+                                            <p className="text-slate-400 font-medium">All caught up! Great job.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
 
-            {currentView === 'PLANNER' && (
-                <PlannerView 
-                    plan={studyPlan} 
-                    knowledgeBase={knowledgeBase}
-                    sessions={[]}
-                    onAddToPlan={handleAddToPlan}
-                    onUpdatePlanItem={(item) => updatePlan(studyPlan.map(p => p.id === item.id ? item : p))}
-                    onCompleteTask={(item) => {
-                        const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined };
-                        updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p));
-                    }}
-                    onStartTask={(item) => {
-                        setSessionPrefill({
-                            topic: item.topic,
-                            pageNumber: item.pageNumber,
-                            ankiTotal: item.ankiCount
-                        });
-                        setPlanContext({
-                            planId: item.id,
-                            subTasks: item.subTasks || []
-                        });
-                        setIsSessionModalOpen(true);
-                    }}
-                    onManageSession={(session) => {
-                        if(session && session.pageNumber) handleViewPage(session.pageNumber);
-                    }}
-                    onToggleSubTask={(planId, subTaskId) => {
-                        const planItem = studyPlan.find(p => p.id === planId);
-                        if (planItem && planItem.subTasks) {
-                            const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t);
-                            const updatedItem = { ...planItem, subTasks: updatedSubTasks };
-                            updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
-                        }
-                    }}
-                    onDeleteLog={(planId, logId) => {
-                        const planItem = studyPlan.find(p => p.id === planId);
-                        if (planItem && planItem.logs) {
-                            const updatedLogs = planItem.logs.filter(l => l.id !== logId);
-                            const updatedItem = { ...planItem, logs: updatedLogs };
-                            updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
-                        }
-                    }}
-                    onViewPage={handleViewPage}
-                    sharedContent={sharedContent}
-                />
-            )}
+                {currentView === 'PLANNER' && (
+                    <PlannerView 
+                        plan={studyPlan} 
+                        knowledgeBase={knowledgeBase}
+                        sessions={[]}
+                        onAddToPlan={handleAddToPlan}
+                        onUpdatePlanItem={(item) => updatePlan(studyPlan.map(p => p.id === item.id ? item : p))}
+                        onCompleteTask={(item) => {
+                            const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined };
+                            updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p));
+                        }}
+                        onStartTask={(item) => {
+                            setSessionPrefill({
+                                topic: item.topic,
+                                pageNumber: item.pageNumber,
+                                ankiTotal: item.ankiCount
+                            });
+                            setPlanContext({
+                                planId: item.id,
+                                subTasks: item.subTasks || []
+                            });
+                            setIsSessionModalOpen(true);
+                        }}
+                        onManageSession={(session) => {
+                            if(session && session.pageNumber) handleViewPage(session.pageNumber);
+                        }}
+                        onToggleSubTask={(planId, subTaskId) => {
+                            const planItem = studyPlan.find(p => p.id === planId);
+                            if (planItem && planItem.subTasks) {
+                                const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t);
+                                const updatedItem = { ...planItem, subTasks: updatedSubTasks };
+                                updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
+                            }
+                        }}
+                        onDeleteLog={(planId, logId) => {
+                            const planItem = studyPlan.find(p => p.id === planId);
+                            if (planItem && planItem.logs) {
+                                const updatedLogs = planItem.logs.filter(l => l.id !== logId);
+                                const updatedItem = { ...planItem, logs: updatedLogs };
+                                updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
+                            }
+                        }}
+                        onViewPage={handleViewPage}
+                        sharedContent={sharedContent}
+                    />
+                )}
 
-            {currentView === 'TODAYS_PLAN' && (
-                <TodaysPlanView 
-                    targetDate={targetPlanDate} 
-                    settings={settings} 
-                    onUpdateSettings={async (newSettings) => {
-                        setSettings(newSettings);
-                        await saveData('settings', newSettings);
-                    }} 
-                    knowledgeBase={knowledgeBase}
-                    onUpdateKnowledgeBase={updateKB} // Pass update function for synchronization
-                />
-            )}
+                {currentView === 'TODAYS_PLAN' && (
+                    <TodaysPlanView 
+                        targetDate={viewStates.plan.currentDate} 
+                        settings={settings} 
+                        onUpdateSettings={handleUpdateSettings} 
+                        knowledgeBase={knowledgeBase}
+                        onUpdateKnowledgeBase={updateKB}
+                    />
+                )}
 
-            {currentView === 'CALENDAR' && (
-                <CalendarView 
-                    knowledgeBase={knowledgeBase} 
-                    studyPlan={studyPlan} 
-                    onAddToPlan={handleAddToPlan} 
-                />
-            )}
+                {currentView === 'CALENDAR' && (
+                    <CalendarView 
+                        knowledgeBase={knowledgeBase} 
+                        studyPlan={studyPlan} 
+                        onAddToPlan={handleAddToPlan} 
+                    />
+                )}
 
-            {currentView === 'TIME_LOGGER' && (
-                <TimeLoggerView 
-                    knowledgeBase={knowledgeBase}
-                    onViewPage={handleViewPage}
-                />
-            )}
+                {currentView === 'TIME_LOGGER' && (
+                    <TimeLoggerView 
+                        knowledgeBase={knowledgeBase}
+                        onViewPage={handleViewPage}
+                    />
+                )}
 
-            {currentView === 'DAILY_TRACKER' && (
-                <DailyTrackerView />
-            )}
+                {currentView === 'DAILY_TRACKER' && (
+                    <DailyTrackerView />
+                )}
 
-            {currentView === 'FA_LOGGER' && (
-                <FALoggerView 
-                    knowledgeBase={knowledgeBase}
-                    onUpdateKnowledgeBase={updateKB}
-                    onViewPage={handleViewPage}
-                />
-            )}
+                {currentView === 'FA_LOGGER' && (
+                    <FALoggerView 
+                        knowledgeBase={knowledgeBase}
+                        onUpdateKnowledgeBase={updateKB}
+                        onViewPage={handleViewPage}
+                        faState={viewStates.fa}
+                        setFaState={(update) => setViewStates(prev => {
+                            const newVal = typeof update === 'function' ? update(prev.fa) : update;
+                            return { ...prev, fa: newVal };
+                        })}
+                    />
+                )}
 
-            {currentView === 'REVISION' && (
-                <RevisionView 
-                    knowledgeBase={knowledgeBase}
-                    onLogRevision={(item) => {
-                        setSessionPrefill({
-                            topic: item.title,
-                            pageNumber: item.pageNumber,
-                            category: item.kbEntry.subject,
-                            system: item.kbEntry.system,
-                            ankiTotal: item.kbEntry.ankiTotal,
-                            ankiCovered: item.kbEntry.ankiCovered
-                        });
-                        setIsSessionModalOpen(true);
-                    }}
-                    onDeleteSession={() => {}}
-                    onViewPage={handleViewPage}
-                />
-            )}
+                {currentView === 'REVISION' && (
+                    <RevisionView 
+                        knowledgeBase={knowledgeBase}
+                        onLogRevision={(item) => {
+                            setSessionPrefill({
+                                topic: item.title,
+                                pageNumber: item.pageNumber,
+                                category: item.kbEntry.subject,
+                                system: item.kbEntry.system,
+                                ankiTotal: item.kbEntry.ankiTotal,
+                                ankiCovered: item.kbEntry.ankiCovered
+                            });
+                            setIsSessionModalOpen(true);
+                        }}
+                        onDeleteSession={() => {}}
+                        onViewPage={handleViewPage}
+                        onDeleteRevision={handleDeleteRevision}
+                        viewState={viewStates.revision}
+                        setViewState={(update) => setViewStates(prev => {
+                            const newVal = typeof update === 'function' ? update(prev.revision) : update;
+                            return { ...prev, revision: newVal };
+                        })}
+                    />
+                )}
 
-            {currentView === 'KNOWLEDGE_BASE' && (
-                <KnowledgeBaseView 
-                    data={knowledgeBase}
-                    onUpdateEntry={(entry) => {
-                        updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k));
-                    }}
-                    onDeleteEntry={handleDeleteKBEntry}
-                    onViewPage={handleViewPage}
-                    onRefreshData={handleIntegrityCheck} // New prop
-                />
-            )}
+                {currentView === 'KNOWLEDGE_BASE' && (
+                    <KnowledgeBaseView 
+                        data={knowledgeBase}
+                        onUpdateEntry={(entry) => {
+                            updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k));
+                        }}
+                        onDeleteEntry={handleDeleteKBEntry}
+                        onViewPage={handleViewPage}
+                        onRefreshData={handleIntegrityCheck}
+                        kbState={viewStates.kb}
+                        setKbState={(update) => setViewStates(prev => {
+                            const newVal = typeof update === 'function' ? update(prev.kb) : update;
+                            return { ...prev, kb: newVal };
+                        })}
+                    />
+                )}
 
-            {currentView === 'DATA' && <DataView />}
+                {currentView === 'DATA' && (
+                    <DataView 
+                        viewState={viewStates.data}
+                        setViewState={(update) => setViewStates(prev => {
+                            const newVal = typeof update === 'function' ? update(prev.data) : update;
+                            return { ...prev, data: newVal };
+                        })}
+                    />
+                )}
 
-            {currentView === 'CHAT' && (
-                <AIChatView 
-                    sessions={[]} // deprecated
-                    studyPlan={studyPlan}
-                    streak={streak}
-                    onAddToPlan={handleAddToPlan}
-                    onViewDayPlan={handleViewDayPlan}
-                    displayName={displayName}
-                    knowledgeBase={knowledgeBase}
-                    onUpdateKnowledgeBase={updateKB}
-                />
-            )}
+                {currentView === 'CHAT' && (
+                    <AIChatView 
+                        sessions={[]}
+                        studyPlan={studyPlan}
+                        streak={streak}
+                        onAddToPlan={handleAddToPlan}
+                        onViewDayPlan={handleViewDayPlan}
+                        displayName={displayName}
+                        knowledgeBase={knowledgeBase}
+                        onUpdateKnowledgeBase={updateKB}
+                        viewState={viewStates.chat}
+                        setViewState={(update) => setViewStates(prev => {
+                            const newVal = typeof update === 'function' ? update(prev.chat) : update;
+                            return { ...prev, chat: newVal };
+                        })}
+                    />
+                )}
 
-            {currentView === 'AI_MEMORY' && (
-                <AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />
-            )}
+                {currentView === 'AI_MEMORY' && (
+                    <AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />
+                )}
 
-            {currentView === 'SETTINGS' && (
-                <SettingsView 
-                    settings={settings} 
-                    onUpdateSettings={async (newSettings) => {
-                        setSettings(newSettings);
-                        await saveData('settings', newSettings);
-                    }} 
-                    secretId={secretId}
-                    displayName={displayName}
-                    onUpdateDisplayName={handleUpdateDisplayName}
-                    onRestoreHistory={handleRestoreData} // NEW
-                />
-            )}
+                {currentView === 'SETTINGS' && (
+                    <SettingsView 
+                        settings={settings} 
+                        onUpdateSettings={handleUpdateSettings} 
+                        secretId={secretId}
+                        displayName={displayName}
+                        onUpdateDisplayName={handleUpdateDisplayName}
+                        onRestoreHistory={handleRestoreData}
+                    />
+                )}
+            </div>
 
           </div>
       </main>
@@ -778,10 +985,8 @@ export default function App() {
                   const latestLog = history && history.length > 0 ? history[0] : null;
                   
                   if (latestLog) {
-                      // Update KB
                       let kbEntry = knowledgeBase.find(k => k.pageNumber === pageNumber);
                       if (!kbEntry) {
-                          // Create new
                           kbEntry = {
                               pageNumber,
                               title: topic || `Page ${pageNumber}`,
@@ -801,11 +1006,9 @@ export default function App() {
                               topics: []
                           };
                       } else {
-                          // Update existing
                           kbEntry = { ...kbEntry, notes: notes || kbEntry.notes, ankiCovered: ankiCovered || kbEntry.ankiCovered, ankiTotal: ankiTotal || kbEntry.ankiTotal };
                       }
 
-                      // Append Log
                       const newLog: RevisionLog = {
                           id: latestLog.id,
                           timestamp: latestLog.startTime,
@@ -814,17 +1017,42 @@ export default function App() {
                           type: latestLog.type === 'INITIAL' ? 'STUDY' : 'REVISION',
                           notes: latestLog.notes,
                           source: 'MODAL',
-                          // Map subtasks to topics if needed, or just use topic
                           topics: [topic].filter(Boolean),
                           attachments: latestLog.attachments
                       };
                       
-                      // Recalculate SRS
                       const isRevision = newLog.type === 'REVISION';
+                      
+                      let updatedTopics = [...kbEntry.topics];
+                      let foundTopic = false;
+                      
+                      if (topic) {
+                          updatedTopics = updatedTopics.map(t => {
+                              if (t.name.trim().toLowerCase() === topic.trim().toLowerCase()) {
+                                  foundTopic = true;
+                                  const tCurrentRev = t.revisionCount || 0;
+                                  const tNextIndex = isRevision ? t.currentRevisionIndex + 1 : 0;
+                                  const tNextDate = calculateNextRevisionDate(new Date(latestLog.startTime), tNextIndex, revisionSettings);
+                                  return {
+                                      ...t,
+                                      revisionCount: isRevision ? tCurrentRev + 1 : tCurrentRev,
+                                      currentRevisionIndex: tNextIndex,
+                                      lastStudiedAt: latestLog.startTime,
+                                      nextRevisionAt: tNextDate ? tNextDate.toISOString() : null
+                                  };
+                              }
+                              return t;
+                          });
+                      }
+
                       const newRevCount = isRevision ? kbEntry.revisionCount + 1 : kbEntry.revisionCount;
                       const newRevIndex = isRevision ? kbEntry.currentRevisionIndex + 1 : 0;
                       
-                      const nextDate = calculateNextRevisionDate(new Date(latestLog.startTime), newRevIndex, revisionSettings);
+                      let pageNextDate = kbEntry.nextRevisionAt;
+                      if (!foundTopic || kbEntry.topics.length === 0) {
+                           const nextDateObj = calculateNextRevisionDate(new Date(latestLog.startTime), newRevIndex, revisionSettings);
+                           pageNextDate = nextDateObj ? nextDateObj.toISOString() : null;
+                      }
                       
                       const updatedKBEntry = {
                           ...kbEntry,
@@ -833,14 +1061,14 @@ export default function App() {
                           currentRevisionIndex: newRevIndex,
                           lastStudiedAt: latestLog.startTime,
                           firstStudiedAt: kbEntry.firstStudiedAt || latestLog.startTime,
-                          nextRevisionAt: nextDate ? nextDate.toISOString() : null
+                          nextRevisionAt: pageNextDate,
+                          topics: updatedTopics
                       };
                       
                       const newKB = knowledgeBase.filter(k => k.pageNumber !== pageNumber).concat(updatedKBEntry);
                       updateKB(newKB);
                   }
 
-                  // Update Plan if contextual
                   if (planContext && planUpdates && planUpdates.completedSubTaskIds) {
                       const planItem = studyPlan.find(p => p.id === planContext.planId);
                       if (planItem) {
@@ -853,7 +1081,6 @@ export default function App() {
                               updatedItem.completedAt = new Date().toISOString();
                           }
                           
-                          // Also append log to planItem logs for visibility
                           if (latestLog) {
                               const planLog = {
                                   id: latestLog.id,
@@ -884,7 +1111,7 @@ export default function App() {
           onClose={() => setIsPageDetailOpen(false)}
           pageNumber={viewingPage}
           knowledgeBase={knowledgeBase}
-          sessions={[]} // deprecated
+          sessions={[]}
           onUpdateEntry={(entry) => {
               updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k));
           }}

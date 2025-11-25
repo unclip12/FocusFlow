@@ -1,14 +1,17 @@
 
 
+
+
 import React, { useState, useEffect } from 'react';
-import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, HistoryRecord, NotificationTrigger } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, MoonIcon as SleepIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, ClockIcon } from './Icons';
+import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, HistoryRecord, NotificationTrigger, DEFAULT_MENU_ORDER } from '../types';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, LayoutSidebarIcon, ArrowsPointingOutIcon, ListCheckIcon, EyeIcon, EyeSlashIcon, ArrowUpIcon, ArrowDownIcon, InformationCircleIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
 import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { checkAnkiConnection } from '../services/ankiService';
 import { getHistory } from '../services/historyService';
+import { ChangelogModal } from './ChangelogModal';
 
 interface SettingsViewProps {
     settings: AppSettings;
@@ -150,6 +153,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   // History State
   const [history, setHistory] = useState<HistoryRecord[]>([]);
 
+  // Menu Config State (Initialized from settings or default)
+  const [menuConfig, setMenuConfig] = useState(
+      settings.menuConfiguration || DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }))
+  );
+
+  // Changelog Modal State
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+
   useEffect(() => {
     setLocalName(displayName);
   }, [displayName]);
@@ -170,6 +181,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       };
       loadConfig();
   }, []);
+
+  // Sync local menu state with global settings if they update from cloud later
+  useEffect(() => {
+      if (settings.menuConfiguration) {
+          setMenuConfig(settings.menuConfiguration);
+      }
+  }, [settings.menuConfiguration]);
+
+  // Menu Handlers
+  const handleMoveMenu = (index: number, direction: 'up' | 'down') => {
+      const newConfig = [...menuConfig];
+      const swapIndex = direction === 'up' ? index - 1 : index + 1;
+      if (swapIndex < 0 || swapIndex >= newConfig.length) return;
+      
+      [newConfig[index], newConfig[swapIndex]] = [newConfig[swapIndex], newConfig[index]];
+      setMenuConfig(newConfig);
+      onUpdateSettings({ ...settings, menuConfiguration: newConfig });
+  };
+
+  const handleToggleMenuVisibility = (id: string) => {
+      if (id === 'SETTINGS') return; // Prevent hiding settings
+      const newConfig = menuConfig.map(item => 
+          item.id === id ? { ...item, visible: !item.visible } : item
+      );
+      setMenuConfig(newConfig);
+      onUpdateSettings({ ...settings, menuConfiguration: newConfig });
+  };
+
+  // Ensure newly added features in DEFAULT_MENU_ORDER appear in config if missing
+  useEffect(() => {
+      const currentIds = new Set(menuConfig.map(m => m.id));
+      const missing = DEFAULT_MENU_ORDER.filter(id => !currentIds.has(id));
+      if (missing.length > 0) {
+          const updatedConfig = [
+              ...menuConfig,
+              ...missing.map(id => ({ id, visible: true }))
+          ];
+          setMenuConfig(updatedConfig);
+          onUpdateSettings({ ...settings, menuConfiguration: updatedConfig });
+      }
+  }, []);
+
 
   const handleNameSave = () => {
     if (localName.trim() !== displayName) {
@@ -301,6 +354,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
               message="This will wipe all study data, logs, and plans. This cannot be undone."
           />
 
+          <ChangelogModal 
+              isOpen={isChangelogOpen}
+              onClose={() => setIsChangelogOpen(false)}
+          />
+
           {/* Header */}
           <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-slate-200/50 dark:bg-slate-700/50 rounded-xl text-slate-600 dark:text-slate-300">
@@ -316,6 +374,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
               {/* LEFT COLUMN */}
               <div className="space-y-8">
                   
+                  {/* Menu Customization - NEW SECTION */}
+                  <Section title="Menu Navigation" icon={ListCheckIcon}>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Reorder items or hide features you don't use.</p>
+                      <div className="space-y-2">
+                          {menuConfig.map((item, idx) => (
+                              <div key={item.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${item.visible ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700' : 'bg-slate-50 dark:bg-slate-900/50 border-transparent opacity-70'}`}>
+                                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                      {item.id.replace(/_/g, ' ')}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                      <button 
+                                          onClick={() => handleMoveMenu(idx, 'up')} 
+                                          disabled={idx === 0}
+                                          className="p-1 text-slate-400 hover:text-indigo-500 disabled:opacity-30"
+                                      >
+                                          <ArrowUpIcon className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                          onClick={() => handleMoveMenu(idx, 'down')} 
+                                          disabled={idx === menuConfig.length - 1}
+                                          className="p-1 text-slate-400 hover:text-indigo-500 disabled:opacity-30"
+                                      >
+                                          <ArrowDownIcon className="w-4 h-4" />
+                                      </button>
+                                      <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                                      <button 
+                                          onClick={() => handleToggleMenuVisibility(item.id)}
+                                          className={`p-1 transition-colors ${item.visible ? 'text-slate-400 hover:text-slate-600' : 'text-slate-300 hover:text-indigo-500'}`}
+                                          title={item.visible ? "Hide from menu" : "Show in menu"}
+                                          disabled={item.id === 'SETTINGS'}
+                                      >
+                                          {item.visible ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
+                                      </button>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </Section>
+
                   {/* Notifications */}
                   <Section title="Notifications" icon={BellIcon}>
                       <SettingRow label="Enable Notifications" description="Allow push alerts">
@@ -438,6 +535,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                           </div>
                       </SettingRow>
 
+                      <SettingRow label="Desktop Navigation" description="Choose sidebar or full-screen pop-out">
+                          <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+                              <button 
+                                  onClick={() => onUpdateSettings({ ...settings, desktopLayout: 'sidebar' })}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${settings.desktopLayout !== 'fullscreen' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}
+                              >
+                                  <LayoutSidebarIcon className="w-4 h-4" /> Sidebar
+                              </button>
+                              <button 
+                                  onClick={() => onUpdateSettings({ ...settings, desktopLayout: 'fullscreen' })}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${settings.desktopLayout === 'fullscreen' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}
+                              >
+                                  <ArrowsPointingOutIcon className="w-4 h-4" /> Liquid
+                              </button>
+                          </div>
+                      </SettingRow>
+
                       <div>
                           <p className="font-bold text-slate-800 dark:text-white mb-3">App Theme</p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -545,6 +659,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                       <button onClick={() => setIsResetModalOpen(true)} className="w-full mt-4 p-3 rounded-xl border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-bold flex items-center justify-center gap-2">
                           <ArchiveBoxXMarkIcon className="w-4 h-4" /> Factory Reset App
                       </button>
+                  </Section>
+
+                  {/* About */}
+                  <Section title="About FocusFlow" icon={InformationCircleIcon}>
+                      <div className="flex items-center justify-between">
+                          <div>
+                              <p className="text-sm font-bold text-slate-800 dark:text-white">Version 1.3.0</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">Check what's new in the latest update.</p>
+                          </div>
+                          <button 
+                              onClick={() => setIsChangelogOpen(true)}
+                              className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                          >
+                              View Changelog
+                          </button>
+                      </div>
                   </Section>
 
                   {/* History (Undo) */}

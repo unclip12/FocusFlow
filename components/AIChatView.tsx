@@ -958,8 +958,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
   const currentMessages = mode === 'MENTOR' ? mentorMessages : buddyMessages;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border border-white/40 dark:border-slate-700/50 shadow-2xl overflow-hidden animate-fade-in relative">
-        <div className="p-3 border-b border-white/40 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10 flex flex-col sm:flex-row justify-between items-center gap-3">
+    <div className="flex flex-col h-full card-3d rounded-2xl overflow-hidden relative">
+        <div className="p-4 border-b border-white/20 dark:border-slate-700/50 bg-white/20 dark:bg-black/10 backdrop-blur-sm z-10 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-xl text-white shadow-lg ${mode === 'MENTOR' ? 'bg-gradient-to-br from-indigo-500 to-fuchsia-600 shadow-indigo-500/30' : 'bg-gradient-to-br from-blue-500 to-cyan-600 shadow-cyan-500/30'}`}>
                     {mode === 'MENTOR' ? <SparklesIcon className="w-5 h-5" /> : <BookOpenIcon className="w-5 h-5" />}
@@ -1004,7 +1004,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         </div>
 
         {(mode === 'BUDDY' || (mode === 'MENTOR' && activeMaterial)) && (
-            <div className="p-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex items-center justify-between px-4 backdrop-blur-sm">
+            <div className="p-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-white/20 dark:border-slate-700/50 flex items-center justify-between px-4 backdrop-blur-sm">
                 <div className="flex items-center gap-2 overflow-hidden">
                     <DocumentTextIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate">
@@ -1018,14 +1018,14 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-0 custom-scrollbar" ref={scrollRef}>
             {currentMessages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`relative group max-w-[85%] rounded-2xl p-4 shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-all duration-300 ${
+                    <div className={`relative group max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-all duration-300 ${
                         msg.role === 'user' 
                         ? mode === 'MENTOR' 
-                             ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-tr-none shadow-indigo-500/20'
-                             : 'bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-tr-none shadow-blue-500/20'
+                             ? 'bg-indigo-600 text-white rounded-tr-none'
+                             : 'bg-blue-600 text-white rounded-tr-none'
                         : msg.isSystemAction 
-                            ? 'bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 flex items-center gap-2 backdrop-blur-sm'
-                            : 'bg-white/60 dark:bg-slate-700/60 backdrop-blur-md border border-white/40 dark:border-slate-600/50 text-slate-700 dark:text-slate-200 rounded-tl-none shadow-lg'
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 flex items-center gap-2'
+                            : 'bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-white/20 dark:border-slate-700/50 text-slate-700 dark:text-slate-200 rounded-tl-none'
                     }`}>
                         {msg.isSystemAction ? (
                              <div className="flex flex-col w-full">
@@ -1084,12 +1084,16 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                 )}
                             </>
                         )}
+                        
+                        <div className={`text-[10px] mt-2 font-medium opacity-70 text-right select-none ${msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400'}`}>
+                            {new Date(msg.timestamp).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </div>
                     </div>
                 </div>
             ))}
             {isTyping && (
                 <div className="flex justify-start">
-                    <div className="bg-white/60 dark:bg-slate-700/60 backdrop-blur-md rounded-2xl rounded-tl-none p-4 border border-white/40 dark:border-slate-600 shadow-sm">
+                    <div className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl rounded-tl-none p-4 shadow-sm">
                         <div className="flex gap-1.5">
                             <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-indigo-400' : 'bg-blue-400'}`} style={{ animationDelay: '0s' }}></span>
                             <span className={`w-2 h-2 rounded-full animate-bounce ${mode === 'MENTOR' ? 'bg-purple-400' : 'bg-cyan-400'}`} style={{ animationDelay: '0.2s' }}></span>
@@ -1100,9 +1104,9 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
             )}
         </div>
 
-        <div className="p-4 border-t border-white/40 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10">
+        <div className="p-4 border-t border-white/20 dark:border-slate-700/50 bg-white/20 dark:bg-black/10 backdrop-blur-sm z-10">
             {attachedImage && (
-                <div className="mb-2 p-2 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg flex items-start justify-between animate-fade-in-up text-xs border border-slate-200/50 dark:border-slate-600/50 backdrop-blur-sm">
+                <div className="mb-2 p-2 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-start justify-between animate-fade-in-up text-xs border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center gap-2 overflow-hidden">
                         {attachedImage.mimeType.startsWith('image/') ? (
                              <img src={`data:${attachedImage.mimeType};base64,${attachedImage.data}`} className="w-8 h-8 rounded object-cover flex-shrink-0" />
@@ -1111,13 +1115,13 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         )}
                         <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{attachedImage.filename}</span>
                     </div>
-                    <button onClick={handleRemoveAttachment} className="p-1 hover:bg-slate-300/50 dark:hover:bg-slate-600/50 rounded-full">
+                    <button onClick={handleRemoveAttachment} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full">
                         <XMarkIcon className="w-4 h-4 text-slate-500" />
                     </button>
                 </div>
             )}
-            <div className="relative flex items-end gap-2">
-                <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-100/50 dark:bg-slate-700/50 border border-slate-200/50 dark:border-slate-600/50 rounded-xl cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-700/80 transition-colors backdrop-blur-sm ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <div className="relative flex items-end gap-2 w-full">
+                <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <PaperClipIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     <input type="file" onChange={handleFileSelect} className="hidden" disabled={isUploadingFile} />
                 </label>
@@ -1132,7 +1136,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         }
                     }}
                     placeholder={mode === 'MENTOR' ? "Ask your mentor anything..." : "Ask about your study material..."}
-                    className="flex-1 w-full p-3 bg-slate-100/50 dark:bg-slate-700/50 border border-slate-200/50 dark:border-slate-600/50 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white max-h-32 backdrop-blur-sm"
+                    className="flex-1 w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white max-h-[400px] shadow-inner"
                     rows={1}
                 />
                 <button

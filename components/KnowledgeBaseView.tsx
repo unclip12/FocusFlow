@@ -1,13 +1,13 @@
-
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession, TrackableItem, getAdjustedDate } from '../types';
-import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon, TrashIcon, ChevronDownIcon, ListCheckIcon, ClockIcon, CalendarIcon, ListCheckIcon as SubtopicIcon, ArrowPathIcon } from './Icons';
+import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon, TrashIcon, ChevronDownIcon, ListCheckIcon, ClockIcon, CalendarIcon, ListCheckIcon as SubtopicIcon, ArrowPathIcon, XMarkIcon } from './Icons';
 import { extractTopicFromImage } from '../services/geminiService';
 import { PageBadge } from './PageBadge';
-import { uploadFile } from '../services/firebase';
+import { uploadFile, getUserProfile, saveUserProfile } from '../services/firebase';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { SubtopicDetailModal } from './SubtopicDetailModal';
+import { ViewStates } from '../App';
 
 // Robust ID generator
 const generateId = () => {
@@ -17,73 +17,104 @@ const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-interface KnowledgeBaseViewProps {
-  data: KnowledgeBaseEntry[];
-  sessions?: StudySession[];
-  onUpdateEntry: (entry: KnowledgeBaseEntry) => void;
-  onDeleteEntry?: (pageNumber: string) => void;
-  onViewPage: (page: string) => void;
-  onRefreshData?: () => void; // New Prop for manual integrity check
-}
-
-type SortOption = 'PAGE' | 'TOPIC' | 'SYSTEM' | 'SUBJECT' | 'REVISIONS' | 'STUDIED' | 'LAST_STUDIED';
-type SortOrder = 'ASC' | 'DESC';
-type ViewMode = 'PAGE_WISE' | 'SUBTOPIC_WISE';
-
-// Helper to calculate progress (0-100) for a page
-const calculatePageProgress = (entry: KnowledgeBaseEntry): number => {
-    // If there are subtopics, calculate based on how many have been studied at least once
-    if (entry.topics && entry.topics.length > 0) {
-        // Check lastStudiedAt (implies it has been touched) instead of revisionCount
-        const completedTopics = entry.topics.filter(t => t.lastStudiedAt !== null).length;
-        return (completedTopics / entry.topics.length) * 100;
+// Helper to highlight text
+const highlightText = (text: string, highlight: string) => {
+    if (!highlight.trim() || !text) {
+        return text;
     }
-    // If no subtopics, fallback to page level status
-    return entry.lastStudiedAt !== null ? 100 : 0;
+    try {
+        const escapedHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedHighlight})`, 'gi');
+        
+        return text.split(regex).map((part, i) => 
+            regex.test(part) ? (
+                <mark key={i} className="bg-yellow-300 dark:bg-yellow-500 text-black rounded px-0.5 mx-px">
+                    {part}
+                </mark>
+            ) : (
+                part
+            )
+        );
+    } catch (e) {
+        return text;
+    }
 };
 
-// Helper to render text with bold markdown (**text**)
-const RenderTextWithBold = ({ text }: { text: string }) => {
+// Helper to render text with bold markdown (**text**) and highlighting
+const RenderAndHighlightText = ({ text, highlight }: { text: string, highlight: string }) => {
+    if (!text) return null;
+
     const parts = text.split(/(\*\*.*?\*\*)/g);
+    
     return (
         <span>
             {parts.map((part, i) => {
                 if (part.startsWith('**') && part.endsWith('**')) {
-                    return <span key={i} className="font-bold text-slate-800 dark:text-slate-100">{part.slice(2, -2)}</span>;
+                    const boldContent = part.slice(2, -2);
+                    return <span key={i} className="font-bold text-slate-800 dark:text-slate-100">{highlightText(boldContent, highlight)}</span>;
                 }
-                return <span key={i}>{part}</span>;
+                return <React.Fragment key={i}>{highlightText(part, highlight)}</React.Fragment>;
             })}
         </span>
     );
 };
 
-// --- COLLAPSIBLE TOPIC COMPONENT ---
+interface KnowledgeBaseViewProps {
+  data: KnowledgeBaseEntry[];
+  onUpdateEntry: (entry: KnowledgeBaseEntry) => void;
+  onDeleteEntry?: (pageNumber: string) => void;
+  onViewPage: (page: string) => void;
+  onRefreshData?: () => void;
+  kbState: ViewStates['kb'];
+  setKbState: React.Dispatch<React.SetStateAction<ViewStates['kb']>>;
+}
+
+// Helper to calculate progress (0-100) for a page
+const calculatePageProgress = (entry: KnowledgeBaseEntry): number => {
+    if (entry.topics && entry.topics.length > 0) {
+        const completedTopics = entry.topics.filter(t => t.lastStudiedAt !== null).length;
+        return (completedTopics / entry.topics.length) * 100;
+    }
+    return entry.lastStudiedAt !== null ? 100 : 0;
+};
+
 export const CollapsibleTopic: React.FC<{ 
     topic: TrackableItem, 
     baseRevisionCount: number,
-    onOpenModal?: (topic: TrackableItem) => void 
-}> = ({ topic, baseRevisionCount, onOpenModal }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const hasContent = topic.content && topic.content.length > 0;
+    onOpenModal?: (topic: TrackableItem) => void,
+    highlight: string,
+    forceOpen?: boolean,
+}> = ({ topic, baseRevisionCount, onOpenModal, highlight, forceOpen = false }) => {
+    const [isManuallyToggled, setIsManuallyToggled] = useState(false);
+    const [isManuallyOpen, setIsManuallyOpen] = useState(false);
+
+    useEffect(() => {
+        setIsManuallyToggled(false);
+    }, [forceOpen]);
+
+    const handleToggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsManuallyToggled(true);
+        setIsManuallyOpen(prev => !prev);
+    };
+
+    const isOpen = isManuallyToggled ? isManuallyOpen : forceOpen;
     
-    // Logic: Show +N only if revisions exist.
-    // Color: Green if studied at least once (lastStudiedAt exists).
+    const hasContent = topic.content && topic.content.length > 0;
     const isStudied = topic.lastStudiedAt !== null;
     const revisionLabel = topic.revisionCount > 0 ? `+${topic.revisionCount}` : null;
 
     return (
         <div className="mb-2">
             <div className="flex items-center gap-2 w-full py-1 group">
-                {/* Left Arrow: Expands Context Inline */}
                 <button 
-                    onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+                    onClick={handleToggle}
                     className={`p-1 rounded-md bg-slate-100/50 dark:bg-slate-700/50 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 ${!hasContent && !isOpen ? 'opacity-50' : ''} backdrop-blur-sm`}
                     title={hasContent ? "Expand context" : "No inline context"}
                 >
                     <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Text: Opens Modal */}
                 <button 
                     onClick={(e) => { 
                         e.stopPropagation(); 
@@ -92,7 +123,7 @@ export const CollapsibleTopic: React.FC<{
                     className="text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left truncate flex-grow flex items-center gap-2"
                 >
                     <div className={`w-2 h-2 rounded-full ${isStudied ? 'bg-green-500' : 'bg-red-400'}`}></div>
-                    {topic.name}
+                    {highlightText(topic.name, highlight)}
                     {revisionLabel && (
                         <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-100/50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-800 backdrop-blur-sm">
                             {revisionLabel}
@@ -107,7 +138,7 @@ export const CollapsibleTopic: React.FC<{
                         {topic.content!.map((point, idx) => (
                             <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
                                 <span className="text-indigo-400 mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
-                                <span><RenderTextWithBold text={point} /></span>
+                                <span><RenderAndHighlightText text={point} highlight={highlight} /></span>
                             </li>
                         ))}
                     </ul>
@@ -120,37 +151,69 @@ export const CollapsibleTopic: React.FC<{
     );
 };
 
-const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = [], onUpdateEntry, onDeleteEntry, onViewPage, onRefreshData }) => {
-  const [search, setSearch] = useState('');
-  const [selectedSystem, setSelectedSystem] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('PAGE');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('ASC');
-  const [viewMode, setViewMode] = useState<ViewMode>('PAGE_WISE');
+const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, onUpdateEntry, onDeleteEntry, onViewPage, onRefreshData, kbState, setKbState }) => {
+  const { search, selectedSystem, sortBy, sortOrder, viewMode } = kbState;
   
-  // Edit Mode
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<KnowledgeBaseEntry>>({});
-  
-  // Delete State
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
-
-  // Subtopic Modal State
   const [viewingSubtopic, setViewingSubtopic] = useState<{ topic: TrackableItem, parent: KnowledgeBaseEntry } | null>(null);
 
-  // Helper for tags and subtopics input
   const [tagsInput, setTagsInput] = useState('');
   const [subTopicsInput, setSubTopicsInput] = useState('');
-  
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [newVideoTitle, setNewVideoTitle] = useState('');
 
-  // AI Loading State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  // Viewing Attachment
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
+
+  // --- SEARCH HISTORY STATE ---
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+      const loadHistory = async () => {
+          try {
+              const profile = await getUserProfile();
+              if (profile?.searchHistory) {
+                  setRecentSearches(profile.searchHistory);
+              }
+          } catch (e) {
+              console.warn("Failed to sync search history", e);
+          }
+      };
+      loadHistory();
+  }, []);
+
+  const addToHistory = async (term: string) => {
+      if (!term.trim()) return;
+      const newHistory = [term, ...recentSearches.filter(t => t !== term)].slice(0, 40);
+      setRecentSearches(newHistory);
+      await saveUserProfile({ searchHistory: newHistory });
+  };
+
+  const clearHistory = async () => {
+      setRecentSearches([]);
+      await saveUserProfile({ searchHistory: [] });
+  };
+
+  const removeSearchItem = async (term: string) => {
+      const newHistory = recentSearches.filter(t => t !== term);
+      setRecentSearches(newHistory);
+      await saveUserProfile({ searchHistory: newHistory });
+  };
+
+  const searchRegex = useMemo(() => {
+    if (!search.trim()) return null;
+    try {
+        const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(escaped, 'i');
+    } catch (e) {
+        return null;
+    }
+  }, [search]);
 
   const handleRefresh = async () => {
       if (onRefreshData) {
@@ -160,47 +223,31 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
       }
   };
 
-  // --- STATISTICS CALCULATIONS ---
   const stats = useMemo(() => {
-      // 1. Total Pages
       const totalPages = data.length;
-      
-      // 2. Total Subtopics
       const totalSubtopics = data.reduce((acc, curr) => acc + (curr.topics?.length || 0), 0);
-      
-      // 3. Pages Studied (Strict 100% completion)
       const studiedPagesCount = data.filter(entry => calculatePageProgress(entry) === 100).length;
-
-      // 4. Subtopics Studied
       const totalSubtopicsStudied = data.reduce((acc, curr) => {
           if (curr.topics && curr.topics.length > 0) {
               return acc + curr.topics.filter(t => t.lastStudiedAt !== null).length;
           }
-          // If no subtopics, we don't add to this count to avoid skewing, or check page level logs if implemented
           return acc;
       }, 0);
 
-      // 5. Average Pages Per Day
-      // Get all logs across all pages
       const allLogs = data.flatMap(kb => kb.logs || []);
       let avgPagesPerDay = 0;
       let daysElapsed = 1;
 
       if (allLogs.length > 0) {
-          // Sort chronologically
           allLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
           const firstLogDate = new Date(allLogs[0].timestamp);
           const now = new Date();
           
-          // Calculate days difference (ensure at least 1 day to avoid div/0)
           const diffTime = Math.abs(now.getTime() - firstLogDate.getTime());
           daysElapsed = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-          
-          // Simple Metric: Studied Pages / Days Elapsed
           avgPagesPerDay = studiedPagesCount / daysElapsed;
       }
 
-      // 6. Estimated Time to Finish
       const remainingPages = totalPages - studiedPagesCount;
       const estimatedDaysLeft = avgPagesPerDay > 0 ? Math.ceil(remainingPages / avgPagesPerDay) : 0;
 
@@ -214,38 +261,59 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
       };
   }, [data]);
 
-
-  // Helper to calculate the "Base Revision" of a page
   const calculateBaseRevision = (entry: KnowledgeBaseEntry) => {
       if (!entry.topics || entry.topics.length === 0) return entry.revisionCount;
       const minRev = Math.min(...entry.topics.map(t => t.revisionCount));
       return minRev;
   };
 
+    const searchResultStats = useMemo(() => {
+        if (!searchRegex) return null;
+
+        const matchedPageNumbers = new Set<string>();
+        const matchedSubtopicIds = new Set<string>();
+
+        data.forEach(entry => {
+            let pageHasMatch = false;
+
+            if (searchRegex.test(entry.title) || searchRegex.test(entry.pageNumber) || (entry.tags && entry.tags.some(t => searchRegex!.test(t)))) {
+                pageHasMatch = true;
+            }
+
+            if (entry.topics) {
+                entry.topics.forEach(topic => {
+                    if (searchRegex.test(topic.name) || (topic.content && topic.content.some(line => searchRegex!.test(line)))) {
+                        pageHasMatch = true;
+                        matchedSubtopicIds.add(topic.id);
+                    }
+                });
+            }
+
+            if (pageHasMatch) {
+                matchedPageNumbers.add(entry.pageNumber);
+            }
+        });
+
+        return { pageCount: matchedPageNumbers.size, subtopicCount: matchedSubtopicIds.size };
+    }, [searchRegex, data]);
+
   const filteredData = useMemo(() => {
     let result = data.filter(entry => {
         let matchSearch = true;
-        if (search) {
-          try {
-            const regex = new RegExp(search, 'i');
-            matchSearch = regex.test(entry.title) || 
-                          regex.test(entry.pageNumber) ||
-                          (entry.tags ? entry.tags.some(t => regex.test(t)) : false) ||
-                          (entry.topics ? entry.topics.some(t => regex.test(t.name)) : false);
-          } catch (e) {
-            const lowerSearch = search.toLowerCase();
-            matchSearch = entry.title.toLowerCase().includes(lowerSearch) || 
-                          entry.pageNumber.includes(lowerSearch) ||
-                          (entry.tags ? entry.tags.some(t => t.toLowerCase().includes(lowerSearch)) : false) ||
-                          (entry.topics ? entry.topics.some(t => t.name.toLowerCase().includes(lowerSearch)) : false);
-          }
+        if (searchRegex) {
+            matchSearch = searchRegex.test(entry.title) || 
+                          searchRegex.test(entry.pageNumber) ||
+                          (entry.tags ? entry.tags.some(t => searchRegex!.test(t)) : false) ||
+                          (entry.topics ? entry.topics.some(topic => 
+                              searchRegex!.test(topic.name) ||
+                              (topic.content && topic.content.some(line => searchRegex!.test(line)))
+                          ) : false);
         }
 
         const matchSystem = selectedSystem ? entry.system === selectedSystem : true;
         return matchSearch && matchSystem;
     });
 
-    // Sorting Logic
     result.sort((a, b) => {
         let comparison = 0;
         switch (sortBy) {
@@ -268,31 +336,30 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 comparison = a.subject.localeCompare(b.subject);
                 break;
             case 'REVISIONS':
-                // Sort by the calculated base revision (mastery level of the whole page)
                 const revA = calculateBaseRevision(a);
                 const revB = calculateBaseRevision(b);
                 comparison = revA - revB;
                 break;
+            case 'RECENTLY_ADDED': {
+                const dateA = a.firstStudiedAt ? new Date(a.firstStudiedAt).getTime() : 0;
+                const dateB = b.firstStudiedAt ? new Date(b.firstStudiedAt).getTime() : 0;
+                return sortOrder === 'ASC' ? dateA - dateB : dateB - dateA;
+            }
             case 'STUDIED':
-                // Sort by studied status (progress)
                 const progA = calculatePageProgress(a);
                 const progB = calculatePageProgress(b);
-                // Default DESC for "Studied" usually means show completed first
                 return sortOrder === 'ASC' ? progA - progB : progB - progA; 
             case 'LAST_STUDIED':
-                // Sort by date
                 const dateA = a.lastStudiedAt ? new Date(a.lastStudiedAt).getTime() : 0;
                 const dateB = b.lastStudiedAt ? new Date(b.lastStudiedAt).getTime() : 0;
-                // Default DESC means most recent first
                 return sortOrder === 'ASC' ? dateA - dateB : dateB - dateA;
         }
         return sortOrder === 'ASC' ? comparison : -comparison;
     });
 
     return result;
-  }, [data, search, selectedSystem, sortBy, sortOrder]);
+  }, [data, searchRegex, selectedSystem, sortBy, sortOrder]);
 
-  // --- SUBTOPIC FLATTENING ---
   const flattenedSubtopics = useMemo(() => {
       if (viewMode === 'PAGE_WISE') return [];
 
@@ -324,7 +391,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
           }));
       });
 
-      // Handle sorting for subtopics specifically
       allSubs.sort((a, b) => {
           let comparison = 0;
           switch (sortBy) {
@@ -374,9 +440,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
       
       const updatedTopics: TrackableItem[] = updatedSubTopicNames.map(name => {
           const existing = existingTopics.find(t => t.name === name);
-          if (existing) {
-              return existing;
-          }
+          if (existing) return existing;
           return {
               id: generateId(),
               name: name,
@@ -449,7 +513,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
   };
 
   const toggleSortOrder = () => {
-      setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+      setKbState(prev => ({ ...prev, sortOrder: prev.sortOrder === 'ASC' ? 'DESC' : 'ASC' }));
   };
 
   const confirmDelete = (pageNumber: string) => {
@@ -477,7 +541,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-6 relative">
       {viewingAttachment && <AttachmentViewerModal attachment={viewingAttachment} onClose={() => setViewingAttachment(null)} />}
       
       {viewingSubtopic && (
@@ -513,16 +577,15 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                     </div>
                 </div>
                 
-                {/* View Toggle */}
                 <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-lg self-start backdrop-blur-sm">
                     <button 
-                        onClick={() => setViewMode('PAGE_WISE')}
+                        onClick={() => setKbState(prev => ({...prev, viewMode: 'PAGE_WISE'}))}
                         className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'PAGE_WISE' ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                     >
                         Page Wise
                     </button>
                     <button 
-                        onClick={() => setViewMode('SUBTOPIC_WISE')}
+                        onClick={() => setKbState(prev => ({...prev, viewMode: 'SUBTOPIC_WISE'}))}
                         className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'SUBTOPIC_WISE' ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                     >
                         Subtopic Wise
@@ -531,9 +594,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
             </div>
         </div>
 
-        {/* New Stats Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-            {/* Card 1: Pages Studied */}
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pages Completed</p>
@@ -547,7 +608,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 </div>
             </div>
 
-            {/* Card 2: Subtopics Studied */}
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subtopics Done</p>
@@ -561,7 +621,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 </div>
             </div>
 
-            {/* Card 3: Average Speed */}
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Avg Speed</p>
@@ -575,7 +634,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 </div>
             </div>
 
-            {/* Card 4: Estimated Time */}
             <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Est. Completion</p>
@@ -593,45 +651,99 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
         </div>
         
         {/* Stats Summary & Filters Bar */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full mb-6 items-stretch sm:items-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-2 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm">
-            <input 
-                type="text" 
-                placeholder={viewMode === 'SUBTOPIC_WISE' ? "Search subtopics..." : "Search pages..."}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full sm:w-48 focus:ring-2 focus:ring-primary/20 outline-none backdrop-blur-sm"
-            />
+        <div className="relative z-30 flex flex-col sm:flex-row gap-2 w-full mb-6 items-stretch sm:items-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-2 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm">
+            {/* SEARCH INPUT WITH RECENT HISTORY - Z-INDEX FIX */}
+            <div className="relative group w-full sm:w-48 z-50">
+                <input 
+                    type="text" 
+                    placeholder={viewMode === 'SUBTOPIC_WISE' ? "Search subtopics..." : "Search pages..."}
+                    value={search}
+                    onFocus={() => setShowHistory(true)}
+                    onBlur={() => setTimeout(() => setShowHistory(false), 200)}
+                    onChange={e => setKbState(prev => ({...prev, search: e.target.value}))}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            addToHistory(search);
+                            setShowHistory(false);
+                        }
+                    }}
+                    className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full focus:ring-2 focus:ring-primary/20 outline-none backdrop-blur-sm"
+                />
+                
+                {/* Recent History Dropdown - Absolute positioned */}
+                {showHistory && recentSearches.length > 0 && (
+                    <div className="absolute top-full left-0 w-full sm:w-64 mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden animate-fade-in-up max-h-96 overflow-y-auto custom-scrollbar">
+                        <div className="p-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-800 z-10">
+                            <span>Recent Searches ({recentSearches.length})</span>
+                            <button onMouseDown={(e) => { e.preventDefault(); clearHistory(); }} className="hover:text-red-500">Clear</button>
+                        </div>
+                        <div>
+                            {recentSearches.map(term => (
+                                <div 
+                                    key={term}
+                                    onMouseDown={(e) => { 
+                                        e.preventDefault(); 
+                                        setKbState(prev => ({...prev, search: term})); 
+                                        setShowHistory(false); 
+                                    }} 
+                                    className="px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer flex items-center justify-between group transition-colors"
+                                >
+                                    <div className="flex items-center gap-2 truncate">
+                                        <ClockIcon className="w-3 h-3 text-slate-400 shrink-0" />
+                                        <span className="truncate">{term}</span>
+                                    </div>
+                                    <button 
+                                        onMouseDown={(e) => { e.stopPropagation(); removeSearchItem(term); }}
+                                        className="text-slate-300 hover:text-red-500 p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                        title="Remove"
+                                    >
+                                        <XMarkIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
             
             <select 
                 value={selectedSystem}
-                onChange={e => setSelectedSystem(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full sm:w-40 backdrop-blur-sm"
+                onChange={e => setKbState(prev => ({...prev, selectedSystem: e.target.value}))}
+                className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full sm:w-40 backdrop-blur-sm z-10"
             >
                 <option value="">All Systems</option>
                 {SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
 
-            {/* REFRESH BUTTON */}
             {onRefreshData && (
                 <button 
                     onClick={handleRefresh}
                     disabled={isRefreshing}
-                    className="p-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors disabled:opacity-50 backdrop-blur-sm"
+                    className="p-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors disabled:opacity-50 backdrop-blur-sm z-10"
                     title="Full Integrity Scan"
                 >
                     <ArrowPathIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
             )}
 
-            <div className="flex gap-2 items-center ml-auto">
+            {searchResultStats && (
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 px-3 py-2 rounded-lg bg-slate-100/50 dark:bg-slate-900/50 backdrop-blur-sm flex items-center gap-4 mx-2 sm:mx-4 z-10">
+                    <span>Found in <strong className="text-indigo-600 dark:text-indigo-400">{searchResultStats.pageCount}</strong> pages</span>
+                    <div className="w-px h-4 bg-slate-300/50 dark:bg-slate-600/50"></div>
+                    <span>Found in <strong className="text-indigo-600 dark:text-indigo-400">{searchResultStats.subtopicCount}</strong> subtopics</span>
+                </div>
+            )}
+
+            <div className="flex gap-2 items-center ml-auto z-10">
                 <select 
                     value={sortBy}
-                    onChange={e => setSortBy(e.target.value as SortOption)}
+                    onChange={e => setKbState(prev => ({...prev, sortBy: e.target.value as any}))}
                     className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm cursor-pointer hover:border-indigo-300 transition-colors backdrop-blur-sm"
                 >
                     <option value="PAGE">Page #</option>
                     <option value="STUDIED">Studied Status</option>
                     <option value="LAST_STUDIED">Last Studied Date</option>
+                    <option value="RECENTLY_ADDED">Recently Added</option>
                     <option value="TOPIC">Topic (A-Z)</option>
                     <option value="SYSTEM">System</option>
                     <option value="REVISIONS">Number of Revisions</option>
@@ -645,7 +757,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
 
       {/* VIEW RENDERING */}
       {viewMode === 'PAGE_WISE' ? (
-          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl shadow-sm border border-white/40 dark:border-slate-700/50 overflow-hidden">
+          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl shadow-sm border border-white/40 dark:border-slate-700/50 overflow-hidden relative z-0">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead>
@@ -663,7 +775,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         const progress = calculatePageProgress(entry);
 
                         if (editingId === entry.pageNumber) {
-                            // Edit Row (Unchanged)
                             return (
                                 <tr key={entry.pageNumber} className="bg-indigo-50/30 dark:bg-indigo-900/10">
                                     <td className="p-4 align-top font-bold text-slate-700 dark:text-slate-300">
@@ -719,7 +830,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                                 </td>
                                 <td className="p-4 align-top">
                                     <div className="font-semibold text-slate-800 dark:text-white text-lg cursor-pointer hover:text-indigo-600" onClick={() => onViewPage(entry.pageNumber)}>
-                                        {entry.title}
+                                        {highlightText(entry.title, search)}
                                     </div>
                                     {entry.topics && entry.topics.length > 0 && (
                                         <div className="mt-2">
@@ -729,6 +840,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                                                     topic={t} 
                                                     baseRevisionCount={baseRevision} 
                                                     onOpenModal={(sub) => handleOpenSubtopicModal(sub, entry)}
+                                                    highlight={search}
+                                                    forceOpen={
+                                                        !!searchRegex && (
+                                                            searchRegex.test(t.name) ||
+                                                            (t.content && t.content.some(line => searchRegex!.test(line)))
+                                                        )
+                                                    }
                                                 />
                                             ))}
                                         </div>
@@ -792,7 +910,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                               />
                               <div>
                                   <h3 className="font-bold text-lg text-slate-800 dark:text-white leading-tight group-hover:text-indigo-600 transition-colors flex items-center gap-2">
-                                      {sub.title}
+                                      {highlightText(sub.title, search)}
                                       {!sub.isPageFallback && (
                                           <span className="text-xs bg-amber-100/50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-800 font-bold backdrop-blur-sm">
                                               Rev {sub.revisionCount}
@@ -801,7 +919,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                                   </h3>
                                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
                                       <span className="uppercase tracking-wider text-[10px] bg-slate-100/50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded mr-2 backdrop-blur-sm">{sub.isPageFallback ? 'PAGE TOPIC' : 'SUBTOPIC'}</span>
-                                      From: <span className="italic text-slate-600 dark:text-slate-300">{sub.parentTitle}</span>
+                                      From: <span className="italic text-slate-600 dark:text-slate-300">{highlightText(sub.parentTitle, search)}</span>
                                   </p>
                               </div>
                           </div>

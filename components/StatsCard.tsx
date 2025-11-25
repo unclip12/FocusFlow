@@ -1,11 +1,7 @@
-
-
-
-
-
-import React, { useMemo } from 'react';
-import { StudyPlanItem, getAdjustedDate, KnowledgeBaseEntry, DayPlan } from '../types';
+import React, { useMemo, useState } from 'react';
+import { StudyPlanItem, getAdjustedDate, KnowledgeBaseEntry, DayPlan, RevisionLog } from '../types';
 import { ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, ChartBarIcon, TrophyIcon, RepeatIcon, ArrowPathIcon } from './Icons';
+import { DashboardDetailModal, PageInfo, RevisionInfo } from './DashboardDetailModal';
 
 interface StatsProps {
   knowledgeBase: KnowledgeBaseEntry[];
@@ -27,11 +23,16 @@ const ProgressBar = ({ current, total, colorClass }: { current: number, total: n
 export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan' | 'todayPlan'>> = ({ knowledgeBase, studyPlan = [], todayPlan }) => {
     const todayStr = getAdjustedDate(new Date());
     const now = new Date();
+    
+    // State for the detail modal
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [detailType, setDetailType] = useState<'TIME' | 'PAGES' | 'REVISIONS' | null>(null);
+    const [modalData, setModalData] = useState<any>({});
 
     const metrics = useMemo(() => {
-        let todayMinutes = 0;
         const studiedPagesLog = new Set<string>();
         const revisedPagesLog = new Set<string>();
+        const revisionLogsToday: RevisionInfo[] = [];
 
         // 1. Calculate base stats from KnowledgeBase Logs (Actual Execution Source of Truth)
         knowledgeBase.forEach(kb => {
@@ -41,24 +42,29 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                         studiedPagesLog.add(kb.pageNumber);
                     } else if (log.type === 'REVISION') {
                         revisedPagesLog.add(kb.pageNumber);
+                        revisionLogsToday.push({
+                            pageNumber: kb.pageNumber,
+                            topic: kb.title,
+                            timestamp: log.timestamp
+                        });
                     }
                 }
             });
         });
 
         // 2. Calculate Time from DayPlan Blocks
+        let todayMinutes = 0;
         let plannedMinutes = 0;
         let ankiPlanned = 0;
         let ankiCompleted = 0;
+        const studyTimeBlocks = (todayPlan?.blocks || []).filter(b => b.status === 'DONE' && b.type !== 'BREAK');
 
         if (todayPlan && todayPlan.blocks) {
-            const executedBlocks = todayPlan.blocks.filter(b => b.status === 'DONE');
-            todayMinutes = executedBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
+            todayMinutes = studyTimeBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
             plannedMinutes = todayPlan.totalStudyMinutesPlanned || 0;
 
             // Calculate Anki Stats from Blocks
             todayPlan.blocks.forEach(block => {
-                // Check Granular Tasks first
                 const ankiTasks = block.tasks?.filter(t => t.type === 'ANKI') || [];
                 if (ankiTasks.length > 0) {
                     ankiTasks.forEach(t => {
@@ -69,7 +75,6 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                         }
                     });
                 } else if (block.relatedAnkiInfo?.totalCards) {
-                    // Fallback to block generic info if no granular tasks
                     ankiPlanned += block.relatedAnkiInfo.totalCards;
                     if (block.status === 'DONE') {
                         ankiCompleted += block.relatedAnkiInfo.totalCards;
@@ -78,7 +83,6 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
             });
 
         } else {
-             // Fallback for time if no plan structure
              knowledgeBase.forEach(kb => {
                 (kb.logs || []).forEach(log => {
                     if (getAdjustedDate(log.timestamp) === todayStr) {
@@ -89,42 +93,32 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
             plannedMinutes = 240;
         }
 
-        // 3. Planned Pages Calculation (From Today's Plan Blocks)
-        const plannedPagesSet = new Set<string>();
-        const completedPlannedPagesSet = new Set<string>();
-
+        // 3. Planned Pages Calculation
+        const allPlannedPages: PageInfo[] = [];
+        const completedPlannedPages: PageInfo[] = [];
+        
         if (todayPlan && todayPlan.blocks) {
             todayPlan.blocks.forEach(block => {
-                // Check tasks for FA pages
-                if (block.tasks) {
-                    block.tasks.forEach(task => {
-                        if (task.type === 'FA') {
-                            // Extract page number from meta or detail
-                            const pg = task.meta?.pageNumber ? String(task.meta.pageNumber) : (task.detail.match(/\d+/)?.[0]);
-                            if (pg) {
-                                plannedPagesSet.add(pg);
-                                // Check completion status
-                                if (task.execution?.completed) {
-                                    completedPlannedPagesSet.add(pg);
-                                }
-                            }
+                if (block.type === 'REVISION_FA' || block.type === 'MIXED') {
+                    (block.tasks || []).filter(t => t.type === 'FA').forEach(task => {
+                        const pageNum = String(task.meta?.pageNumber || task.detail.match(/\d+/)?.[0] || 'N/A');
+                        const pageInfo = {
+                            pageNumber: pageNum,
+                            topic: task.meta?.topic || block.title,
+                            isCompleted: task.execution?.completed || false
+                        };
+                        
+                        if (!allPlannedPages.some(p => p.pageNumber === pageNum)) {
+                            allPlannedPages.push(pageInfo);
+                        }
+                        if (pageInfo.isCompleted && !completedPlannedPages.some(p => p.pageNumber === pageNum)) {
+                            completedPlannedPages.push(pageInfo);
                         }
                     });
                 }
-                // Fallback to relatedFaPages if tasks not detailed
-                if (block.relatedFaPages) {
-                    block.relatedFaPages.forEach(pg => plannedPagesSet.add(String(pg)));
-                    if (block.status === 'DONE' && (!block.tasks || block.tasks.length === 0)) {
-                        block.relatedFaPages.forEach(pg => completedPlannedPagesSet.add(String(pg)));
-                    }
-                }
             });
         }
-
-        const plannedPagesTotal = plannedPagesSet.size;
-        const plannedPagesCompleted = completedPlannedPagesSet.size;
-
-
+        
         // 4. Revision Goal Calculation
         let currentDueCount = 0;
         knowledgeBase.forEach(kb => {
@@ -141,127 +135,138 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
         const timeString = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
         return { 
-            timeString, 
-            todayMinutes,
-            plannedMinutes,
-            
-            // Study Pages
-            plannedPagesTotal,
-            plannedPagesCompleted,
+            timeString, todayMinutes, plannedMinutes,
+            plannedPagesTotal: allPlannedPages.length,
+            plannedPagesCompleted: completedPlannedPages.length,
             totalUniqueStudied: studiedPagesLog.size,
-
-            // Revision Pages
             revisionGoalTotal,
             revisionGoalCompleted: revisedTodayCount,
             totalUniqueRevised: revisedPagesLog.size,
-
-            // Anki
-            ankiPlanned,
-            ankiCompleted
+            ankiPlanned, ankiCompleted,
+            // Data for modal
+            studyTimeBlocks, allPlannedPages, completedPlannedPages, revisionLogsToday
         };
     }, [knowledgeBase, todayStr, now, todayPlan]);
 
+    const openDetail = (type: 'TIME' | 'PAGES' | 'REVISIONS') => {
+        setDetailType(type);
+        if (type === 'TIME') setModalData({ timeLogs: metrics.studyTimeBlocks });
+        if (type === 'PAGES') setModalData({ pageLogs: { all: metrics.allPlannedPages, completed: metrics.completedPlannedPages } });
+        if (type === 'REVISIONS') setModalData({ revisionLogs: metrics.revisionLogsToday });
+        setIsDetailOpen(true);
+    };
+
     return (
-        <div className="card-3d rounded-3xl p-6 mb-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10">
-            <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-6 flex items-center gap-2 tracking-tight">
-                <span className="w-2 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
-                Today at a Glance
-            </h3>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Card 1: Time */}
-                <div className="p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
-                    <div className="absolute top-0 right-0 p-3 opacity-10">
-                        <ClockIcon className="w-16 h-16 text-blue-600" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-3">
-                            <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                <ClockIcon className="w-4 h-4" />
-                            </div>
-                            <span className="text-xs font-bold uppercase tracking-wider">Study Time</span>
+        <>
+            {isDetailOpen && detailType && (
+                <DashboardDetailModal 
+                    isOpen={isDetailOpen}
+                    onClose={() => setIsDetailOpen(false)}
+                    type={detailType}
+                    data={modalData}
+                />
+            )}
+            <div className="card-3d rounded-3xl p-6 mb-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-6 flex items-center gap-2 tracking-tight">
+                    <span className="w-2 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
+                    Today at a Glance
+                </h3>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Card 1: Time */}
+                    <button onClick={() => openDetail('TIME')} className="text-left p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <ClockIcon className="w-16 h-16 text-blue-600" />
                         </div>
-                        <div className="flex items-baseline gap-2 relative z-10">
-                            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
-                            <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
-                        </div>
-                    </div>
-                    <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" />
-                </div>
-
-                {/* Card 2: Pages Studied */}
-                <div className="p-5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
-                    <div className="absolute top-0 right-0 p-3 opacity-10">
-                        <BookOpenIcon className="w-16 h-16 text-emerald-600" />
-                    </div>
-                    <div className="flex justify-between items-start mb-2 relative z-10">
                         <div>
-                            <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-3">
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-3">
                                 <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                    <BookOpenIcon className="w-4 h-4" />
+                                    <ClockIcon className="w-4 h-4" />
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">Pages</span>
+                                <span className="text-xs font-bold uppercase tracking-wider">Study Time</span>
                             </div>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.plannedPagesTotal}</span>
+                            <div className="flex items-baseline gap-2 relative z-10">
+                                <p className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
+                                <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
                             </div>
                         </div>
-                    </div>
-                    <div className="mt-auto">
-                        <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-gradient-to-r from-emerald-500 to-emerald-600" />
-                    </div>
-                </div>
+                        <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" />
+                    </button>
 
-                {/* Card 3: Revisions */}
-                <div className="p-5 rounded-2xl bg-violet-50/60 dark:bg-violet-900/20 border border-violet-100/50 dark:border-violet-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
-                    <div className="absolute top-0 right-0 p-3 opacity-10">
-                        <ArrowPathIcon className="w-16 h-16 text-violet-600" />
-                    </div>
-                    <div className="flex justify-between items-start mb-2 relative z-10">
-                        <div>
-                            <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-3">
-                                <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                    <ArrowPathIcon className="w-4 h-4" />
+                    {/* Card 2: Pages Studied */}
+                    <button onClick={() => openDetail('PAGES')} className="text-left p-5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <BookOpenIcon className="w-16 h-16 text-emerald-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-2 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-3">
+                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <BookOpenIcon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-xs font-bold uppercase tracking-wider">Pages</span>
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">Revisions</span>
-                            </div>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.revisionGoalTotal}</span>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
+                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.plannedPagesTotal}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="mt-auto">
-                        <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-gradient-to-r from-violet-500 to-violet-600" />
-                    </div>
-                </div>
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-gradient-to-r from-emerald-500 to-emerald-600" />
+                        </div>
+                    </button>
 
-                {/* Card 4: Anki */}
-                <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-900/20 border border-amber-100/50 dark:border-amber-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
-                    <div className="absolute top-0 right-0 p-3 opacity-10">
-                        <FireIcon className="w-16 h-16 text-amber-600" />
-                    </div>
-                    <div className="flex justify-between items-start mb-2 relative z-10">
-                        <div>
-                            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-3">
-                                <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                    <FireIcon className="w-4 h-4" />
+                    {/* Card 3: Revisions */}
+                    <button onClick={() => openDetail('REVISIONS')} className="text-left p-5 rounded-2xl bg-violet-50/60 dark:bg-violet-900/20 border border-violet-100/50 dark:border-violet-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <ArrowPathIcon className="w-16 h-16 text-violet-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-2 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-3">
+                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <ArrowPathIcon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-xs font-bold uppercase tracking-wider">Revisions</span>
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">Anki Cards</span>
-                            </div>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
-                                <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.ankiPlanned}</span>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
+                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.revisionGoalTotal}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="mt-auto">
-                        <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-gradient-to-r from-violet-500 to-violet-600" />
+                        </div>
+                    </button>
+
+                    {/* Card 4: Anki */}
+                    <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-900/20 border border-amber-100/50 dark:border-amber-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <FireIcon className="w-16 h-16 text-amber-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-2 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-3">
+                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <FireIcon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-xs font-bold uppercase tracking-wider">Anki Cards</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
+                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.ankiPlanned}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

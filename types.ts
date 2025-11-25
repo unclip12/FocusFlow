@@ -2,6 +2,7 @@
 
 export interface UserProfile {
     displayName?: string;
+    searchHistory?: string[];
 }
 
 export interface Attachment {
@@ -550,6 +551,26 @@ export interface QuietHoursConfig {
     end: string; // "HH:mm" (24h)
 }
 
+export interface MenuItemConfig {
+    id: string;
+    visible: boolean;
+}
+
+export const DEFAULT_MENU_ORDER: string[] = [
+    'DASHBOARD',
+    'TODAYS_PLAN',
+    'CALENDAR',
+    'TIME_LOGGER',
+    'DAILY_TRACKER',
+    'FA_LOGGER',
+    'REVISION',
+    'KNOWLEDGE_BASE',
+    'DATA',
+    'CHAT',
+    'AI_MEMORY',
+    'SETTINGS'
+];
+
 export interface AppSettings {
     darkMode: boolean;
     themeId?: string; // ID from APP_THEMES
@@ -558,6 +579,8 @@ export interface AppSettings {
     notifications: NotificationConfig;
     quietHours: QuietHoursConfig;
     ankiHost?: string; // New: Host URL for AnkiConnect
+    desktopLayout?: 'sidebar' | 'fullscreen'; // NEW: Desktop Layout preference
+    menuConfiguration?: MenuItemConfig[]; // NEW: Custom menu ordering and visibility
 }
 
 // --- NEW AI & REVISION SETTINGS ---
@@ -648,6 +671,20 @@ export interface KnowledgeBaseEntry {
 
   // New nested structure for topics & subtopics
   topics: TrackableItem[];
+}
+
+// --- REVISION ITEM INTERFACE ---
+export interface RevisionItem {
+    type: 'PAGE' | 'TOPIC' | 'SUBTOPIC';
+    pageNumber: string;
+    title: string;
+    parentTitle: string;
+    nextRevisionAt: string;
+    currentRevisionIndex: number;
+    id: string; 
+    kbEntry: KnowledgeBaseEntry;
+    topic?: TrackableItem;
+    subTopic?: TrackableItem;
 }
 
 // --- HISTORY & UNDO TYPES ---

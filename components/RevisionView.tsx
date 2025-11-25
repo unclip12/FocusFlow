@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useMemo } from 'react';
 import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, RevisionLog } from '../types';
 import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon, FireIcon } from './Icons';
@@ -34,7 +32,7 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
     const isDue = new Date(nextRevisionAt) <= new Date();
 
     return (
-        <div className={`group relative card-3d rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.1)] ${isDue ? 'border-l-4 border-l-amber-400' : ''}`}>
+        <div className={`group relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.1)] border border-white/40 dark:border-slate-700/50 shadow-sm ${isDue ? 'border-l-4 border-l-amber-400' : ''}`}>
             <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center">
                 <div className="flex-shrink-0">
                     <PageBadge
@@ -52,18 +50,18 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                         {type !== 'PAGE' ? `From: ${parentTitle}` : item.kbEntry.system}
                     </p>
                     <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-3">
-                        <span className="font-bold bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-600">R{currentRevisionIndex}</span>
+                        <span className="font-bold bg-slate-100/50 dark:bg-slate-700/50 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300 shadow-sm border border-slate-200/50 dark:border-slate-600/50 backdrop-blur-sm">R{currentRevisionIndex}</span>
                         <span className="font-medium">Due: {new Date(nextRevisionAt).toLocaleString([], {
                             year: '2-digit', month: 'numeric', day: 'numeric',
                             hour: 'numeric', minute: '2-digit', hour12: true
                         })}</span>
-                        {isDue && <span className="text-amber-600 dark:text-amber-400 font-black animate-pulse bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-md text-[10px] tracking-wide uppercase">DUE NOW</span>}
+                        {isDue && <span className="text-amber-600 dark:text-amber-400 font-black animate-pulse bg-amber-100/50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md text-[10px] tracking-wide uppercase backdrop-blur-sm">DUE NOW</span>}
                     </div>
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto mt-3 sm:mt-0 justify-end">
                     <button
                         onClick={() => onLogRevision(item)}
-                        className={`btn-3d flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md ${isDue ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}
+                        className={`btn-3d flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md backdrop-blur-sm ${isDue ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}
                     >
                         <ArrowPathIcon className="w-4 h-4" />
                         Revise
@@ -84,7 +82,7 @@ const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) 
     const isStudy = log.type === 'STUDY';
 
     return (
-        <div className={`group relative bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 ${isStudy ? '' : 'border-l-4 border-l-green-400'} card-3d`}>
+        <div className={`group relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 rounded-2xl p-4 transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 ${isStudy ? '' : 'border-l-4 border-l-green-400'} shadow-sm`}>
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="flex-shrink-0">
                     <PageBadge
@@ -100,7 +98,7 @@ const PastLogItemCard: React.FC<{ item: PastLogItem, onViewPage: (page: string) 
                         {kbEntry.title}
                     </h4>
                     <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        <span className={`font-bold px-2 py-1 rounded-md shadow-sm border ${isStudy ? 'bg-blue-50 border-blue-100 text-blue-600 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300' : 'bg-green-50 border-green-100 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300'}`}>
+                        <span className={`font-bold px-2 py-1 rounded-md shadow-sm border backdrop-blur-sm ${isStudy ? 'bg-blue-50/50 border-blue-100 text-blue-600 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300' : 'bg-green-50/50 border-green-100 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300'}`}>
                             {isStudy ? 'First Study' : `Revision #${log.revisionIndex}`}
                         </span>
                         <span className="font-mono text-slate-400">
@@ -289,7 +287,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
 
   return (
     <div className="animate-fade-in space-y-8">
-        <div className="card-3d rounded-3xl p-6 border border-white/50 dark:border-slate-700/50 bg-surface/80 dark:bg-slate-800/80 backdrop-blur-md">
+        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 shadow-sm">
              <div className="flex justify-between items-start mb-6">
                 <div>
                     <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white flex items-center gap-2 tracking-tight">
@@ -301,18 +299,18 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium ml-12">Forecast & History</p>
                 </div>
                 <div className="flex gap-4 text-sm">
-                     <div className="px-5 py-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 text-center hidden sm:block shadow-sm">
+                     <div className="px-5 py-3 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/50 text-center hidden sm:block shadow-sm backdrop-blur-sm">
                          <span className="block text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Revisions</span>
                          <span className="block text-2xl font-black text-indigo-700 dark:text-indigo-300">{totalRevisionsCount}</span>
                      </div>
-                     <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-100 dark:border-amber-900/50 text-center shadow-sm">
+                     <div className="px-5 py-3 bg-amber-50/50 dark:bg-amber-900/20 rounded-2xl border border-amber-100/50 dark:border-amber-900/50 text-center shadow-sm backdrop-blur-sm">
                          <span className="block text-[10px] font-bold text-amber-400 uppercase tracking-widest">Due Now</span>
                          <span className="block text-2xl font-black text-amber-700 dark:text-amber-400">{dueItems.length}</span>
                      </div>
                 </div>
             </div>
              { (todaysLogs.studied.length > 0 || todaysLogs.revised.length > 0) &&
-                <div className="mt-6 bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-inner">
+                <div className="mt-6 bg-slate-50/50 dark:bg-slate-800/50 p-5 rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-inner backdrop-blur-sm">
                     <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Today's Activity Log</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                         <div>
@@ -329,19 +327,19 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
         </div>
         
         <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 dark:border-slate-700 mb-6 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200/50 dark:border-slate-700/50 mb-6 gap-4">
                 <div className="flex overflow-x-auto max-w-full gap-6">
                     <button 
                         onClick={() => handleTabClick('DUE')}
                         className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'DUE' ? 'border-amber-500 text-amber-600 dark:text-amber-400' : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
-                        Due Now <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{dueItems.length}</span>
+                        Due Now <span className="bg-amber-100/50 text-amber-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{dueItems.length}</span>
                     </button>
                     <button 
                         onClick={() => handleTabClick('UPCOMING')}
                         className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${activeTab === 'UPCOMING' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
                     >
-                        Upcoming <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{upcomingItems.length}</span>
+                        Upcoming <span className="bg-indigo-100/50 text-indigo-700 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{upcomingItems.length}</span>
                     </button>
                     <button 
                         onClick={() => handleTabClick('HISTORY')}
@@ -356,7 +354,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                         <select
                             value={sortBy}
                             onChange={e => setSortBy(e.target.value as SortOption)}
-                            className="bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+                            className="bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm backdrop-blur-sm"
                             aria-label="Sort by"
                         >
                             <option value="TIME">Date</option>
@@ -365,7 +363,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                         </select>
                         <button
                             onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
-                            className="p-1.5 bg-surface dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50 transition-colors"
+                            className="p-1.5 bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50/50 transition-colors backdrop-blur-sm"
                             aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
                         >
                             {sortOrder === 'ASC' ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
@@ -387,7 +385,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                         <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                         <div className="p-12 text-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">
                             <CheckCircleIcon className="w-16 h-16 text-green-200 dark:text-green-900 mx-auto mb-4" />
                             <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">All Caught Up!</h3>
                             <p className="text-slate-400 dark:text-slate-500">No revisions due right now.</p>
@@ -407,7 +405,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                         <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                         <div className="p-12 text-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">
                             <p className="text-slate-400 dark:text-slate-500">No upcoming revisions scheduled.</p>
                         </div>
                     )
@@ -423,7 +421,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             />
                         ))
                     ) : (
-                        <div className="p-12 text-center bg-surface dark:bg-dark-surface rounded-3xl border-2 border-dashed border-slate-200 dark:border-dark-border">
+                        <div className="p-12 text-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700">
                             <p className="text-slate-400 dark:text-slate-500">No past logs found.</p>
                         </div>
                     )

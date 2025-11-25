@@ -129,7 +129,7 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
 
                             {/* Foreground Content */}
                             <div
-                                className="relative z-10 w-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 p-4 flex items-center min-h-[5rem] cursor-grab active:cursor-grabbing"
+                                className="relative z-10 w-full bg-white/60 dark:bg-slate-800/60 backdrop-blur-md shadow-sm border border-white/40 dark:border-slate-700/50 p-4 flex items-center min-h-[5rem] cursor-grab active:cursor-grabbing"
                                 style={{ 
                                     transform: swipedLogId === log.id ? 'translateX(-96px)' : 'translateX(0px)' 
                                 }}
@@ -161,7 +161,7 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
                                         {log.topics && log.topics.length > 0 && (
                                             <div className="flex flex-wrap gap-1 mt-1">
                                                 {log.topics.map((t: string, i: number) => (
-                                                    <span key={i} className="text-[10px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
+                                                    <span key={i} className="text-[10px] text-slate-600 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded border border-slate-200/50 dark:border-slate-600/50 backdrop-blur-sm">
                                                         {t}
                                                     </span>
                                                 ))}
@@ -174,7 +174,7 @@ const LogTable: React.FC<LogTableProps> = ({ title, logs, isRevisionTable = fals
                                         <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">{startStr} - {endStr}</span>
                                         <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{durStr}</span>
                                         {isRevisionTable && (
-                                            <span className="mt-1 inline-block text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded w-fit self-end">
+                                            <span className="mt-1 inline-block text-[9px] font-bold text-indigo-600 bg-indigo-50/50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded w-fit self-end border border-indigo-100/50 dark:border-indigo-800/50">
                                                 Rev #{log.revisionIndex}
                                             </span>
                                         )}
@@ -365,7 +365,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                     startTime: newStart.toISOString(),
                     endTime: newEnd.toISOString(),
                     durationMinutes: duration,
-                    activity: `${result.eventType === 'REVISION' ? 'Revised' : 'Studied'} FA Page ${entry.pageNumber}`,
+                    activity: `${result.eventType === 'REVISION' ? 'Revised' : 'Studied'} FA Pg ${entry.pageNumber}`,
                     category: result.eventType,
                     source: 'FA_LOGGER',
                     pageNumber: entry.pageNumber,
@@ -438,7 +438,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             />
 
             <div className="flex items-center gap-3">
-                <div className="p-3 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <div className="p-3 bg-indigo-100/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl backdrop-blur-sm">
                     <ListCheckIcon className="w-6 h-6" />
                 </div>
                 <div>
@@ -451,9 +451,9 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             <div className="grid grid-cols-2 gap-4">
                 <button 
                     onClick={() => handleOpenNewLog('STUDY')}
-                    className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-3 hover:border-indigo-300 hover:shadow-md transition-all group"
+                    className="p-5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-sm border border-white/40 dark:border-slate-700/50 flex flex-col items-center gap-3 hover:border-indigo-300 hover:shadow-md transition-all group"
                 >
-                    <div className="w-12 h-12 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-12 h-12 rounded-full bg-indigo-50/50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform backdrop-blur-sm">
                         <BookOpenIcon className="w-6 h-6" />
                     </div>
                     <div className="text-center">
@@ -464,9 +464,9 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
 
                 <button 
                     onClick={() => handleOpenNewLog('REVISION')}
-                    className="p-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col items-center gap-3 hover:border-amber-300 hover:shadow-md transition-all group"
+                    className="p-5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl shadow-sm border border-white/40 dark:border-slate-700/50 flex flex-col items-center gap-3 hover:border-amber-300 hover:shadow-md transition-all group"
                 >
-                    <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <div className="w-12 h-12 rounded-full bg-amber-50/50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform backdrop-blur-sm">
                         <ArrowPathIcon className="w-6 h-6" />
                     </div>
                     <div className="text-center">
@@ -477,9 +477,9 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             </div>
 
             {/* Date Switcher */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50 backdrop-blur-md">
                 <div className="flex items-center gap-2 w-full justify-between sm:justify-start">
-                    <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm">
+                    <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm backdrop-blur-sm">
                         <ChevronLeftIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     </button>
                     <div className="relative group cursor-pointer px-4 text-center">
@@ -489,7 +489,7 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                         </h3>
                         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
                     </div>
-                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm">
+                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm backdrop-blur-sm">
                         <ChevronRightIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     </button>
                 </div>

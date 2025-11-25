@@ -958,8 +958,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
   const currentMessages = mode === 'MENTOR' ? mentorMessages : buddyMessages;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-slate-700/50 shadow-2xl overflow-hidden animate-fade-in relative">
-        <div className="p-3 border-b border-white/20 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10 flex flex-col sm:flex-row justify-between items-center gap-3">
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border border-white/40 dark:border-slate-700/50 shadow-2xl overflow-hidden animate-fade-in relative">
+        <div className="p-3 border-b border-white/40 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-xl text-white shadow-lg ${mode === 'MENTOR' ? 'bg-gradient-to-br from-indigo-500 to-fuchsia-600 shadow-indigo-500/30' : 'bg-gradient-to-br from-blue-500 to-cyan-600 shadow-cyan-500/30'}`}>
                     {mode === 'MENTOR' ? <SparklesIcon className="w-5 h-5" /> : <BookOpenIcon className="w-5 h-5" />}
@@ -975,7 +975,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                 <select 
                     value={selectedModel} 
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="bg-slate-100 dark:bg-slate-900 border-none text-xs font-bold text-slate-600 dark:text-slate-300 rounded-lg py-1.5 pl-2 pr-6 cursor-pointer focus:ring-0 outline-none"
+                    className="bg-slate-100/50 dark:bg-slate-900/50 border-none text-xs font-bold text-slate-600 dark:text-slate-300 rounded-lg py-1.5 pl-2 pr-6 cursor-pointer focus:ring-0 outline-none backdrop-blur-sm"
                 >
                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                     {mode === 'MENTOR' && <option value="chatbot">Chat Bot (Local)</option>}
@@ -986,16 +986,16 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         <TrashIcon className="w-4 h-4" />
                     </button>
                 )}
-                <div className="flex bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg">
+                <div className="flex bg-slate-100/50 dark:bg-slate-900/50 p-1 rounded-lg backdrop-blur-sm">
                     <button 
                         onClick={() => setMode('MENTOR')}
-                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'MENTOR' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'MENTOR' ? 'bg-white/80 dark:bg-slate-700/80 text-indigo-600 dark:text-indigo-300 shadow-sm backdrop-blur-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
                     >
                         Mentor
                     </button>
                     <button 
                         onClick={() => setMode('BUDDY')}
-                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'BUDDY' ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+                        className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'BUDDY' ? 'bg-white/80 dark:bg-slate-700/80 text-blue-600 dark:text-blue-300 shadow-sm backdrop-blur-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
                     >
                         Study Buddy
                     </button>
@@ -1004,7 +1004,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         </div>
 
         {(mode === 'BUDDY' || (mode === 'MENTOR' && activeMaterial)) && (
-            <div className="p-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex items-center justify-between px-4">
+            <div className="p-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex items-center justify-between px-4 backdrop-blur-sm">
                 <div className="flex items-center gap-2 overflow-hidden">
                     <DocumentTextIcon className="w-4 h-4 text-blue-500 flex-shrink-0" />
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate">
@@ -1015,7 +1015,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
             </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-0" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-0 custom-scrollbar" ref={scrollRef}>
             {currentMessages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`relative group max-w-[85%] rounded-2xl p-4 shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-all duration-300 ${
@@ -1025,7 +1025,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                              : 'bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-tr-none shadow-blue-500/20'
                         : msg.isSystemAction 
                             ? 'bg-emerald-50/80 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 flex items-center gap-2 backdrop-blur-sm'
-                            : 'bg-white/80 dark:bg-slate-700/80 backdrop-blur-md border border-white/50 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-tl-none shadow-lg'
+                            : 'bg-white/60 dark:bg-slate-700/60 backdrop-blur-md border border-white/40 dark:border-slate-600/50 text-slate-700 dark:text-slate-200 rounded-tl-none shadow-lg'
                     }`}>
                         {msg.isSystemAction ? (
                              <div className="flex flex-col w-full">
@@ -1038,7 +1038,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                  {msg.actionType === 'VIEW_PLAN' && msg.actionPayload?.date && (
                                      <button 
                                         onClick={() => onViewDayPlan(msg.actionPayload.date)}
-                                        className="mt-3 bg-white/40 hover:bg-white/60 text-emerald-900 dark:text-emerald-100 text-xs font-bold py-2 px-3 rounded-lg text-left w-full flex items-center justify-between transition-colors border border-emerald-200 dark:border-emerald-700"
+                                        className="mt-3 bg-white/40 hover:bg-white/60 text-emerald-900 dark:text-emerald-100 text-xs font-bold py-2 px-3 rounded-lg text-left w-full flex items-center justify-between transition-colors border border-emerald-200 dark:border-emerald-700 backdrop-blur-sm"
                                      >
                                         <span className="flex items-center gap-2">
                                             <CalendarIcon className="w-4 h-4" /> Open Plan for {msg.actionPayload.date}
@@ -1051,13 +1051,13 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                      <div className="mt-3 flex flex-wrap gap-2">
                                          <button 
                                             onClick={() => handleImportAction('KB', msg.actionPayload)}
-                                            className="flex items-center gap-1 bg-white/60 hover:bg-white text-indigo-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                                            className="flex items-center gap-1 bg-white/60 hover:bg-white/80 text-indigo-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors backdrop-blur-sm"
                                          >
                                              <DatabaseIcon className="w-3 h-3" /> Update Knowledge Base
                                          </button>
                                          <button 
                                             onClick={() => handleImportAction('PLAN', msg.actionPayload)}
-                                            className="flex items-center gap-1 bg-white/60 hover:bg-white text-blue-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors"
+                                            className="flex items-center gap-1 bg-white/60 hover:bg-white/80 text-blue-700 px-3 py-2 rounded-lg text-xs font-bold shadow-sm transition-colors backdrop-blur-sm"
                                          >
                                              <PlusIcon className="w-3 h-3" /> Add to Today's Plan
                                          </button>
@@ -1100,9 +1100,9 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
             )}
         </div>
 
-        <div className="p-4 border-t border-white/20 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10">
+        <div className="p-4 border-t border-white/40 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md z-10">
             {attachedImage && (
-                <div className="mb-2 p-2 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg flex items-start justify-between animate-fade-in-up text-xs border border-slate-200 dark:border-slate-600">
+                <div className="mb-2 p-2 bg-slate-200/50 dark:bg-slate-700/50 rounded-lg flex items-start justify-between animate-fade-in-up text-xs border border-slate-200/50 dark:border-slate-600/50 backdrop-blur-sm">
                     <div className="flex items-center gap-2 overflow-hidden">
                         {attachedImage.mimeType.startsWith('image/') ? (
                              <img src={`data:${attachedImage.mimeType};base64,${attachedImage.data}`} className="w-8 h-8 rounded object-cover flex-shrink-0" />
@@ -1111,13 +1111,13 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         )}
                         <span className="font-medium text-slate-700 dark:text-slate-200 truncate">{attachedImage.filename}</span>
                     </div>
-                    <button onClick={handleRemoveAttachment} className="p-1 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-full">
+                    <button onClick={handleRemoveAttachment} className="p-1 hover:bg-slate-300/50 dark:hover:bg-slate-600/50 rounded-full">
                         <XMarkIcon className="w-4 h-4 text-slate-500" />
                     </button>
                 </div>
             )}
             <div className="relative flex items-end gap-2">
-                <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-100/50 dark:bg-slate-700/50 border border-slate-200/50 dark:border-slate-600/50 rounded-xl cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-700/80 transition-colors backdrop-blur-sm ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <PaperClipIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     <input type="file" onChange={handleFileSelect} className="hidden" disabled={isUploadingFile} />
                 </label>
@@ -1132,7 +1132,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                         }
                     }}
                     placeholder={mode === 'MENTOR' ? "Ask your mentor anything..." : "Ask about your study material..."}
-                    className="flex-1 w-full p-3 bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white max-h-32"
+                    className="flex-1 w-full p-3 bg-slate-100/50 dark:bg-slate-700/50 border border-slate-200/50 dark:border-slate-600/50 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white max-h-32 backdrop-blur-sm"
                     rows={1}
                 />
                 <button

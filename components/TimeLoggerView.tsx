@@ -64,7 +64,7 @@ const EditLogModal: React.FC<EditModalProps> = ({ isOpen, log, onClose, onSave }
     };
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 animate-fade-in-up">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Edit Log Entry</h3>
                 
@@ -174,11 +174,11 @@ const MonthlySummaryChart = () => {
     }
 
     return (
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-6">
+        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 p-4 rounded-xl mb-6 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-                <button onClick={prevMonth} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><ChevronLeftIcon className="w-4 h-4 text-slate-500" /></button>
+                <button onClick={prevMonth} className="p-1 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded backdrop-blur-sm"><ChevronLeftIcon className="w-4 h-4 text-slate-500" /></button>
                 <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">{chartDate.toLocaleString('default', { month: 'long', year: 'numeric' })} Study Hours</h3>
-                <button onClick={nextMonth} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><ChevronRightIcon className="w-4 h-4 text-slate-500" /></button>
+                <button onClick={nextMonth} className="p-1 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded backdrop-blur-sm"><ChevronRightIcon className="w-4 h-4 text-slate-500" /></button>
             </div>
             <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -296,7 +296,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
 
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                    <div className="p-3 bg-indigo-100/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl backdrop-blur-sm">
                         <ClockIcon className="w-6 h-6" />
                     </div>
                     <div>
@@ -312,7 +312,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
 
             <MonthlySummaryChart />
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 mb-6 shadow-sm">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 rounded-2xl p-4 mb-6 shadow-sm">
                 <div className="flex gap-2 mb-4">
                     <input 
                         type="text"
@@ -320,7 +320,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleAddLog()}
                         placeholder="e.g. 'Slept for 8 hours', 'Studied Cardio 30 mins'"
-                        className="flex-1 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                        className="flex-1 p-3 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm backdrop-blur-sm"
                         disabled={processing}
                     />
                     <button 
@@ -333,19 +333,19 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                 </div>
             </div>
 
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 bg-slate-50/50 dark:bg-slate-800/50 p-2 rounded-2xl border border-white/40 dark:border-slate-700/50 backdrop-blur-sm">
                 <button onClick={() => {
                     const d = new Date(selectedDate + 'T12:00:00');
                     d.setDate(d.getDate() - 1);
                     setSelectedDate(getAdjustedDate(d));
-                }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><ChevronLeftIcon className="w-5 h-5 text-slate-500" /></button>
+                }} className="p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-full transition-colors"><ChevronLeftIcon className="w-5 h-5 text-slate-500" /></button>
                 
                 <div className="relative">
                     <input 
                         type="date" 
                         value={selectedDate} 
                         onChange={e => setSelectedDate(e.target.value)}
-                        className="bg-transparent font-bold text-slate-800 dark:text-white text-lg text-center outline-none"
+                        className="bg-transparent font-bold text-slate-800 dark:text-white text-lg text-center outline-none cursor-pointer"
                     />
                 </div>
 
@@ -353,7 +353,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                     const d = new Date(selectedDate + 'T12:00:00');
                     d.setDate(d.getDate() + 1);
                     setSelectedDate(getAdjustedDate(d));
-                }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><ChevronRightIcon className="w-5 h-5 text-slate-500" /></button>
+                }} className="p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-full transition-colors"><ChevronRightIcon className="w-5 h-5 text-slate-500" /></button>
             </div>
 
             <div className="space-y-3">
@@ -366,8 +366,8 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                      const endStr = new Date(log.endTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
 
                      return (
-                         <div key={log.id} className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4 group">
-                             <div className={`p-3 rounded-xl ${theme.bg} ${theme.text}`}>
+                         <div key={log.id} className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center gap-4 group transition-all hover:scale-[1.01]">
+                             <div className={`p-3 rounded-xl ${theme.bg} ${theme.text} bg-opacity-80 backdrop-blur-sm`}>
                                  <Icon className="w-5 h-5" />
                              </div>
                              <div className="flex-1 min-w-0">
@@ -376,7 +376,7 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                                      <span className="text-xs font-mono text-slate-400">{startStr} - {endStr}</span>
                                  </div>
                                  <div className="flex justify-between items-center mt-1">
-                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${theme.bg} ${theme.text} ${theme.border} border-opacity-30`}>{log.category}</span>
+                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${theme.bg} ${theme.text} ${theme.border} border-opacity-30 bg-opacity-50`}>{log.category}</span>
                                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{log.durationMinutes}m</span>
                                  </div>
                              </div>

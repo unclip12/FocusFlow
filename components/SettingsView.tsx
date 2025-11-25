@@ -28,8 +28,8 @@ const COLORS: { name: string, value: ThemeColor, hex: string, rgb: string }[] = 
 ];
 
 const Section: React.FC<{ title: string, icon: React.ElementType, children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+    <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-white/40 dark:border-slate-700/50 overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-white/40 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-sm">
             <h3 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Icon className="w-5 h-5 text-slate-400" />
                 {title}
@@ -88,8 +88,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   // History State
   const [history, setHistory] = useState<HistoryRecord[]>([]);
 
-  const isHttps = window.location.protocol === 'https:';
-
   useEffect(() => {
     setLocalName(displayName);
   }, [displayName]);
@@ -136,476 +134,274 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
     }
   }, [settings.primaryColor]);
 
-  const handleFontSizeChange = (size: 'small' | 'medium' | 'large') => {
-      onUpdateSettings({ ...settings, fontSize: size });
+  const handleSaveAiSettings = async (newAi: AISettings) => {
+      setAiSettings(newAi);
+      await saveAISettings(newAi);
   };
 
-  const handleNotificationToggle = async (enabled: boolean) => {
-      if (enabled) {
-          const granted = await requestNotificationPermission();
-          if (granted) {
-              onUpdateSettings({ 
-                  ...settings, 
-                  notifications: { ...settings.notifications, enabled: true } 
-              });
-          } else {
-              alert("Permission denied. Please enable notifications in your browser/device settings.");
-          }
-      } else {
-          onUpdateSettings({ 
-              ...settings, 
-              notifications: { ...settings.notifications, enabled: false } 
-          });
-      }
+  const handleSaveRevisionSettings = async (newRev: RevisionSettings) => {
+      setRevisionSettings(newRev);
+      await saveRevisionSettings(newRev);
   };
 
-  const handleSaveAllConfig = async () => {
-      setIsLoading(true);
-      await Promise.all([
-          saveAISettings(aiSettings),
-          saveRevisionSettings(revisionSettings)
-      ]);
-      alert("Settings saved!");
-      setIsLoading(false);
-  };
-
-  // --- Anki Handlers ---
-  const handleTestAnki = async () => {
-      setAnkiStatus('CHECKING');
-      setAnkiError(null);
-      
-      let host = ankiHostInput.trim();
-      // Do not auto-prepend http if they might be using https (ngrok)
-      if (!host.startsWith('http://') && !host.startsWith('https://')) {
-          host = `http://${host}`;
-          setAnkiHostInput(host);
-      }
-
-      const result = await checkAnkiConnection({ ...settings, ankiHost: host });
-      setAnkiStatus(result.success ? 'OK' : 'FAIL');
-      
-      if (result.success) {
-          onUpdateSettings({ ...settings, ankiHost: host });
-      } else {
-          setAnkiError(result.error || 'Unknown connection error');
-      }
-  };
-
-  // --- Data Management Handlers ---
-
-  const handleBackup = async () => {
+  const handleExport = async () => {
       setIsBackingUp(true);
       try {
           await exportUserData();
       } catch (e) {
-          console.error("Backup failed", e);
-          alert("Backup failed. Please try again.");
-      } finally {
-          setIsBackingUp(false);
+          alert("Backup failed.");
       }
+      setIsBackingUp(false);
   };
 
-  const handleImportClick = () => {
-      document.getElementById('restore-file-input')?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.[0]) {
           setIsRestoring(true);
-          
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-              try {
+          try {
+              const reader = new FileReader();
+              reader.onload = async (ev) => {
                   const json = JSON.parse(ev.target?.result as string);
                   await importUserData(json);
-                  alert("Data restored successfully! Reloading...");
+                  alert("Data restored successfully. Reloading...");
                   window.location.reload();
-              } catch (err) {
-                  console.error("Restore failed", err);
-                  alert("Failed to restore data. Invalid file or network error.");
-                  setIsRestoring(false);
-              }
-          };
-          reader.readAsText(file);
-          e.target.value = ''; // Reset input
+              };
+              reader.readAsText(e.target.files[0]);
+          } catch (err) {
+              alert("Import failed.");
+              setIsRestoring(false);
+          }
       }
   };
 
-  const handleResetConfirm = async () => {
+  const handleReset = async () => {
+      await resetAppData();
       setIsResetModalOpen(false);
-      setIsLoading(true);
-      try {
-          await resetAppData();
-          alert("App data reset complete. Restarting...");
-          window.location.reload();
-      } catch (e) {
-          console.error("Reset failed", e);
-          alert("Failed to reset data. Please check your connection.");
-          setIsLoading(false);
-      }
+      alert("App reset complete. Reloading...");
+      window.location.reload();
   };
 
-  const triggerUndo = (record: HistoryRecord) => {
-      if (onRestoreHistory) {
-          onRestoreHistory(record.type, record.snapshot);
+  const checkAnki = async () => {
+      setAnkiStatus('CHECKING');
+      setAnkiError(null);
+      const res = await checkAnkiConnection({ ...settings, ankiHost: ankiHostInput });
+      if (res.success) {
+          setAnkiStatus('OK');
+          onUpdateSettings({ ...settings, ankiHost: ankiHostInput });
+      } else {
+          setAnkiStatus('FAIL');
+          setAnkiError(res.error || 'Failed to connect');
       }
   };
 
   return (
-    <div className="animate-fade-in max-w-3xl mx-auto pb-20">
-        <DeleteConfirmationModal 
-            isOpen={isResetModalOpen}
-            onClose={() => setIsResetModalOpen(false)}
-            onConfirm={handleResetConfirm}
-            title="Reset Application?"
-            message="WARNING: This will permanently delete ALL your study logs, plans, notes, and history. This action cannot be undone. It will be like starting a fresh account."
-        />
+      <div className="animate-fade-in space-y-8 pb-20">
+          <DeleteConfirmationModal 
+              isOpen={isResetModalOpen}
+              onClose={() => setIsResetModalOpen(false)}
+              onConfirm={handleReset}
+              title="Factory Reset?"
+              message="This will wipe all study data, logs, and plans. This cannot be undone."
+          />
 
-        <div className="flex items-center gap-3 mb-8">
-            <div className="p-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 text-primary">
-                <Cog6ToothIcon className="w-8 h-8" />
-            </div>
-            <div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
-                <p className="text-slate-500 dark:text-slate-400">Customize your FocusFlow experience</p>
-            </div>
-        </div>
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-slate-200/50 dark:bg-slate-700/50 rounded-xl text-slate-600 dark:text-slate-300">
+                  <Cog6ToothIcon className="w-6 h-6" />
+              </div>
+              <div>
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Customize your experience</p>
+              </div>
+          </div>
 
-        <div className="space-y-6">
-             <Section title="Profile & Account" icon={UserCircleIcon}>
-                {/* ... Profile Fields ... */}
-                <div>
-                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Your Name</label>
-                    <input
-                        type="text"
-                        value={localName}
-                        onChange={(e) => setLocalName(e.target.value)}
-                        onBlur={handleNameSave}
-                        placeholder="Enter your name (e.g. Arsh)"
-                        className="w-full p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary/50 outline-none"
-                    />
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Used by the AI Mentor to address you.</p>
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* LEFT COLUMN */}
+              <div className="space-y-8">
+                  
+                  {/* Profile */}
+                  <Section title="Profile" icon={UserCircleIcon}>
+                      <SettingRow label="Display Name" description="How the AI addresses you">
+                          <input 
+                              type="text" 
+                              value={localName}
+                              onChange={e => setLocalName(e.target.value)}
+                              onBlur={handleNameSave}
+                              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm"
+                          />
+                      </SettingRow>
+                      <SettingRow label="Secret ID" description="Your login key (Keep safe!)">
+                          <div className="font-mono bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg text-sm select-all">
+                              {secretId || '...'}
+                          </div>
+                      </SettingRow>
+                  </Section>
 
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="font-bold text-slate-800 dark:text-white">Secret ID</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-mono">{secretId || 'N/A'}</p>
-                    </div>
-                </div>
-                <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
-                    <button
-                        onClick={() => auth.signOut()}
-                        className="w-full sm:w-auto px-6 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-bold rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-sm"
-                    >
-                        Sign Out
-                    </button>
-                </div>
-            </Section>
+                  {/* Appearance */}
+                  <Section title="Appearance" icon={SwatchIcon}>
+                      <SettingRow label="Theme Mode" description="Light or Dark interface">
+                          <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+                              <button 
+                                  onClick={() => onUpdateSettings({ ...settings, darkMode: false })}
+                                  className={`p-2 rounded-md transition-all ${!settings.darkMode ? 'bg-white shadow text-amber-500' : 'text-slate-400'}`}
+                              >
+                                  <SunIcon className="w-5 h-5" />
+                              </button>
+                              <button 
+                                  onClick={() => onUpdateSettings({ ...settings, darkMode: true })}
+                                  className={`p-2 rounded-md transition-all ${settings.darkMode ? 'bg-slate-700 shadow text-indigo-400' : 'text-slate-400'}`}
+                              >
+                                  <MoonIcon className="w-5 h-5" />
+                              </button>
+                          </div>
+                      </SettingRow>
+                      
+                      <SettingRow label="Accent Color" description="Primary brand color">
+                          <div className="flex gap-2">
+                              {COLORS.map(c => (
+                                  <button
+                                      key={c.value}
+                                      onClick={() => handleColorChange(c.value)}
+                                      className={`w-6 h-6 rounded-full transition-transform ${settings.primaryColor === c.value ? 'scale-125 ring-2 ring-offset-2 dark:ring-offset-slate-800 ring-slate-400' : ''}`}
+                                      style={{ backgroundColor: c.hex }}
+                                      title={c.name}
+                                  />
+                              ))}
+                          </div>
+                      </SettingRow>
 
-            {/* HISTORY & UNDO SECTION */}
-            <Section title="History & Undo" icon={ArrowUturnLeftIcon}>
-                <div className="space-y-2">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                        Recent data changes are logged here. Click "Undo" to revert specific items to their previous state.
-                        Note: Restoring old data overwrites any newer changes made to that item.
-                    </p>
-                    {history.length > 0 ? (
-                        <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                            {history.map(item => (
-                                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700 text-sm">
-                                    <div className="flex-1 min-w-0 mr-2">
-                                        <p className="font-bold text-slate-700 dark:text-slate-300 truncate">{item.description}</p>
-                                        <p className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</p>
-                                    </div>
-                                    <button 
-                                        onClick={() => triggerUndo(item)}
-                                        className="px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-xs font-bold rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors"
-                                    >
-                                        Undo
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-6 text-slate-400 text-xs italic border-2 border-dashed border-slate-100 dark:border-slate-700 rounded-xl">
-                            No recent history available.
-                        </div>
-                    )}
-                </div>
-            </Section>
+                      <div>
+                          <p className="font-bold text-slate-800 dark:text-white mb-3">App Theme</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {APP_THEMES.map(theme => (
+                                  <button
+                                      key={theme.id}
+                                      onClick={() => handleThemeSelect(theme.id)}
+                                      className={`p-2 rounded-xl border text-xs font-bold text-left transition-all ${settings.themeId === theme.id ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300'}`}
+                                      style={{ background: theme.bgGradient }}
+                                  >
+                                      <span className={theme.isDark ? 'text-white' : 'text-slate-800'}>{theme.name}</span>
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  </Section>
 
-            <Section title="Appearance & Theme" icon={SwatchIcon}>
-                {/* Background Themes Grid */}
-                <div>
-                    <p className="font-bold text-slate-800 dark:text-white mb-3">Background Theme</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {APP_THEMES.map(theme => (
-                            <button 
-                                key={theme.id}
-                                onClick={() => handleThemeSelect(theme.id)}
-                                className={`relative p-1 rounded-xl border-2 transition-all hover:scale-[1.02] ${settings.themeId === theme.id ? 'border-indigo-600 dark:border-white shadow-md scale-[1.02]' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-600'}`}
-                            >
-                                <div className="h-20 w-full rounded-lg shadow-inner overflow-hidden relative" style={{ background: theme.bgGradient }}>
-                                    <div className="absolute bottom-0 left-0 right-0 bg-white/30 backdrop-blur-sm p-1 text-center">
-                                        <span className={`text-[10px] font-bold ${theme.isDark ? 'text-white' : 'text-slate-800'}`}>{theme.name}</span>
-                                    </div>
-                                </div>
-                                {settings.themeId === theme.id && (
-                                    <div className="absolute top-2 right-2 bg-indigo-600 text-white rounded-full p-0.5 shadow-sm">
-                                        <CheckCircleIcon className="w-3 h-3" />
-                                    </div>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Selecting a dark background will automatically enable dark mode for readability.</p>
-                </div>
+                  {/* AI Config */}
+                  <Section title="AI Personality" icon={BrainIcon}>
+                      <SettingRow label="Mentor Mode" description="Attitude of your AI coach">
+                          <select 
+                              value={aiSettings.personalityMode}
+                              onChange={(e) => handleSaveAiSettings({...aiSettings, personalityMode: e.target.value as any})}
+                              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm"
+                          >
+                              <option value="strict">Strict (C-Mode)</option>
+                              <option value="balanced">Balanced</option>
+                              <option value="calm">Calm & Gentle</option>
+                          </select>
+                      </SettingRow>
+                      <SettingRow label="Permissions" description="Allow AI to read data">
+                          <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-sm">
+                                  <input type="checkbox" checked={aiSettings.memoryPermissions?.canReadKnowledgeBase} onChange={e => handleSaveAiSettings({...aiSettings, memoryPermissions: {...aiSettings.memoryPermissions!, canReadKnowledgeBase: e.target.checked}})} />
+                                  Read Knowledge Base
+                              </label>
+                              <label className="flex items-center gap-2 text-sm">
+                                  <input type="checkbox" checked={aiSettings.memoryPermissions?.canReadInfoFiles} onChange={e => handleSaveAiSettings({...aiSettings, memoryPermissions: {...aiSettings.memoryPermissions!, canReadInfoFiles: e.target.checked}})} />
+                                  Read Info Files
+                              </label>
+                          </div>
+                      </SettingRow>
+                  </Section>
 
-                {/* Accent Colors */}
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-4">
-                         <p className="font-bold text-slate-800 dark:text-white">Accent Color</p>
-                    </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
-                        {COLORS.map(color => (
-                            <button 
-                                key={color.value}
-                                onClick={() => handleColorChange(color.value)}
-                                className={`relative group p-1 rounded-xl border-2 transition-all ${settings.primaryColor === color.value ? 'border-slate-800 dark:border-white scale-105' : 'border-transparent hover:border-slate-200 dark:hover:border-slate-600'}`}
-                            >
-                                <div className="h-12 w-full rounded-lg" style={{ backgroundColor: color.hex }}></div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </Section>
+              </div>
 
-            {/* INTEGRATIONS: ANKI */}
-            <Section title="Anki Integration" icon={LinkIcon}>
-                <div className="space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Connect to Anki on your computer to sync deck stats.
-                    </p>
-                    
-                    {isHttps && ankiHostInput.startsWith('http:') && (
-                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-200">
-                            <p><strong>iOS Issue:</strong> Safari blocks HTTPS apps from talking to HTTP (your laptop). You must use a secure tunnel like <strong>ngrok</strong>.</p>
-                        </div>
-                    )}
+              {/* RIGHT COLUMN */}
+              <div className="space-y-8">
+                  
+                  {/* Revision Strategy */}
+                  <Section title="Revision Strategy" icon={ArrowUturnLeftIcon}>
+                      <SettingRow label="SRS Algorithm" description="Spacing aggression">
+                          <select 
+                              value={revisionSettings.mode}
+                              onChange={(e) => handleSaveRevisionSettings({...revisionSettings, mode: e.target.value as any})}
+                              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm"
+                          >
+                              <option value="fast">Fast (Cramming)</option>
+                              <option value="balanced">Balanced</option>
+                              <option value="deep">Deep Retention</option>
+                          </select>
+                      </SettingRow>
+                      <SettingRow label="Daily Target" description="Max revisions per day">
+                          <input 
+                              type="number" 
+                              value={revisionSettings.targetCount} 
+                              onChange={(e) => handleSaveRevisionSettings({...revisionSettings, targetCount: parseInt(e.target.value)})}
+                              className="p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm w-20"
+                          />
+                      </SettingRow>
+                  </Section>
 
-                    <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Anki Host URL</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="text" 
-                                value={ankiHostInput} 
-                                onChange={(e) => setAnkiHostInput(e.target.value)}
-                                placeholder="http://192.168.1.X:8765 or https://....ngrok-free.app"
-                                className="flex-1 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-sm"
-                            />
-                            <button 
-                                onClick={handleTestAnki}
-                                className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors min-w-[100px] ${ankiStatus === 'OK' ? 'bg-green-100 text-green-700' : ankiStatus === 'FAIL' ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
-                            >
-                                {ankiStatus === 'CHECKING' ? '...' : ankiStatus === 'OK' ? 'Connected' : ankiStatus === 'FAIL' ? 'Failed' : 'Test & Save'}
-                            </button>
-                        </div>
-                        
-                        {ankiError && (
-                            <div className="mt-2 flex items-start gap-2 text-xs text-red-500 font-medium bg-red-50 dark:bg-red-900/20 p-2 rounded-lg border border-red-100 dark:border-red-900/50">
-                                <ExclamationCircleIcon className="w-4 h-4 mt-0.5 shrink-0" />
-                                <span>{ankiError}</span>
-                            </div>
-                        )}
+                  {/* Anki Integration */}
+                  <Section title="Anki Connect" icon={LinkIcon}>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Connect to local Anki app via AnkiConnect plugin (localhost:8765).</p>
+                      <div className="flex gap-2">
+                          <input 
+                              type="text" 
+                              value={ankiHostInput}
+                              onChange={e => setAnkiHostInput(e.target.value)}
+                              className="flex-1 p-2 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-mono"
+                              placeholder="http://localhost:8765"
+                          />
+                          <button onClick={checkAnki} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-xs font-bold">
+                              Test
+                          </button>
+                      </div>
+                      {ankiStatus === 'OK' && <p className="text-xs text-green-500 mt-2 flex items-center gap-1"><CheckCircleIcon className="w-3 h-3"/> Connected to Anki</p>}
+                      {ankiStatus === 'FAIL' && <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><ExclamationCircleIcon className="w-3 h-3"/> {ankiError}</p>}
+                  </Section>
 
-                        <button 
-                            onClick={() => setShowAnkiHelp(!showAnkiHelp)}
-                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-3 hover:underline flex items-center gap-1"
-                        >
-                            {showAnkiHelp ? 'Hide' : 'Show'} Connection Guide (iPad/iPhone)
-                        </button>
+                  {/* Data Management */}
+                  <Section title="Data & Backup" icon={DatabaseIcon}>
+                      <div className="grid grid-cols-2 gap-4">
+                          <button onClick={handleExport} disabled={isBackingUp} className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-bold text-slate-700 dark:text-slate-200">
+                              <ArrowDownTrayIcon className="w-4 h-4" /> 
+                              {isBackingUp ? 'Backing up...' : 'Backup Data'}
+                          </button>
+                          <label className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+                              <ArrowUpTrayIcon className="w-4 h-4" /> 
+                              {isRestoring ? 'Restoring...' : 'Restore Data'}
+                              <input type="file" accept=".json" onChange={handleFileImport} className="hidden" disabled={isRestoring} />
+                          </label>
+                      </div>
+                      <button onClick={() => setIsResetModalOpen(true)} className="w-full mt-4 p-3 rounded-xl border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-bold flex items-center justify-center gap-2">
+                          <ArchiveBoxXMarkIcon className="w-4 h-4" /> Factory Reset App
+                      </button>
+                  </Section>
 
-                        {showAnkiHelp && (
-                            <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed">
-                                <p><strong className="text-slate-800 dark:text-white">Why does it fail?</strong><br/>Modern browsers force "Mixed Content" blocking. A secure website (HTTPS) cannot talk to an insecure local server (HTTP).</p>
-                                
-                                <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                                    <p className="font-bold text-indigo-600 dark:text-indigo-400 mb-1">Solution: Use Ngrok (Free)</p>
-                                    <ol className="list-decimal pl-4 space-y-1">
-                                        <li>Download <strong>ngrok</strong> on your Laptop.</li>
-                                        <li>Run command: <code className="bg-slate-100 dark:bg-slate-900 px-1 rounded">ngrok http 8765</code></li>
-                                        <li>Copy the HTTPS URL it gives you (e.g. <code className="bg-slate-100 dark:bg-slate-900 px-1 rounded">https://a1b2...ngrok-free.app</code>).</li>
-                                        <li>Paste that URL above.</li>
-                                    </ol>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </Section>
+                  {/* History (Undo) */}
+                  {history.length > 0 && onRestoreHistory && (
+                      <Section title="Recent Actions (Undo)" icon={ArrowUturnLeftIcon}>
+                          <div className="max-h-40 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                              {history.map(item => (
+                                  <div key={item.id} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                                      <div className="text-xs">
+                                          <p className="font-bold text-slate-700 dark:text-slate-300">{item.description}</p>
+                                          <p className="text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleTimeString()}</p>
+                                      </div>
+                                      <button 
+                                          onClick={() => onRestoreHistory(item.type, item.snapshot)}
+                                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                      >
+                                          Restore
+                                      </button>
+                                  </div>
+                              ))}
+                          </div>
+                      </Section>
+                  )}
 
-            {/* DATA MANAGEMENT SECTION */}
-            <Section title="Data Management" icon={DatabaseIcon}>
-                <SettingRow label="Backup Data" description="Export all your study logs, plans, and settings to a JSON file.">
-                    <button 
-                        onClick={handleBackup}
-                        disabled={isBackingUp}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg font-bold text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
-                    >
-                        {isBackingUp ? 'Exporting...' : 'Export Backup'}
-                        <ArrowUpTrayIcon className="w-4 h-4" />
-                    </button>
-                </SettingRow>
-
-                <SettingRow label="Restore Data" description="Import a previously saved backup file. This will overwrite conflicting data.">
-                    <div>
-                        <button 
-                            onClick={handleImportClick}
-                            disabled={isRestoring}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg font-bold text-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
-                        >
-                            {isRestoring ? 'Restoring...' : 'Import Backup'}
-                            <ArrowDownTrayIcon className="w-4 h-4" />
-                        </button>
-                        <input 
-                            type="file" 
-                            id="restore-file-input" 
-                            className="hidden" 
-                            accept=".json" 
-                            onChange={handleFileChange}
-                        />
-                    </div>
-                </SettingRow>
-
-                <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div>
-                            <p className="font-bold text-red-600 dark:text-red-400">Reset App Data</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Permanently wipe all study history and start fresh.</p>
-                        </div>
-                        <button 
-                            onClick={() => setIsResetModalOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg font-bold text-xs hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors border border-red-200 dark:border-red-900/50"
-                        >
-                            Reset Everything
-                            <ArchiveBoxXMarkIcon className="w-4 h-4" />
-                        </button>
-                    </div>
-                </div>
-            </Section>
-
-            {/* NEW AI MENTOR & REVISION SYSTEM */}
-             <Section title="AI Mentor & Revision System" icon={BrainIcon}>
-                 {/* AI Behavior Mode */}
-                 <SettingRow label="AI Behavior Mode" description="Choose how the AI mentor interacts with you.">
-                     <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
-                         {['calm', 'balanced', 'strict'].map(mode => (
-                             <button key={mode} onClick={() => setAiSettings(s => ({ ...s, personalityMode: mode as any }))}
-                                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${aiSettings.personalityMode === mode ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500'}`}>
-                                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                             </button>
-                         ))}
-                     </div>
-                 </SettingRow>
-
-                 {/* AI Talk Style */}
-                 <SettingRow label="AI Talk Style" description="Select the mentor's communication style.">
-                     <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
-                         {['short', 'teaching', 'motivational'].map(style => (
-                             <button key={style} onClick={() => setAiSettings(s => ({ ...s, talkStyle: style as any }))}
-                                 className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${aiSettings.talkStyle === style ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500'}`}>
-                                 {style === 'short' ? 'Direct' : style.charAt(0).toUpperCase() + style.slice(1)}
-                             </button>
-                         ))}
-                     </div>
-                 </SettingRow>
-
-                 {/* AI Discipline Level */}
-                 <SettingRow label="AI Discipline Level" description="How strict the mentor is about reminders and focus.">
-                     <div className="flex items-center gap-4 w-full sm:w-48">
-                         <input type="range" min="1" max="5" value={aiSettings.disciplineLevel || 3}
-                             onChange={e => setAiSettings(s => ({ ...s, disciplineLevel: parseInt(e.target.value) }))}
-                             className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary" />
-                         <span className="font-bold text-primary">{aiSettings.disciplineLevel}</span>
-                     </div>
-                 </SettingRow>
-
-                {/* AI Memory Permissions */}
-                 <div>
-                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">AI Memory Permissions</label>
-                     <div className="space-y-2">
-                         {['canReadKnowledgeBase', 'canReadTimeLogs', 'canReadInfoFiles'].map(perm => (
-                             <label key={perm} className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                                 <input type="checkbox"
-                                     checked={aiSettings.memoryPermissions?.[perm as keyof typeof aiSettings.memoryPermissions] || false}
-                                     onChange={e => setAiSettings(s => ({ ...s, memoryPermissions: { ...s.memoryPermissions, [perm]: e.target.checked } }))}
-                                     className="w-4 h-4 rounded text-primary border-slate-300" />
-                                 <span className="text-sm text-slate-700 dark:text-slate-200">
-                                     AI can read {perm.replace('canRead', '').replace(/([A-Z])/g, ' $1').trim()}
-                                 </span>
-                             </label>
-                         ))}
-                     </div>
-                 </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-700 pt-6 space-y-6">
-                     {/* Spaced Repetition Mode */}
-                     <SettingRow label="Spaced Repetition Mode" description="Adjusts the intervals for your revisions.">
-                         <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
-                             {['fast', 'balanced', 'deep'].map(mode => (
-                                 <button key={mode} onClick={() => setRevisionSettings(s => ({ ...s, mode: mode as any }))}
-                                     className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${revisionSettings.mode === mode ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500'}`}>
-                                     {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                                 </button>
-                             ))}
-                         </div>
-                     </SettingRow>
-
-                    {/* Target Revision Count */}
-                     <SettingRow label="Target Revision Count" description="Number of revisions before a topic is considered 'mastered'.">
-                         <div className="flex items-center gap-4 w-full sm:w-48">
-                             <input type="range" min="5" max="15" value={revisionSettings.targetCount || 7}
-                                 onChange={e => setRevisionSettings(s => ({ ...s, targetCount: parseInt(e.target.value) }))}
-                                 className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary" />
-                             <span className="font-bold text-primary">{revisionSettings.targetCount}x</span>
-                         </div>
-                     </SettingRow>
-
-                    {/* Carry Forward Rule */}
-                     <SettingRow label="Carry Forward Rule" description="How to handle partially completed tasks.">
-                         <select value={revisionSettings.carryForwardRule || 'next_block'}
-                             onChange={e => setRevisionSettings(s => ({ ...s, carryForwardRule: e.target.value as any }))}
-                             className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-sm font-medium"
-                         >
-                             <option value="next_block">Carry to next block</option>
-                             <option value="end_of_day">Carry to end of today</option>
-                             <option value="next_day">Carry to next day</option>
-                         </select>
-                     </SettingRow>
-                </div>
-                 
-                 <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
-                     <button onClick={handleSaveAllConfig} disabled={isLoading} className="w-full sm:w-auto px-6 py-3 bg-primary text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors text-sm shadow-md disabled:opacity-50">
-                         {isLoading ? "Saving..." : "Save AI & Revision Settings"}
-                     </button>
-                 </div>
-            </Section>
-
-            <Section title="Notifications" icon={BellIcon}>
-                <SettingRow label="Enable Notifications" description="Get alerts for timers and mentor nudges">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" checked={settings.notifications?.enabled || false} onChange={(e) => handleNotificationToggle(e.target.checked)} />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
-                </SettingRow>
-            </Section>
-
-            <div className="text-center pt-8 text-slate-400 text-xs">
-                <p>FocusFlow v1.8</p>
-            </div>
-        </div>
-    </div>
+              </div>
+          </div>
+      </div>
   );
 };

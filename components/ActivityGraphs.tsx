@@ -97,20 +97,20 @@ export const ActivityGraphs: React.FC<ActivityGraphsProps> = ({ knowledgeBase })
     }, [knowledgeBase, range]);
 
     return (
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mb-6">
+        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 p-5 rounded-2xl shadow-sm mb-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <ChartBarIcon className="w-4 h-4 text-slate-400" />
                     Activity
                 </h3>
-                <div className="flex bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg">
+                <div className="flex bg-slate-100/50 dark:bg-slate-700/50 p-1 rounded-lg backdrop-blur-sm">
                     {(['WEEK', 'MONTH', 'YEAR'] as const).map((r) => (
                         <button
                             key={r}
                             onClick={() => setRange(r)}
                             className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
                                 range === r 
-                                ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-sm' 
+                                ? 'bg-white/80 dark:bg-slate-600 text-indigo-600 dark:text-white shadow-sm backdrop-blur-md' 
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                             }`}
                         >

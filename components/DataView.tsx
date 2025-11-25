@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { StudyMaterial, Attachment } from '../types';
 import { CloudArrowUpIcon, DocumentTextIcon, CheckCircleIcon, TrashIcon, EyeIcon, PhotoIcon, DocumentIcon, PlusIcon, ChatBubbleLeftRightIcon } from './Icons';
@@ -187,7 +188,7 @@ export const DataView: React.FC = () => {
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                    <div className="p-3 bg-indigo-100/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl backdrop-blur-sm">
                         <DocumentTextIcon className="w-6 h-6" />
                     </div>
                     <div>
@@ -197,22 +198,22 @@ export const DataView: React.FC = () => {
                 </div>
                 
                 {/* Filter Tabs */}
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
+                <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-lg self-start backdrop-blur-sm">
                     <button 
                         onClick={() => setFilterSource('ALL')} 
-                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'ALL' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'ALL' ? 'bg-white/80 dark:bg-slate-700/80 shadow-sm text-slate-800 dark:text-white backdrop-blur-md' : 'text-slate-500 dark:text-slate-400'}`}
                     >
                         All
                     </button>
                     <button 
                         onClick={() => setFilterSource('UPLOAD')} 
-                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'UPLOAD' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'UPLOAD' ? 'bg-white/80 dark:bg-slate-700/80 shadow-sm text-slate-800 dark:text-white backdrop-blur-md' : 'text-slate-500 dark:text-slate-400'}`}
                     >
                         Uploads
                     </button>
                     <button 
                         onClick={() => setFilterSource('MENTOR')} 
-                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'MENTOR' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}
+                        className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${filterSource === 'MENTOR' ? 'bg-white/80 dark:bg-slate-700/80 shadow-sm text-slate-800 dark:text-white backdrop-blur-md' : 'text-slate-500 dark:text-slate-400'}`}
                     >
                         From Mentor
                     </button>
@@ -222,8 +223,8 @@ export const DataView: React.FC = () => {
             {/* Add Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* File Upload Card */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col items-center justify-center text-center space-y-4 hover:border-indigo-300 transition-colors">
-                    <div className={`w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center ${isUploading ? 'animate-pulse' : ''}`}>
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-6 border border-white/40 dark:border-slate-700/50 shadow-sm flex flex-col items-center justify-center text-center space-y-4 hover:border-indigo-300 transition-colors">
+                    <div className={`w-16 h-16 rounded-full bg-indigo-50/50 dark:bg-indigo-900/20 flex items-center justify-center backdrop-blur-sm ${isUploading ? 'animate-pulse' : ''}`}>
                         <CloudArrowUpIcon className="w-8 h-8 text-indigo-500" />
                     </div>
                     <div>
@@ -247,12 +248,12 @@ export const DataView: React.FC = () => {
                 </div>
 
                 {/* Paste Text Card */}
-                <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col">
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm flex flex-col">
                     <textarea 
                         value={pastedText}
                         onChange={e => setPastedText(e.target.value)}
                         placeholder="Or paste raw text notes here..."
-                        className="flex-1 w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none text-sm text-slate-700 dark:text-slate-300 mb-3"
+                        className="flex-1 w-full p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-none focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none text-sm text-slate-700 dark:text-slate-300 mb-3 backdrop-blur-sm"
                     />
                     <button 
                         onClick={handlePasteSave}
@@ -268,21 +269,21 @@ export const DataView: React.FC = () => {
             <div>
                 <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                     Saved Materials 
-                    <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full text-xs">{filteredMaterials.length}</span>
+                    <span className="bg-slate-100/50 dark:bg-slate-800/50 text-slate-500 px-2 py-0.5 rounded-full text-xs backdrop-blur-sm">{filteredMaterials.length}</span>
                 </h3>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredMaterials.map(material => (
-                        <div key={material.id} className={`relative bg-white dark:bg-slate-800 rounded-xl p-4 border transition-all hover:shadow-md ${material.isActive ? 'border-green-400 ring-1 ring-green-400/20' : 'border-slate-200 dark:border-slate-700'}`}>
+                        <div key={material.id} className={`relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl p-4 border transition-all hover:shadow-md ${material.isActive ? 'border-green-400 ring-1 ring-green-400/20' : 'border-white/40 dark:border-slate-700/50'}`}>
                              <div className="flex justify-between items-start mb-3">
-                                 <div className={`p-2 rounded-lg ${material.sourceType === 'PDF' ? 'bg-red-50 text-red-500' : material.sourceType === 'IMAGE' ? 'bg-blue-50 text-blue-500' : 'bg-slate-100 text-slate-500'}`}>
+                                 <div className={`p-2 rounded-lg backdrop-blur-sm ${material.sourceType === 'PDF' ? 'bg-red-50/50 text-red-500' : material.sourceType === 'IMAGE' ? 'bg-blue-50/50 text-blue-500' : 'bg-slate-100/50 text-slate-500'}`}>
                                      {material.sourceType === 'PDF' ? <DocumentIcon className="w-5 h-5" /> : material.sourceType === 'IMAGE' ? <PhotoIcon className="w-5 h-5" /> : <DocumentTextIcon className="w-5 h-5" />}
                                  </div>
                                  <div className="flex gap-1">
-                                     <button onClick={() => setSelectedMaterial(material)} className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors" title="View">
+                                     <button onClick={() => setSelectedMaterial(material)} className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50/50 rounded-lg transition-colors" title="View">
                                          <EyeIcon className="w-4 h-4" />
                                      </button>
-                                     <button onClick={() => setMaterialToDelete(material.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                     <button onClick={() => setMaterialToDelete(material.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50/50 rounded-lg transition-colors" title="Delete">
                                          <TrashIcon className="w-4 h-4" />
                                      </button>
                                  </div>
@@ -296,14 +297,14 @@ export const DataView: React.FC = () => {
 
                              {/* Source Badge */}
                              {material.source === 'MENTOR' && (
-                                 <div className="absolute top-4 right-16 flex items-center gap-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider">
+                                 <div className="absolute top-4 right-16 flex items-center gap-1 bg-purple-100/50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider backdrop-blur-sm">
                                      <ChatBubbleLeftRightIcon className="w-3 h-3" /> Mentor
                                  </div>
                              )}
 
                              <button 
                                 onClick={() => handleToggleActive(material.id, material.isActive)}
-                                className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors ${material.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 dark:bg-slate-700 dark:text-slate-400'}`}
+                                className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors backdrop-blur-sm ${material.isActive ? 'bg-green-100/50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-50/50 text-slate-500 hover:bg-slate-100/50 dark:bg-slate-700/50 dark:text-slate-400'}`}
                              >
                                  {material.isActive ? (
                                      <><CheckCircleIcon className="w-3 h-3" /> Active for Study Buddy</>

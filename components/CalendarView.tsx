@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { StudySession, StudyPlanItem, getAdjustedDate, VideoResource, Attachment, KnowledgeBaseEntry, DayPlan, Block } from '../types';
 import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, CheckCircleIcon, ClockIcon, FireIcon, ListCheckIcon, PlusIcon, XMarkIcon, SparklesIcon } from './Icons';
@@ -192,7 +190,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
               <>
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold text-slate-800 dark:text-white">Plan Dates</h3>
-                    <span className="text-xs font-bold bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 px-2 py-1 rounded-full">
+                    <span className="text-xs font-bold bg-indigo-50/50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
                         {monthEvents.length} Items
                     </span>
                 </div>
@@ -203,14 +201,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                             <div 
                                 key={`${event.id}-${idx}`}
                                 onClick={() => handlePlanItemClick(event.date)}
-                                className="group bg-indigo-600 dark:bg-indigo-700 text-white p-4 rounded-[20px] shadow-lg shadow-indigo-200 dark:shadow-none flex items-center gap-3 cursor-pointer hover:bg-indigo-500 transition-all hover:scale-[1.02]"
+                                className="group bg-white/60 dark:bg-slate-800/60 backdrop-blur-md border border-white/40 dark:border-slate-700/50 text-slate-800 dark:text-slate-200 p-4 rounded-[20px] shadow-sm flex items-center gap-3 cursor-pointer hover:bg-white/80 dark:hover:bg-slate-700/80 transition-all hover:scale-[1.02]"
                             >
-                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-indigo-100/50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
                                     {event.eventType === 'REVISION' ? <FireIcon className="w-5 h-5" /> : <SparklesIcon className="w-5 h-5" />}
                                 </div>
                                 <div className="min-w-0">
                                     <h4 className="font-bold text-sm leading-tight truncate">{event.title}</h4>
-                                    <p className="text-xs text-indigo-100 opacity-80 mt-0.5">
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 opacity-80 mt-0.5">
                                         {event.date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} – {event.subtitle}
                                     </p>
                                 </div>
@@ -237,7 +235,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                     </div>
                     <button 
                         onClick={() => setIsQuickAddOpen(true)}
-                        className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors"
+                        className="p-2 bg-indigo-50/50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors backdrop-blur-sm"
                         title="Add Plan"
                     >
                         <PlusIcon className="w-5 h-5" />
@@ -249,18 +247,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                         dayEvents.map((item, idx) => (
                             <div 
                                 key={`${item.id}-${idx}`}
-                                className={`p-3 rounded-xl border flex items-center gap-3 ${
+                                className={`p-3 rounded-xl border flex items-center gap-3 backdrop-blur-sm shadow-sm ${
                                     item.status === 'DONE' || item.status === 'COMPLETED'
                                     ? 'bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-900/30'
-                                    : 'bg-surface dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm'
+                                    : 'bg-white/60 dark:bg-slate-800/60 border-white/40 dark:border-slate-700/50'
                                 }`}
                             >
                                 {item.status === 'DONE' || item.status === 'COMPLETED' ? (
-                                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                                    <div className="w-8 h-8 rounded-full bg-green-100/50 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
                                         <CheckCircleIcon className="w-4 h-4" />
                                     </div>
                                 ) : (
-                                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                                    <div className="w-8 h-8 rounded-full bg-slate-100/50 dark:bg-slate-700/50 flex items-center justify-center text-slate-400 shrink-0">
                                         <ClockIcon className="w-4 h-4" />
                                     </div>
                                 )}
@@ -270,7 +268,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                                         <h4 className={`font-bold text-sm truncate ${item.status === 'DONE' ? 'text-slate-500 line-through' : 'text-slate-800 dark:text-white'}`}>
                                             {item.title}
                                         </h4>
-                                        {item.status === 'DONE' && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider bg-green-50 px-1.5 py-0.5 rounded border border-green-100">Done</span>}
+                                        {item.status === 'DONE' && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider bg-green-50/50 px-1.5 py-0.5 rounded border border-green-100">Done</span>}
                                     </div>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                                         {item.subtitle}
@@ -280,7 +278,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                         ))
                     ) : (
                         <div className="flex flex-col items-center justify-center h-64 text-center">
-                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                            <div className="w-16 h-16 bg-slate-100/50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-4 text-slate-300 backdrop-blur-sm">
                                 <CalendarIcon className="w-8 h-8" />
                             </div>
                             <p className="text-slate-500 dark:text-slate-400 font-medium">No plans for this day yet.</p>
@@ -298,20 +296,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
   return (
     <div className="animate-fade-in p-4 md:p-8 min-h-full">
         
-        <div className="max-w-6xl mx-auto bg-surface dark:bg-slate-900 rounded-[32px] shadow-2xl shadow-slate-200/50 dark:shadow-none border border-white/50 dark:border-slate-800 overflow-hidden flex flex-col lg:flex-row min-h-[600px]">
+        <div className="max-w-6xl mx-auto bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-[32px] shadow-2xl shadow-slate-200/20 dark:shadow-none border border-white/40 dark:border-slate-800 overflow-hidden flex flex-col lg:flex-row min-h-[600px]">
             
             {/* LEFT PANEL: Calendar Grid */}
-            <div className="flex-1 p-6 md:p-10 bg-surface dark:bg-slate-900">
+            <div className="flex-1 p-6 md:p-10 bg-transparent">
                 
                 {/* Month Header */}
-                <div className="flex justify-between items-center mb-8 sticky top-0 bg-surface dark:bg-slate-900 z-10 py-2">
-                    <button onClick={prevMonth} className="p-3 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-all">
+                <div className="flex justify-between items-center mb-8 sticky top-0 z-10 py-2">
+                    <button onClick={prevMonth} className="p-3 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50 text-slate-400 hover:text-slate-700 transition-all backdrop-blur-sm">
                         <ChevronLeftIcon className="w-6 h-6" />
                     </button>
                     <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white tracking-tight">
                         {monthName} <span className="text-slate-300 dark:text-slate-600 font-normal">{year}</span>
                     </h2>
-                    <button onClick={nextMonth} className="p-3 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-all">
+                    <button onClick={nextMonth} className="p-3 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50 text-slate-400 hover:text-slate-700 transition-all backdrop-blur-sm">
                         <ChevronRightIcon className="w-6 h-6" />
                     </button>
                 </div>
@@ -348,9 +346,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
                                     aspect-square rounded-full flex flex-col items-center justify-center relative transition-all duration-300 group
                                     ${isSelected 
                                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-300 dark:shadow-indigo-900/50 scale-105 z-10' 
-                                        : 'bg-indigo-50/50 dark:bg-slate-800 text-indigo-900 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-slate-700'
+                                        : 'bg-indigo-50/50 dark:bg-slate-800/50 text-indigo-900 dark:text-indigo-200 hover:bg-indigo-100/50 dark:hover:bg-slate-700/50'
                                     }
                                     ${isToday && !isSelected ? 'ring-2 ring-indigo-300 dark:ring-indigo-700' : ''}
+                                    backdrop-blur-sm
                                 `}
                             >
                                 <span className={`text-sm md:text-base font-medium ${isSelected ? 'font-bold' : ''}`}>{day}</span>
@@ -366,7 +365,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
             </div>
 
             {/* RIGHT PANEL: Plan Dates List */}
-            <div className="w-full lg:w-[380px] bg-slate-50/80 dark:bg-slate-950/50 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 p-6 md:p-8 flex flex-col">
+            <div className="w-full lg:w-[380px] bg-white/40 dark:bg-slate-950/40 backdrop-blur-lg border-t lg:border-t-0 lg:border-l border-white/20 dark:border-slate-800 p-6 md:p-8 flex flex-col">
                 {renderRightPanel()}
             </div>
 
@@ -375,7 +374,62 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ knowledgeBase, study
         {/* Quick Add Modal Overlay */}
         {isQuickAddOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[24px] shadow-2xl p-6 animate-slide-in-up">
+                <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[24px] shadow-2xl p-6 animate-slide-in-up border border-white/20 dark:border-slate-700">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-xl text-slate-800 dark:text-white">Add Plan</h3>
-                        <button onClick={() => setIsQuickAddOpen(false)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded
+                        <button onClick={() => setIsQuickAddOpen(false)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full hover:bg-slate-200"><XMarkIcon className="w-5 h-5 text-slate-500" /></button>
+                    </div>
+                    <form onSubmit={handleSaveQuickTask} className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task Title</label>
+                            <input 
+                                autoFocus
+                                type="text" 
+                                value={taskTitle}
+                                onChange={e => setTaskTitle(e.target.value)}
+                                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="e.g. Read Chapter 4"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Time (Optional)</label>
+                                <input 
+                                    type="time" 
+                                    value={taskTime}
+                                    onChange={e => setTaskTime(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Type</label>
+                                <select 
+                                    value={taskType}
+                                    onChange={e => setTaskType(e.target.value as any)}
+                                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    <option value="HYBRID">General</option>
+                                    <option value="PAGE">Reading</option>
+                                    <option value="VIDEO">Video</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notes</label>
+                            <textarea 
+                                value={taskNotes}
+                                onChange={e => setTaskNotes(e.target.value)}
+                                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-20"
+                                placeholder="Details..."
+                            />
+                        </div>
+                        <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition-all">
+                            Save to Calendar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        )}
+    </div>
+  );
+};

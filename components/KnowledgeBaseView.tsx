@@ -77,7 +77,7 @@ export const CollapsibleTopic: React.FC<{
                 {/* Left Arrow: Expands Context Inline */}
                 <button 
                     onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-                    className={`p-1 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 ${!hasContent && !isOpen ? 'opacity-50' : ''}`}
+                    className={`p-1 rounded-md bg-slate-100/50 dark:bg-slate-700/50 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/30 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 ${!hasContent && !isOpen ? 'opacity-50' : ''} backdrop-blur-sm`}
                     title={hasContent ? "Expand context" : "No inline context"}
                 >
                     <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -94,7 +94,7 @@ export const CollapsibleTopic: React.FC<{
                     <div className={`w-2 h-2 rounded-full ${isStudied ? 'bg-green-500' : 'bg-red-400'}`}></div>
                     {topic.name}
                     {revisionLabel && (
-                        <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                        <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-100/50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-800 backdrop-blur-sm">
                             {revisionLabel}
                         </span>
                     )}
@@ -102,7 +102,7 @@ export const CollapsibleTopic: React.FC<{
             </div>
             
             {isOpen && hasContent && (
-                <div className="ml-8 pl-3 border-l-2 border-slate-200 dark:border-slate-700 mt-1 py-1 animate-fade-in-up">
+                <div className="ml-8 pl-3 border-l-2 border-slate-200/50 dark:border-slate-700/50 mt-1 py-1 animate-fade-in-up">
                     <ul className="space-y-2">
                         {topic.content!.map((point, idx) => (
                             <li key={idx} className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed flex items-start gap-2">
@@ -514,7 +514,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 </div>
                 
                 {/* View Toggle */}
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg self-start">
+                <div className="flex bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-lg self-start backdrop-blur-sm">
                     <button 
                         onClick={() => setViewMode('PAGE_WISE')}
                         className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'PAGE_WISE' ? 'bg-white dark:bg-slate-600 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
@@ -534,7 +534,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
         {/* New Stats Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
             {/* Card 1: Pages Studied */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pages Completed</p>
                     <div className="flex items-baseline gap-1">
@@ -542,13 +542,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400">/ {stats.totalPages}</span>
                     </div>
                 </div>
-                <div className="p-2 bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
+                <div className="p-2 bg-green-100/50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg backdrop-blur-sm">
                     <BookOpenIcon className="w-5 h-5" />
                 </div>
             </div>
 
             {/* Card 2: Subtopics Studied */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subtopics Done</p>
                     <div className="flex items-baseline gap-1">
@@ -556,13 +556,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400">/ {stats.totalSubtopics}</span>
                     </div>
                 </div>
-                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
+                <div className="p-2 bg-indigo-100/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg backdrop-blur-sm">
                     <SubtopicIcon className="w-5 h-5" />
                 </div>
             </div>
 
             {/* Card 3: Average Speed */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Avg Speed</p>
                     <div className="flex items-baseline gap-1">
@@ -570,13 +570,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400">pg/day</span>
                     </div>
                 </div>
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg">
+                <div className="p-2 bg-blue-100/50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg backdrop-blur-sm">
                     <ChartBarIcon className="w-5 h-5" />
                 </div>
             </div>
 
             {/* Card 4: Estimated Time */}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-4 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Est. Completion</p>
                     <div className="flex items-baseline gap-1">
@@ -586,26 +586,26 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400">days left</span>
                     </div>
                 </div>
-                <div className="p-2 bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg">
+                <div className="p-2 bg-amber-100/50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg backdrop-blur-sm">
                     <CalendarIcon className="w-5 h-5" />
                 </div>
             </div>
         </div>
         
         {/* Stats Summary & Filters Bar */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full mb-6 items-stretch sm:items-center bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+        <div className="flex flex-col sm:flex-row gap-2 w-full mb-6 items-stretch sm:items-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-2 rounded-xl border border-white/40 dark:border-slate-700/50 shadow-sm">
             <input 
                 type="text" 
                 placeholder={viewMode === 'SUBTOPIC_WISE' ? "Search subtopics..." : "Search pages..."}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm w-full sm:w-48 focus:ring-2 focus:ring-primary/20 outline-none"
+                className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full sm:w-48 focus:ring-2 focus:ring-primary/20 outline-none backdrop-blur-sm"
             />
             
             <select 
                 value={selectedSystem}
                 onChange={e => setSelectedSystem(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm w-full sm:w-40"
+                className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm w-full sm:w-40 backdrop-blur-sm"
             >
                 <option value="">All Systems</option>
                 {SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -616,7 +616,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 <button 
                     onClick={handleRefresh}
                     disabled={isRefreshing}
-                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors disabled:opacity-50"
+                    className="p-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors disabled:opacity-50 backdrop-blur-sm"
                     title="Full Integrity Scan"
                 >
                     <ArrowPathIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -627,7 +627,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                 <select 
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value as SortOption)}
-                    className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                    className="px-3 py-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm cursor-pointer hover:border-indigo-300 transition-colors backdrop-blur-sm"
                 >
                     <option value="PAGE">Page #</option>
                     <option value="STUDIED">Studied Status</option>
@@ -636,7 +636,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                     <option value="SYSTEM">System</option>
                     <option value="REVISIONS">Number of Revisions</option>
                 </select>
-                <button onClick={toggleSortOrder} className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors">
+                <button onClick={toggleSortOrder} className="p-2 rounded-lg border border-slate-200/50 dark:border-slate-600/50 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors backdrop-blur-sm">
                     {sortOrder === 'ASC' ? <BarsArrowDownIcon className="w-5 h-5" /> : <BarsArrowUpIcon className="w-5 h-5" />}
                 </button>
             </div>
@@ -645,11 +645,11 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
 
       {/* VIEW RENDERING */}
       {viewMode === 'PAGE_WISE' ? (
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl shadow-sm border border-white/40 dark:border-slate-700/50 overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200/50 dark:border-slate-700/50 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <th className="p-4 w-24">Page #</th>
                     <th className="p-4">Topic & Subtopics</th>
                     <th className="p-4">System / Subject</th>
@@ -707,7 +707,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                         }
 
                         return (
-                            <tr key={entry.pageNumber} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                            <tr key={entry.pageNumber} className="hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors group">
                                 <td className="p-4 align-top">
                                     <PageBadge 
                                         pageNumber={entry.pageNumber} 
@@ -735,7 +735,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                                     )}
                                 </td>
                                 <td className="p-4 align-top">
-                                    <span className="block text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded w-fit mb-1">{entry.system}</span>
+                                    <span className="block text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-700/50 px-2 py-1 rounded w-fit mb-1 backdrop-blur-sm">{entry.system}</span>
                                     <span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">{entry.subject}</span>
                                 </td>
                                 <td className="p-4 align-top">
@@ -767,7 +767,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
               {flattenedSubtopics.map(sub => (
                   <div 
                     key={sub.id} 
-                    className={`bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer relative group ${sub.isPageFallback ? 'opacity-80 bg-slate-50 dark:bg-slate-800/50' : ''}`}
+                    className={`bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer relative group ${sub.isPageFallback ? 'opacity-80 bg-slate-50/50 dark:bg-slate-800/30' : ''}`}
                     onClick={() => {
                         if (sub.isPageFallback) {
                             onViewPage(sub.pageNumber);
@@ -794,13 +794,13 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                                   <h3 className="font-bold text-lg text-slate-800 dark:text-white leading-tight group-hover:text-indigo-600 transition-colors flex items-center gap-2">
                                       {sub.title}
                                       {!sub.isPageFallback && (
-                                          <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 font-bold">
+                                          <span className="text-xs bg-amber-100/50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded border border-amber-200/50 dark:border-amber-800 font-bold backdrop-blur-sm">
                                               Rev {sub.revisionCount}
                                           </span>
                                       )}
                                   </h3>
                                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
-                                      <span className="uppercase tracking-wider text-[10px] bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded mr-2">{sub.isPageFallback ? 'PAGE TOPIC' : 'SUBTOPIC'}</span>
+                                      <span className="uppercase tracking-wider text-[10px] bg-slate-100/50 dark:bg-slate-700/50 px-1.5 py-0.5 rounded mr-2 backdrop-blur-sm">{sub.isPageFallback ? 'PAGE TOPIC' : 'SUBTOPIC'}</span>
                                       From: <span className="italic text-slate-600 dark:text-slate-300">{sub.parentTitle}</span>
                                   </p>
                               </div>
@@ -809,12 +809,12 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, sessions = 
                           <div className="text-right">
                               {sub.nextRevisionAt ? (
                                   <div className="flex flex-col items-end">
-                                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded mb-1 ${new Date(sub.nextRevisionAt) <= new Date() ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-green-50 text-green-700'}`}>
+                                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded mb-1 ${new Date(sub.nextRevisionAt) <= new Date() ? 'bg-amber-100/50 text-amber-700 animate-pulse' : 'bg-green-50/50 text-green-700'} backdrop-blur-sm`}>
                                           {new Date(sub.nextRevisionAt) <= new Date() ? 'Due Now' : 'On Track'}
                                       </span>
                                   </div>
                               ) : (
-                                  <span className="text-[10px] text-slate-400 font-bold uppercase bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">New</span>
+                                  <span className="text-[10px] text-slate-400 font-bold uppercase bg-slate-100/50 dark:bg-slate-700/50 px-2 py-1 rounded backdrop-blur-sm">New</span>
                               )}
                           </div>
                       </div>

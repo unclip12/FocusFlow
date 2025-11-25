@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getMentorMemoryData, saveMentorMemoryData } from '../services/firebase';
 import { MentorMemory, BacklogItem } from '../types';
@@ -86,7 +87,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
         <div className="animate-fade-in space-y-6 pb-20">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl">
+                    <div className="p-3 bg-purple-100/50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl backdrop-blur-sm">
                         <BrainIcon className="w-6 h-6" />
                     </div>
                     <div>
@@ -97,7 +98,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                 {!isEditing ? (
                     <button 
                         onClick={() => setIsEditing(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold text-xs"
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-100/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/80 transition-colors font-bold text-xs backdrop-blur-sm"
                     >
                         <PencilSquareIcon className="w-4 h-4" /> Edit Profile
                     </button>
@@ -112,7 +113,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
             </div>
 
             {/* PROFILE CARD */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-white/40 dark:border-slate-700/50 p-6 shadow-sm">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Core Profile</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -123,7 +124,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                                 type="text" 
                                 value={localName || ''} 
                                 onChange={e => setLocalName(e.target.value)}
-                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm"
                             />
                         ) : (
                              <p className="text-lg font-medium text-slate-900 dark:text-white">{displayName || 'Not set'}</p>
@@ -137,7 +138,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                                 type="text" 
                                 value={editForm.examTarget || ''} 
                                 onChange={e => setEditForm({...editForm, examTarget: e.target.value})}
-                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm"
                             />
                         ) : (
                             <p className="text-lg font-medium text-slate-900 dark:text-white">{memory?.examTarget || 'Not set'}</p>
@@ -151,7 +152,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                                 type="date" 
                                 value={editForm.examDate || ''} 
                                 onChange={e => setEditForm({...editForm, examDate: e.target.value})}
-                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm"
                             />
                         ) : (
                             <p className="text-lg font-medium text-slate-900 dark:text-white">{memory?.examDate || 'Not set'}</p>
@@ -164,14 +165,14 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                             <select 
                                 value={editForm.preferredTone || 'strict'} 
                                 onChange={e => setEditForm({...editForm, preferredTone: e.target.value as any})}
-                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm"
                             >
                                 <option value="strict">Strict Coach</option>
                                 <option value="encouraging">Encouraging Friend</option>
                                 <option value="balanced">Balanced</option>
                             </select>
                         ) : (
-                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase ${memory?.preferredTone === 'strict' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase ${memory?.preferredTone === 'strict' ? 'bg-red-100/50 text-red-700' : 'bg-green-100/50 text-green-700'} backdrop-blur-sm`}>
                                 {memory?.preferredTone || 'Strict'}
                             </span>
                         )}
@@ -184,7 +185,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                                 type="text" 
                                 value={editForm.learningStyle || ''} 
                                 onChange={e => setEditForm({...editForm, learningStyle: e.target.value})}
-                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                                className="w-full p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm"
                                 placeholder="e.g. Visual learner, hates reading text"
                             />
                         ) : (
@@ -195,7 +196,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
             </div>
 
             {/* BACKLOG SECTION */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-red-200 dark:border-red-900/50 p-6 shadow-sm">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-red-200/50 dark:border-red-900/30 p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
                         <ExclamationCircleIcon className="w-5 h-5" />
@@ -213,7 +214,7 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                 {memory?.backlog && memory.backlog.length > 0 ? (
                     <div className="space-y-3">
                         {memory.backlog.map((item, idx) => (
-                            <div key={idx} className="flex items-start justify-between p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl">
+                            <div key={idx} className="flex items-start justify-between p-3 bg-red-50/50 dark:bg-red-900/10 border border-red-100/50 dark:border-red-900/30 rounded-xl backdrop-blur-sm">
                                 <div>
                                     <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">{item.task}</p>
                                     <div className="flex gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -235,13 +236,13 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
             </div>
 
             {/* RAW NOTES */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-6">
+            <div className="bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-slate-700/50 p-6">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">AI Observations</h3>
                 {isEditing ? (
                     <textarea 
                         value={editForm.notes || ''}
                         onChange={e => setEditForm({...editForm, notes: e.target.value})}
-                        className="w-full p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm h-32"
+                        className="w-full p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-slate-900/50 text-sm h-32 backdrop-blur-sm"
                         placeholder="General notes regarding behavior..."
                     />
                 ) : (

@@ -12,7 +12,6 @@ import { saveTimeLog } from '../services/timeLogService';
 import { calculateNextRevisionDate } from '../services/srsService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { FALogModal, FALogData } from './FALogModal';
-import { addToHistory } from '../services/historyService';
 import { ViewStates } from '../App';
 
 interface FALoggerViewProps {
@@ -257,22 +256,12 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     ).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [knowledgeBase, selectedDate]);
 
     const studiedList = useMemo(() => {
-        const pageMap = new Map<string, any>();
-        filteredLogs.filter(l => l.type === 'STUDY').forEach(log => {
-            pageMap.set(log.pageNumber, log);
-        });
-        const list = Array.from(pageMap.values());
-        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const list = filteredLogs.filter(l => l.type === 'STUDY');
         return list;
     }, [filteredLogs]);
     
     const revisedList = useMemo(() => {
-        const pageMap = new Map<string, any>();
-        filteredLogs.filter(l => l.type === 'REVISION').forEach(log => {
-            pageMap.set(log.pageNumber, log);
-        });
-        const list =  Array.from(pageMap.values());
-        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        const list = filteredLogs.filter(l => l.type === 'REVISION');
         return list;
     }, [filteredLogs]);
     
@@ -369,8 +358,8 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
                     
                     updatedKB[kbIndex] = { ...kbEntry, logs: newLogs };
                     
-                    // Recalculate stats in case type or topics changed
-                    const finalizedEntry = recalculateEntryStats(updatedKB[kbIndex]);
+                    // Recalculate stats with settings to fix schedule
+                    const finalizedEntry = recalculateEntryStats(updatedKB[kbIndex], revisionSettings);
                     updatedKB[kbIndex] = finalizedEntry;
 
                     await onUpdateKnowledgeBase(updatedKB);
@@ -416,18 +405,11 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
     const handleDeleteLogFromModal = async (logId: string, pageNumber: string) => {
         const kbEntry = knowledgeBase.find(kb => kb.pageNumber === pageNumber);
         if (kbEntry) {
-            // Record Undo
-            addToHistory({
-                type: 'KB_UPDATE',
-                description: `Deleted log for Pg ${pageNumber}`,
-                snapshot: kbEntry
-            });
-
             const remainingLogs = kbEntry.logs.filter(l => l.id !== logId);
             const tempEntry = { ...kbEntry, logs: remainingLogs };
             
-            // Recalculate (this will reset revisionCount to 0 if no logs left)
-            const updatedEntry = recalculateEntryStats(tempEntry);
+            // Recalculate with settings to fix schedule
+            const updatedEntry = recalculateEntryStats(tempEntry, revisionSettings);
             
             const newKB = knowledgeBase.map(kb => (kb.pageNumber === pageNumber ? updatedEntry : kb));
             await onUpdateKnowledgeBase(newKB);
@@ -516,48 +498,44 @@ export const FALoggerView: React.FC<FALoggerViewProps> = ({ knowledgeBase, onUpd
             </div>
 
             {/* Date Switcher */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50 backdrop-blur-md">
-                <div className="flex items-center gap-2 w-full justify-between sm:justify-start">
-                    <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm backdrop-blur-sm">
-                        <ChevronLeftIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                    </button>
-                    <div className="relative group cursor-pointer px-4 text-center">
-                        <h3 className="font-extrabold text-lg text-slate-800 dark:text-white flex items-center gap-2 justify-center">
-                            <CalendarIcon className="w-5 h-5 text-indigo-500" />
-                            {dateLabel === "Today" || dateLabel === "Yesterday" ? dateLabel + "'s Activity" : dateLabel}
-                        </h3>
-                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
-                    </div>
-                    <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600 shadow-sm backdrop-blur-sm">
-                        <ChevronRightIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                    </button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-2 rounded-2xl border border-white/40 dark:border-slate-700/50 backdrop-blur-sm">
+                <button onClick={() => handleDateChange(-1)} className="p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-full transition-colors"><ChevronLeftIcon className="w-5 h-5 text-slate-500" /></button>
+                
+                <div className="relative">
+                    <input 
+                        type="date" 
+                        value={selectedDate} 
+                        onChange={e => setSelectedDate(e.target.value)}
+                        className="bg-transparent font-bold text-slate-800 dark:text-white text-lg text-center outline-none cursor-pointer"
+                    />
                 </div>
+
+                <button onClick={() => handleDateChange(1)} className="p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-full transition-colors"><ChevronRightIcon className="w-5 h-5 text-slate-500" /></button>
             </div>
 
-            {/* Logs Tables */}
-            <div className="grid grid-cols-1 gap-8">
-                <LogTable 
-                    title="Today's Studies" 
-                    logs={studiedList} 
-                    swipedLogId={swipedLogId} 
-                    setSwipedLogId={setSwipedLogId} 
-                    onDeleteLog={requestDelete} 
-                    onEditLog={handleEditLog}
-                    onViewPage={onViewPage} 
-                    onViewHistory={setViewingHistoryForPage} 
-                />
-                <LogTable 
-                    title="Today's Revisions" 
-                    logs={revisedList} 
-                    isRevisionTable={true} 
-                    swipedLogId={swipedLogId} 
-                    setSwipedLogId={setSwipedLogId} 
-                    onDeleteLog={requestDelete} 
-                    onEditLog={handleEditLog}
-                    onViewPage={onViewPage} 
-                    onViewHistory={setViewingHistoryForPage} 
-                />
-            </div>
+            {/* Restore Separate Tables */}
+            <LogTable
+                title={`Studied ${dateLabel}`}
+                logs={studiedList}
+                swipedLogId={swipedLogId}
+                setSwipedLogId={setSwipedLogId}
+                onDeleteLog={requestDelete}
+                onEditLog={handleEditLog}
+                onViewPage={onViewPage}
+                onViewHistory={(entry) => setViewingHistoryForPage(entry)}
+            />
+
+            <LogTable
+                title={`Revised ${dateLabel}`}
+                logs={revisedList}
+                isRevisionTable={true}
+                swipedLogId={swipedLogId}
+                setSwipedLogId={setSwipedLogId}
+                onDeleteLog={requestDelete}
+                onEditLog={handleEditLog}
+                onViewPage={onViewPage}
+                onViewHistory={(entry) => setViewingHistoryForPage(entry)}
+            />
         </div>
     );
 };

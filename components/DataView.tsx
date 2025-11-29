@@ -10,13 +10,23 @@ import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 // Helper to generate ID
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
-export const DataView: React.FC = () => {
+interface DataViewProps {
+    viewState: {
+        filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
+    };
+    setViewState: React.Dispatch<React.SetStateAction<{
+        filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
+    }>>;
+}
+
+export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) => {
     const [materials, setMaterials] = useState<StudyMaterial[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedMaterial, setSelectedMaterial] = useState<StudyMaterial | null>(null);
     
     // Filters
-    const [filterSource, setFilterSource] = useState<'ALL' | 'UPLOAD' | 'MENTOR'>('ALL');
+    const { filterSource } = viewState;
+    const setFilterSource = (source: 'ALL' | 'UPLOAD' | 'MENTOR') => setViewState(prev => ({ ...prev, filterSource: source }));
 
     // Upload State
     const [isUploading, setIsUploading] = useState(false);

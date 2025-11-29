@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CATEGORIES, TrackableItem, AppSettings } from '../types';
+import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CATEGORIES, TrackableItem, AppSettings, RevisionSettings } from '../types';
 import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon, SparklesIcon, ArrowPathIcon, LinkIcon, ListCheckIcon } from './Icons';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { explainTopic, generateQuiz, speakText } from '../services/geminiService';
-import { uploadFile } from '../services/firebase';
+import { uploadFile, getRevisionSettings } from '../services/firebase';
 import { getData } from '../services/dbService';
 import { CollapsibleTopic } from './KnowledgeBaseView'; 
 import { syncAnkiToDb, openAnkiBrowser, AnkiStats } from '../services/ankiService';
@@ -60,12 +60,14 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   const [ankiStats, setAnkiStats] = useState<AnkiStats | null>(null);
   const [isSyncingAnki, setIsSyncingAnki] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({ mode: 'balanced', targetCount: 7 });
 
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      // Load settings for Anki Host
+      // Load settings
       getData<AppSettings>('settings').then(s => s && setAppSettings(s));
+      getRevisionSettings().then(s => s && setRevisionSettings(s));
     } else {
       document.body.style.overflow = '';
     }
@@ -166,8 +168,8 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
           const remainingLogs = entry.logs.filter(l => l.id !== logId);
           const tempEntry = { ...entry, logs: remainingLogs };
           
-          // Recalculate stats
-          const updatedEntry = recalculateEntryStats(tempEntry);
+          // Recalculate stats with settings
+          const updatedEntry = recalculateEntryStats(tempEntry, revisionSettings);
           
           // If editing, update the form state so it doesn't revert on save
           if (isEditing) {
@@ -525,6 +527,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                                             topic={topic}
                                             baseRevisionCount={baseRevisionCount}
                                             onOpenModal={() => setViewingSubtopic(topic)}
+                                            highlight=""
                                        />
                                    ))}
                                </div>

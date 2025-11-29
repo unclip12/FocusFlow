@@ -1,6 +1,4 @@
 
-import { getToken } from "firebase/messaging";
-import { doc, setDoc } from "firebase/firestore";
 import { auth, db, messaging } from "./firebase";
 import { AppSettings } from "../types";
 
@@ -16,14 +14,15 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
             // Get FCM Token only if messaging is initialized
             if (auth.currentUser && messaging) {
                 try {
-                    // VAPID key should ideally come from environment or config
-                    const token = await getToken(messaging, { 
+                    // Using messaging.getToken() from compat library
+                    // VAPID key usually passed as object: { vapidKey: ... }
+                    const token = await messaging.getToken({ 
                         vapidKey: "BMX8y-1... (Replace with actual VAPID from Firebase Console if available, or rely on default)" 
                     });
                     
                     if (token) {
-                        // Store token in Firestore
-                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'notificationTokens', token), {
+                        // Store token in Firestore (compat syntax)
+                        await db.collection('users').doc(auth.currentUser.uid).collection('notificationTokens').doc(token).set({
                             token: token,
                             platform: 'web-pwa',
                             createdAt: new Date().toISOString(),

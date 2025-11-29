@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan, getAppSettings, saveAppSettings } from './services/firebase';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
@@ -14,12 +15,15 @@ import {
   AppTheme,
   DEFAULT_MENU_ORDER,
   MenuItemConfig,
-  RevisionItem
+  RevisionItem,
+  FMGEEntry,
+  THEME_COLORS
 } from './types';
 import { getData, saveData } from './services/dbService';
 import { calculateNextRevisionDate } from './services/srsService';
 import { checkAndMigrateOverdueTasks } from './services/planService';
 import { performFullIntegrityCheck } from './services/faLoggerService';
+import { createSnapshot, checkAndTriggerDailyBackup } from './services/historyService';
 
 
 // Components
@@ -46,6 +50,7 @@ import { AIMemoryView } from './components/AIMemoryView';
 import { FALoggerView } from './components/FALoggerView';
 import { TimeLoggerView } from './components/TimeLoggerView';
 import { DailyTrackerView } from './components/DailyTrackerView';
+import { FMGEView } from './components/FMGEView'; 
 import { toggleMaterialActive } from './services/firebase';
 import { FALogData } from './components/FALogModal';
 
@@ -56,6 +61,7 @@ import { requestNotificationPermission } from './services/notificationService';
 const ALL_MENU_ITEMS = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
     { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
+    { id: 'FMGE', label: "FMGE Prep", icon: BookOpenIcon }, // NEW
     { id: 'CALENDAR', label: 'Calendar', icon: CalendarPlusIcon },
     { id: 'TIME_LOGGER', label: 'Time Logger', icon: ClockIcon },
     { id: 'DAILY_TRACKER', label: 'Daily Tracker', icon: ClipboardDocumentCheckIcon },
@@ -146,13 +152,14 @@ export interface ViewStates {
 
 export default function App() {
   // Auth
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<firebase.User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [displayName, setDisplayName] = useState<string>('');
 
   // Data State
   const [studyPlan, setStudyPlan] = useState<StudyPlanItem[]>([]);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseEntry[]>([]);
+  const [fmgeData, setFmgeData] = useState<FMGEEntry[]>([]); // NEW: FMGE Data
   const [todayPlan, setTodayPlan] = useState<DayPlan | null>(null); // Store today's plan for dashboard
   
   const [settings, setSettings] = useState<AppSettings>({ 
@@ -184,7 +191,7 @@ export default function App() {
   const [examDate, setExamDate] = useState<string | null>(null);
 
   // UI State
-  const [currentView, setCurrentView] = useState<'DASHBOARD' | 'PLANNER' | 'CALENDAR' | 'REVISION' | 'KNOWLEDGE_BASE' | 'DATA' | 'CHAT' | 'SETTINGS' | 'TODAYS_PLAN' | 'AI_MEMORY' | 'FA_LOGGER' | 'TIME_LOGGER' | 'DAILY_TRACKER'>('DASHBOARD');
+  const [currentView, setCurrentView] = useState<'DASHBOARD' | 'PLANNER' | 'CALENDAR' | 'REVISION' | 'KNOWLEDGE_BASE' | 'DATA' | 'CHAT' | 'SETTINGS' | 'TODAYS_PLAN' | 'AI_MEMORY' | 'FA_LOGGER' | 'TIME_LOGGER' | 'DAILY_TRACKER' | 'FMGE'>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false); 
   const [targetPlanDate, setTargetPlanDate] = useState<string | undefined>(undefined);
@@ -265,11 +272,31 @@ export default function App() {
       setTodayPlan(plan);
   };
 
+  // Scheduled Backup Checker
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (user) {
+          // Run check immediately on load
+          checkAndTriggerDailyBackup();
+          
+          // Then run periodically (e.g., every minute) to catch 4 AM if app stays open
+          const interval = setInterval(() => {
+              checkAndTriggerDailyBackup();
+          }, 60 * 1000);
+          
+          return () => clearInterval(interval);
+      }
+  }, [user]);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (u) => {
       setUser(u);
       
       if (u) {
+        // Load Revision Settings First
+        const loadedRevSettings = await getRevisionSettings();
+        if (loadedRevSettings) setRevisionSettings(loadedRevSettings);
+        const currentRevSettings = loadedRevSettings || { mode: 'balanced', targetCount: 7 }; // Default fallback
+
         // Load from IndexedDB first for speed, then sync with Firestore
         const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
         setStudyPlan(localPlan);
@@ -280,8 +307,8 @@ export default function App() {
         // 1. Fetch Firestore
         const firestoreKB = await getKnowledgeBase();
         
-        // 2. AUTO-RUN INTEGRITY CHECK ON LOAD
-        const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB);
+        // 2. AUTO-RUN INTEGRITY CHECK ON LOAD - WITH REVISION SETTINGS
+        const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
         
         // 3. Update State
         setKnowledgeBase(checkedKB);
@@ -292,6 +319,10 @@ export default function App() {
             console.log("Self-healing: KB Integrity issues found and fixed.");
             await saveKnowledgeBase(checkedKB);
         }
+
+        // LOAD FMGE DATA
+        const fmge = await getFMGEData();
+        setFmgeData(fmge);
 
         // Automated Task Migration on Load
         await checkAndMigrateOverdueTasks();
@@ -351,9 +382,6 @@ export default function App() {
         } finally {
             setSettingsLoaded(true);
         }
-
-        const loadedRevSettings = await getRevisionSettings();
-        if (loadedRevSettings) setRevisionSettings(loadedRevSettings);
 
         const loadedExamDate = await getData<string>('examDate');
         const loadedProfile = await getFirebaseUserProfile();
@@ -446,10 +474,16 @@ export default function App() {
         const root = document.documentElement;
         const isDark = settings.darkMode;
         
+        // Apply Backgrounds & Surfaces
         root.style.setProperty('--app-bg', isDark ? theme.darkBgGradient : theme.bgGradient);
         root.style.setProperty('--color-background', isDark ? theme.darkBackgroundRGB : theme.backgroundRGB);
         root.style.setProperty('--color-surface', isDark ? theme.darkSurfaceRGB : theme.surfaceRGB);
         
+        // Apply Primary Accent Color
+        const activeColorValue = settings.primaryColor || 'indigo';
+        const colorDef = THEME_COLORS.find(c => c.value === activeColorValue) || THEME_COLORS[0];
+        root.style.setProperty('--color-primary', colorDef.rgb);
+
         if (isDark) {
             root.classList.add('dark');
         } else {
@@ -457,7 +491,7 @@ export default function App() {
         }
     };
     applyTheme();
-  }, [settings.themeId, settings.darkMode]);
+  }, [settings.themeId, settings.darkMode, settings.primaryColor]);
 
   const handleUpdateDisplayName = async (newName: string) => {
       setDisplayName(newName);
@@ -482,8 +516,19 @@ export default function App() {
       await saveData('knowledgeBase_v2', newKB);
   };
 
+  const handleUpdateFMGE = async (entry: FMGEEntry) => {
+      // Replace existing or add new using functional update to avoid race conditions
+      setFmgeData(prev => prev.filter(e => e.id !== entry.id).concat(entry));
+      await saveFMGEEntry(entry);
+  };
+
+  const handleDeleteFMGE = async (id: string) => {
+      setFmgeData(prev => prev.filter(e => e.id !== id));
+      await deleteFMGEEntry(id);
+  };
+
   const handleIntegrityCheck = async () => {
-      const { updated, data: checkedKB } = performFullIntegrityCheck(knowledgeBase);
+      const { updated, data: checkedKB } = performFullIntegrityCheck(knowledgeBase, revisionSettings);
       if (updated) {
           await updateKB(checkedKB);
           alert("System scan complete. Inconsistencies fixed.");
@@ -493,6 +538,7 @@ export default function App() {
   };
 
   const handleRestoreData = async (type: string, data: any) => {
+      // Legacy support kept, but new system handles full restore
       if (type === 'KB_UPDATE') {
           const entry = data as KnowledgeBaseEntry;
           const updatedKB = knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k);
@@ -542,7 +588,7 @@ export default function App() {
     updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? updatedEntry : k));
   };
 
-  const handleAddToPlan = (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
+  const handleAddToPlan = async (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
       const newItem: StudyPlanItem = {
           ...item,
           id: Date.now().toString(36),
@@ -607,8 +653,14 @@ export default function App() {
             }
         });
     });
+    // Add FMGE due items
+    fmgeData.forEach(fmge => {
+        if (fmge.nextRevisionAt && new Date(fmge.nextRevisionAt) <= new Date()) {
+            items.push({ id: fmge.id, title: `Revise: ${fmge.subject}`, subtitle: `Slides ${fmge.slideStart}-${fmge.slideEnd}`, type: 'REVISION', urgent: true });
+        }
+    });
     return items;
-  }, [knowledgeBase]);
+  }, [knowledgeBase, fmgeData]);
 
   if (authLoading) return <div className="flex items-center justify-center h-screen bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-md"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
   if (!user) return <LoginView />;
@@ -799,8 +851,8 @@ export default function App() {
                         knowledgeBase={knowledgeBase}
                         sessions={[]}
                         onAddToPlan={handleAddToPlan}
-                        onUpdatePlanItem={(item) => updatePlan(studyPlan.map(p => p.id === item.id ? item : p))}
-                        onCompleteTask={(item) => {
+                        onUpdatePlanItem={async (item) => { updatePlan(studyPlan.map(p => p.id === item.id ? item : p)); }}
+                        onCompleteTask={async (item) => {
                             const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined };
                             updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p));
                         }}
@@ -819,7 +871,7 @@ export default function App() {
                         onManageSession={(session) => {
                             if(session && session.pageNumber) handleViewPage(session.pageNumber);
                         }}
-                        onToggleSubTask={(planId, subTaskId) => {
+                        onToggleSubTask={async (planId, subTaskId) => {
                             const planItem = studyPlan.find(p => p.id === planId);
                             if (planItem && planItem.subTasks) {
                                 const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t);
@@ -827,7 +879,7 @@ export default function App() {
                                 updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p));
                             }
                         }}
-                        onDeleteLog={(planId, logId) => {
+                        onDeleteLog={async (planId, logId) => {
                             const planItem = studyPlan.find(p => p.id === planId);
                             if (planItem && planItem.logs) {
                                 const updatedLogs = planItem.logs.filter(l => l.id !== logId);
@@ -847,6 +899,7 @@ export default function App() {
                         onUpdateSettings={handleUpdateSettings} 
                         knowledgeBase={knowledgeBase}
                         onUpdateKnowledgeBase={updateKB}
+                        onUpdateFMGE={handleUpdateFMGE}
                     />
                 )}
 
@@ -882,12 +935,20 @@ export default function App() {
                     />
                 )}
 
+                {currentView === 'FMGE' && (
+                    <FMGEView 
+                        fmgeData={fmgeData}
+                        onUpdateFMGE={handleUpdateFMGE}
+                        onDeleteFMGE={handleDeleteFMGE}
+                    />
+                )}
+
                 {currentView === 'REVISION' && (
                     <RevisionView 
                         knowledgeBase={knowledgeBase}
                         onLogRevision={(item) => {
                             setSessionPrefill({
-                                topic: item.title,
+                                topic: item.title, // Use grouped title if it's a batch revision
                                 pageNumber: item.pageNumber,
                                 category: item.kbEntry.subject,
                                 system: item.kbEntry.system,
@@ -987,6 +1048,7 @@ export default function App() {
                   if (latestLog) {
                       let kbEntry = knowledgeBase.find(k => k.pageNumber === pageNumber);
                       if (!kbEntry) {
+                          // Should rarely happen in Revision Flow as we revise existing pages
                           kbEntry = {
                               pageNumber,
                               title: topic || `Page ${pageNumber}`,
@@ -1009,26 +1071,30 @@ export default function App() {
                           kbEntry = { ...kbEntry, notes: notes || kbEntry.notes, ankiCovered: ankiCovered || kbEntry.ankiCovered, ankiTotal: ankiTotal || kbEntry.ankiTotal };
                       }
 
+                      const isRevision = latestLog.type === 'REVISION' || latestLog.type === undefined; // Default to revision context
+                      
                       const newLog: RevisionLog = {
                           id: latestLog.id,
                           timestamp: latestLog.startTime,
                           durationMinutes: latestLog.durationMinutes,
                           revisionIndex: latestLog.type === 'INITIAL' ? 0 : kbEntry.revisionCount + 1,
-                          type: latestLog.type === 'INITIAL' ? 'STUDY' : 'REVISION',
+                          type: isRevision ? 'REVISION' : 'STUDY',
                           notes: latestLog.notes,
                           source: 'MODAL',
-                          topics: [topic].filter(Boolean),
+                          topics: topic ? topic.split(',').map(t => t.trim()).filter(Boolean) : [], // Store multiple topics if comma-separated
                           attachments: latestLog.attachments
                       };
-                      
-                      const isRevision = newLog.type === 'REVISION';
                       
                       let updatedTopics = [...kbEntry.topics];
                       let foundTopic = false;
                       
+                      // MULTI-TOPIC UPDATE LOGIC
                       if (topic) {
+                          // Split by comma to handle grouped revisions ("Topic A, Topic B")
+                          const targetTopics = topic.split(',').map(t => t.trim().toLowerCase());
+                          
                           updatedTopics = updatedTopics.map(t => {
-                              if (t.name.trim().toLowerCase() === topic.trim().toLowerCase()) {
+                              if (targetTopics.includes(t.name.trim().toLowerCase())) {
                                   foundTopic = true;
                                   const tCurrentRev = t.revisionCount || 0;
                                   const tNextIndex = isRevision ? t.currentRevisionIndex + 1 : 0;
@@ -1049,6 +1115,8 @@ export default function App() {
                       const newRevIndex = isRevision ? kbEntry.currentRevisionIndex + 1 : 0;
                       
                       let pageNextDate = kbEntry.nextRevisionAt;
+                      // If we updated specific topics, page next date remains derived or specific.
+                      // If no topics found (Whole Page context) OR if we want page to track overall revision
                       if (!foundTopic || kbEntry.topics.length === 0) {
                            const nextDateObj = calculateNextRevisionDate(new Date(latestLog.startTime), newRevIndex, revisionSettings);
                            pageNextDate = nextDateObj ? nextDateObj.toISOString() : null;

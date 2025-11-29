@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings, TrackableItem } from '../types';
+import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings, TrackableItem, DayPlan } from '../types';
 import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
-import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, PhotoIcon, DatabaseIcon, PlusIcon } from './Icons';
+import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, DatabaseIcon, PlusIcon } from './Icons';
 import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan, saveKnowledgeBase } from '../services/firebase';
 import { generateBlocks } from '../services/blockGenerator';
 import { startBlock, updateBlockInPlan, finishBlock } from '../services/planService';
@@ -29,6 +29,13 @@ const addMinutesToTime = (timeStr: string, minutesToAdd: number): string => {
   }
 };
 
+const parseTimeMinutes = (timeStr: string): number => {
+    try {
+        const [h, m] = timeStr.split(':').map(Number);
+        return h * 60 + m;
+    } catch (e) { return 0; }
+};
+
 interface AIChatViewProps {
   sessions: StudySession[];
   studyPlan: StudyPlanItem[];
@@ -38,12 +45,23 @@ interface AIChatViewProps {
   displayName?: string;
   knowledgeBase: KnowledgeBaseEntry[];
   onUpdateKnowledgeBase: (newKB: KnowledgeBaseEntry[]) => Promise<void>;
+  viewState: {
+      mode: 'MENTOR' | 'BUDDY';
+      input: string;
+  };
+  setViewState: React.Dispatch<React.SetStateAction<{
+      mode: 'MENTOR' | 'BUDDY';
+      input: string;
+  }>>;
 }
 
 type ChatMode = 'MENTOR' | 'BUDDY';
 
-export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, streak, onAddToPlan, onViewDayPlan, displayName, knowledgeBase, onUpdateKnowledgeBase }) => {
-  const [mode, setMode] = useState<ChatMode>('MENTOR');
+export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, streak, onAddToPlan, onViewDayPlan, displayName, knowledgeBase, onUpdateKnowledgeBase, viewState, setViewState }) => {
+  const { mode, input } = viewState;
+  const setMode = (m: ChatMode) => setViewState(prev => ({ ...prev, mode: m }));
+  const setInput = (i: string) => setViewState(prev => ({ ...prev, input: i }));
+
   const [selectedModel, setSelectedModel] = useState<string>('chatbot');
   
   const [mentorMessages, setMentorMessages] = useState<MentorMessage[]>([]);
@@ -66,7 +84,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
 
   const [todaysBlocks, setTodaysBlocks] = useState<Block[]>([]);
 
-  const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -635,21 +652,72 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
         }
 
         // 2. Schedule Parsing (Existing Logic)
-        const parsedPlans = parseSchedule(textToSend, getAdjustedDate(new Date()));
+        // CRITICAL: Use getAdjustedDate to ensure we parse relative to local date
+        const todayStr = getAdjustedDate(new Date());
+        const parsedPlans = parseSchedule(textToSend, todayStr);
         
         if (parsedPlans && parsedPlans.length > 0) {
             // Iterate and save ALL days found
             let summaryText = `✅ Schedule Parsed Successfully! I've created detailed plans for ${parsedPlans.length} days:\n\n`;
             
+            // Removed Auto Snapshot
+
             for (const plan of parsedPlans) {
+                // MERGE LOGIC START: Preserve existing completed history
+                // Fetch existing plan for that day first
+                const existingPlan = await getDayPlan(plan.date);
+
+                if (existingPlan && existingPlan.blocks && existingPlan.blocks.length > 0) {
+                    // Identify Protected Blocks (Completed/Active)
+                    // We want to keep anything that is marked DONE, IN_PROGRESS, or PAUSED
+                    const lockedBlocks = existingPlan.blocks.filter(b => 
+                        b.status === 'DONE' || 
+                        b.status === 'IN_PROGRESS' || 
+                        b.status === 'PAUSED' ||
+                        b.completionStatus === 'PARTIAL' ||
+                        b.completionStatus === 'COMPLETED'
+                    );
+
+                    // The AI parser generates fresh blocks. We should append them, but check for overlap.
+                    // If AI generates a block at 9:00, and we have a DONE block at 9:00, we KEEP the DONE block.
+                    // We remove the AI block if it strictly conflicts with a LOCKED block.
+                    
+                    const newBlocksFiltered = (plan.blocks || []).filter(newB => {
+                        const newStart = parseTimeMinutes(newB.plannedStartTime);
+                        const newEnd = parseTimeMinutes(newB.plannedEndTime);
+                        
+                        // Check intersection with ANY locked block
+                        const hasOverlap = lockedBlocks.some(lockedB => {
+                            const lockedStart = parseTimeMinutes(lockedB.plannedStartTime);
+                            const lockedEnd = parseTimeMinutes(lockedB.plannedEndTime);
+                            // Standard Overlap: (StartA < EndB) and (EndA > StartB)
+                            return newStart < lockedEnd && newEnd > lockedStart;
+                        });
+                        
+                        return !hasOverlap;
+                    });
+
+                    // Merge & Sort
+                    const mergedBlocks = [...lockedBlocks, ...newBlocksFiltered].sort((a, b) => 
+                        parseTimeMinutes(a.plannedStartTime) - parseTimeMinutes(b.plannedStartTime)
+                    );
+
+                    // Re-index
+                    mergedBlocks.forEach((b, idx) => b.index = idx);
+
+                    // Update Plan
+                    plan.blocks = mergedBlocks;
+                    plan.totalStudyMinutesPlanned = mergedBlocks.reduce((acc, b) => b.type !== 'BREAK' ? acc + b.plannedDurationMinutes : acc, 0);
+                }
+                // MERGE LOGIC END
+
                 await saveDayPlan(plan);
                 summaryText += `📅 **${plan.date}**: ${plan.blocks?.length} blocks (inc. video speeds)\n`;
             }
             summaryText += `\nYou can view them in the "Today's Plan" section or Calendar.`;
 
             // Refresh current day blocks if today was updated
-            const today = getAdjustedDate(new Date());
-            if (parsedPlans.some(p => p.date === today)) {
+            if (parsedPlans.some(p => p.date === todayStr)) {
                 await loadTodaysBlocks();
             }
 
@@ -819,6 +887,57 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                                }));
                            }
 
+                           // Removed Auto Snapshot
+
+                           // MERGE LOGIC START: Preserve existing history
+                           const existingPlan = await getDayPlan(planArgs.date);
+
+                           if (existingPlan && existingPlan.blocks && existingPlan.blocks.length > 0) {
+                               // 1. Identify Protected Blocks (Completed/Active)
+                               const lockedBlocks = existingPlan.blocks.filter(b => 
+                                   b.status === 'DONE' || 
+                                   b.status === 'IN_PROGRESS' || 
+                                   b.status === 'PAUSED' ||
+                                   b.completionStatus === 'PARTIAL' ||
+                                   b.completionStatus === 'NOT_DONE' ||
+                                   b.completionStatus === 'COMPLETED'
+                               );
+
+                               // 2. Filter New Blocks (Remove overlaps with locked blocks)
+                               const newBlocksFiltered = (planArgs.blocks || []).filter(newB => {
+                                   const newStart = parseTimeMinutes(newB.plannedStartTime);
+                                   const newEnd = parseTimeMinutes(newB.plannedEndTime);
+                                   
+                                   // Check intersection with ANY locked block
+                                   const hasOverlap = lockedBlocks.some(lockedB => {
+                                       const lockedStart = parseTimeMinutes(lockedB.plannedStartTime);
+                                       const lockedEnd = parseTimeMinutes(lockedB.plannedEndTime);
+                                       // Overlap condition: (StartA < EndB) and (EndA > StartB)
+                                       return newStart < lockedEnd && newEnd > lockedStart;
+                                   });
+                                   
+                                   // If no overlap, keep it
+                                   return !hasOverlap;
+                               });
+
+                               // 3. Merge & Sort
+                               const mergedBlocks = [...lockedBlocks, ...newBlocksFiltered].sort((a, b) => 
+                                   parseTimeMinutes(a.plannedStartTime) - parseTimeMinutes(b.plannedStartTime)
+                               );
+
+                               // 4. Re-index
+                               mergedBlocks.forEach((b, idx) => b.index = idx);
+
+                               // 5. Update Plan Args
+                               planArgs.blocks = mergedBlocks;
+                               
+                               // Recalculate total minutes based on merged blocks
+                               planArgs.totalStudyMinutesPlanned = mergedBlocks.reduce((acc, b) => {
+                                   return b.type !== 'BREAK' ? acc + b.plannedDurationMinutes : acc;
+                               }, 0);
+                           }
+                           // MERGE LOGIC END
+
                            await saveDayPlan(planArgs);
                            setTodaysBlocks(planArgs.blocks!);
                        }
@@ -843,6 +962,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                        else if (call.name === 'deleteDayPlan') {
                            const args = call.args as any;
                            const dateToDelete = args.date || getAdjustedDate(new Date());
+                           // Removed Auto Snapshot
                            await deleteDayPlan(dateToDelete);
                            
                            const today = getAdjustedDate(new Date());

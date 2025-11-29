@@ -1,5 +1,4 @@
 
-import { collection, getDocs, writeBatch, doc, runTransaction } from "firebase/firestore";
 import { auth, db, cleanData } from "./firebase";
 import { initDB } from "./dbService";
 
@@ -36,8 +35,8 @@ export const exportUserData = async (): Promise<void> => {
 
     // 1. Fetch Main Collections
     for (const colName of USER_COLLECTIONS) {
-        const colRef = collection(db, 'users', uid, colName);
-        const snapshot = await getDocs(colRef);
+        const colRef = db.collection('users').doc(uid).collection(colName);
+        const snapshot = await colRef.get();
         backupData.data[colName] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
@@ -47,8 +46,8 @@ export const exportUserData = async (): Promise<void> => {
     backupData.data['materialChats'] = {};
     
     for (const mat of materials) {
-        const subColRef = collection(db, 'users', uid, 'materials', mat.id, 'chats');
-        const snap = await getDocs(subColRef);
+        const subColRef = db.collection('users').doc(uid).collection('materials').doc(mat.id).collection('chats');
+        const snap = await subColRef.get();
         if (!snap.empty) {
             backupData.data['materialChats'][mat.id] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
@@ -57,8 +56,8 @@ export const exportUserData = async (): Promise<void> => {
     // 3. Configs (Single Docs usually)
     const configCollections = ['config', 'profile', 'aiMentorMemory'];
     for (const conf of configCollections) {
-        const colRef = collection(db, 'users', uid, conf);
-        const snapshot = await getDocs(colRef);
+        const colRef = db.collection('users').doc(uid).collection(conf);
+        const snapshot = await colRef.get();
         backupData.data[conf] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
@@ -81,13 +80,13 @@ export const importUserData = async (jsonData: any): Promise<void> => {
     }
 
     // Batch writes (Max 500 ops per batch)
-    let batch = writeBatch(db);
+    let batch = db.batch();
     let opCount = 0;
 
     const commitBatch = async () => {
         if (opCount > 0) {
             await batch.commit();
-            batch = writeBatch(db);
+            batch = db.batch();
             opCount = 0;
         }
     };
@@ -100,7 +99,7 @@ export const importUserData = async (jsonData: any): Promise<void> => {
         if (Array.isArray(items)) {
             for (const item of items) {
                 if (!item.id) continue;
-                const docRef = doc(db, 'users', uid, colName, item.id);
+                const docRef = db.collection('users').doc(uid).collection(colName).doc(item.id);
                 // Use cleanData to ensure no undefined values
                 batch.set(docRef, cleanData(item));
                 opCount++;
@@ -117,7 +116,7 @@ export const importUserData = async (jsonData: any): Promise<void> => {
             if (Array.isArray(chats)) {
                 for (const chat of chats) {
                     if (!chat.id) continue;
-                    const docRef = doc(db, 'users', uid, 'materials', matId, 'chats', chat.id);
+                    const docRef = db.collection('users').doc(uid).collection('materials').doc(matId).collection('chats').doc(chat.id);
                     batch.set(docRef, cleanData(chat));
                     opCount++;
                     if (opCount >= 450) await commitBatch();
@@ -138,10 +137,10 @@ export const resetAppData = async (): Promise<void> => {
 
     // Helper to delete collection in batches
     const deleteCollection = async (collectionPath: string, subCollection?: string) => {
-        const colRef = collection(db, collectionPath);
-        const snapshot = await getDocs(colRef);
+        const colRef = db.collection(collectionPath);
+        const snapshot = await colRef.get();
         
-        let batch = writeBatch(db);
+        let batch = db.batch();
         let count = 0;
 
         for (const d of snapshot.docs) {
@@ -155,7 +154,7 @@ export const resetAppData = async (): Promise<void> => {
             count++;
             if (count >= 400) {
                 await batch.commit();
-                batch = writeBatch(db);
+                batch = db.batch();
                 count = 0;
             }
         }

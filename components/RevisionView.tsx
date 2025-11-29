@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo } from 'react';
 import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, RevisionLog, RevisionItem } from '../types';
-import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon, FireIcon, ListCheckIcon, DocumentTextIcon, TrashIcon } from './Icons';
+import { ArrowPathIcon, CheckCircleIcon, ChevronRightIcon, BookOpenIcon, BarsArrowUpIcon, BarsArrowDownIcon, FireIcon, ListCheckIcon, DocumentTextIcon, TrashIcon, ClockIcon } from './Icons';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine 
 } from 'recharts';
@@ -25,11 +26,16 @@ interface RevisionItemCardProps {
 }
 
 const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase, onLogRevision, onViewPage, onDelete }) => {
-    const { pageNumber, title, parentTitle, nextRevisionAt, currentRevisionIndex, type } = item;
+    const { pageNumber, title, parentTitle, nextRevisionAt, currentRevisionIndex, type, groupedTopics } = item;
     const isDue = new Date(nextRevisionAt) <= new Date();
     const isWholePage = type === 'PAGE';
+    const isGroup = !!groupedTopics && groupedTopics.length > 1;
     
     const progress = calculatePageProgress(item.kbEntry);
+
+    const dueDate = new Date(nextRevisionAt);
+    const dateStr = dueDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const timeStr = dueDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
         <div className={`group relative bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.1)] border border-white/40 dark:border-slate-700/50 shadow-sm ${isDue ? 'border-l-4 border-l-amber-400' : ''}`}>
@@ -43,7 +49,7 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                         onClick={() => onViewPage(pageNumber)}
                     />
                     {!isWholePage && (
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm" title="Subtopic Revision">
+                        <div className={`absolute -bottom-1 -right-1 w-5 h-5 text-white rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm ${isGroup ? 'bg-fuchsia-500' : 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'}`} title={isGroup ? "Grouped Revision" : "Subtopic Revision"}>
                             <ListCheckIcon className="w-3 h-3" />
                         </div>
                     )}
@@ -53,6 +59,10 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                         {isWholePage ? (
                             <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600">
                                 Whole Page
+                            </span>
+                        ) : isGroup ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 px-2 py-0.5 rounded border border-fuchsia-100 dark:border-fuchsia-800">
+                                {groupedTopics?.length} Topics Batch
                             </span>
                         ) : (
                             <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">
@@ -64,25 +74,32 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                         </span>
                     </div>
                     
-                    <h4 className="font-bold text-slate-800 dark:text-slate-100 truncate text-lg group-hover:text-indigo-600 transition-colors">
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100 truncate text-lg group-hover:text-indigo-600 transition-colors" title={title}>
                         {title}
                     </h4>
                     
-                    {!isWholePage && (
+                    {!isWholePage && !isGroup && (
                         <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
                             <DocumentTextIcon className="w-3 h-3" />
                             Context: {parentTitle}
                         </p>
                     )}
 
-                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-3">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-3">
                         <span className="font-bold bg-slate-100/50 dark:bg-slate-700/50 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300 shadow-sm border border-slate-200/50 dark:border-slate-600/50 backdrop-blur-sm">
                             Rev #{currentRevisionIndex}
                         </span>
-                        <span className="font-medium">Due: {new Date(nextRevisionAt).toLocaleString([], {
-                            month: 'short', day: 'numeric',
-                            hour: 'numeric', minute: '2-digit'
-                        })}</span>
+                        
+                        <div className="flex items-center gap-1.5 bg-white/50 dark:bg-slate-800/50 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-700">
+                            <span className="font-medium text-slate-600 dark:text-slate-400">Due:</span>
+                            <span className="font-bold text-slate-800 dark:text-white">{dateStr}</span>
+                            <span className="text-slate-400 text-[10px]">at</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                <ClockIcon className="w-3 h-3" />
+                                {timeStr}
+                            </span>
+                        </div>
+
                         {isDue && <span className="text-amber-600 dark:text-amber-400 font-black animate-pulse bg-amber-100/50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md text-[10px] tracking-wide uppercase backdrop-blur-sm">DUE NOW</span>}
                     </div>
                 </div>
@@ -167,28 +184,30 @@ interface RevisionViewProps {
   onDeleteSession: (id: string) => void;
   onViewPage: (page: string) => void;
   onDeleteRevision: (item: RevisionItem) => void; // New Prop
+  viewState: {
+      activeTab: 'DUE' | 'UPCOMING' | 'HISTORY';
+      sortBy: 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
+      sortOrder: 'ASC' | 'DESC';
+  };
+  setViewState: React.Dispatch<React.SetStateAction<any>>; // Simplified type
 }
 
 type SortOption = 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
 type SortOrder = 'ASC' | 'DESC';
 
-export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevision, onDeleteSession, onViewPage, onDeleteRevision }) => {
-  const [activeTab, setActiveTab] = useState<'DUE' | 'UPCOMING' | 'HISTORY'>('DUE');
-  const [sortBy, setSortBy] = useState<SortOption>('TIME');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('ASC');
+export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLogRevision, onDeleteSession, onViewPage, onDeleteRevision, viewState, setViewState }) => {
+  const { activeTab, sortBy, sortOrder } = viewState;
   
   const [itemToDelete, setItemToDelete] = useState<RevisionItem | null>(null);
 
   const now = new Date();
   
   const handleTabClick = (tab: 'DUE' | 'UPCOMING' | 'HISTORY') => {
-      setActiveTab(tab);
-      setSortBy('TIME');
+      let newSortOrder = 'ASC';
       if (tab === 'HISTORY') {
-          setSortOrder('DESC'); // Newest first for history
-      } else {
-          setSortOrder('ASC'); // Soonest first for due/upcoming
+          newSortOrder = 'DESC'; // Newest first for history
       }
+      setViewState(prev => ({ ...prev, activeTab: tab, sortBy: 'TIME', sortOrder: newSortOrder }));
   };
 
   const confirmDelete = () => {
@@ -218,11 +237,12 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
   }, [knowledgeBase]);
 
   const allRevisionItems = useMemo((): RevisionItem[] => {
-    const items: RevisionItem[] = [];
+    const ungroupedItems: RevisionItem[] = [];
+    
     knowledgeBase.forEach(kb => {
         // 1. Page Level (Only add if page itself has a nextRevisionAt)
         if(kb.nextRevisionAt) {
-            items.push({
+            ungroupedItems.push({
                 type: 'PAGE',
                 pageNumber: kb.pageNumber,
                 title: kb.title,
@@ -233,10 +253,12 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                 kbEntry: kb,
             });
         }
+        
         // 2. Topic Level
+        const pageTopics: RevisionItem[] = [];
         kb.topics.forEach(topic => {
             if (topic.nextRevisionAt) {
-                items.push({
+                pageTopics.push({
                     type: 'TOPIC',
                     pageNumber: kb.pageNumber,
                     title: topic.name,
@@ -248,26 +270,45 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                     topic: topic
                 });
             }
-            // 3. Subtopic Level (If any - usually same as topic structure)
-            (topic.subTopics || []).forEach(subTopic => {
-                if (subTopic.nextRevisionAt) {
-                    items.push({
-                        type: 'SUBTOPIC',
-                        pageNumber: kb.pageNumber,
-                        title: subTopic.name,
-                        parentTitle: topic.name,
-                        nextRevisionAt: subTopic.nextRevisionAt,
-                        currentRevisionIndex: subTopic.currentRevisionIndex,
-                        id: `sub-${kb.pageNumber}-${topic.id}-${subTopic.id}`,
-                        kbEntry: kb,
-                        topic: topic,
-                        subTopic: subTopic
-                    });
-                }
-            });
+            // Subtopic level not deeply implemented in UI display but logic exists
+        });
+
+        // GROUPING LOGIC: Group topics from same page with same nextRevisionAt
+        const topicsByTime = new Map<string, RevisionItem[]>();
+        pageTopics.forEach(item => {
+            // Use ISO string for exact match, or maybe round to minute if needed. 
+            // Since they are usually generated from the same Log timestamp, exact match works.
+            const key = item.nextRevisionAt;
+            if (!topicsByTime.has(key)) {
+                topicsByTime.set(key, []);
+            }
+            topicsByTime.get(key)!.push(item);
+        });
+
+        topicsByTime.forEach((groupItems, timeKey) => {
+            if (groupItems.length > 1) {
+                // Create a GROUP item
+                const first = groupItems[0];
+                const titles = groupItems.map(i => i.title).join(', ');
+                
+                ungroupedItems.push({
+                    type: 'TOPIC', // Keep as topic but with group indicator
+                    pageNumber: first.pageNumber,
+                    title: titles,
+                    parentTitle: first.parentTitle,
+                    nextRevisionAt: timeKey,
+                    currentRevisionIndex: first.currentRevisionIndex,
+                    id: `group-${first.pageNumber}-${timeKey}`,
+                    kbEntry: first.kbEntry,
+                    groupedTopics: groupItems.map(g => g.topic!) // Store all trackable items
+                });
+            } else {
+                // Just add the single item
+                ungroupedItems.push(groupItems[0]);
+            }
         });
     });
-    return items;
+    return ungroupedItems;
   }, [knowledgeBase]);
 
   const dueItems = useMemo(() => {
@@ -395,7 +436,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                     <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                         <select
                             value={sortBy}
-                            onChange={e => setSortBy(e.target.value as SortOption)}
+                            onChange={e => setViewState(prev => ({ ...prev, sortBy: e.target.value as SortOption }))}
                             className="bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm backdrop-blur-sm"
                             aria-label="Sort by"
                         >
@@ -404,7 +445,7 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                             <option value="TOPIC">Topic</option>
                         </select>
                         <button
-                            onClick={() => setSortOrder(d => d === 'ASC' ? 'DESC' : 'ASC')}
+                            onClick={() => setViewState(prev => ({ ...prev, sortOrder: prev.sortOrder === 'ASC' ? 'DESC' : 'ASC' }))}
                             className="p-1.5 bg-white/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm hover:bg-slate-50/50 transition-colors backdrop-blur-sm"
                             aria-label={sortOrder === 'ASC' ? 'Sort ascending' : 'Sort descending'}
                         >

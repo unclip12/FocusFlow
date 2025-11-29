@@ -1,5 +1,6 @@
+
 import { getDayPlan, saveDayPlan } from './firebase';
-import { Block, DayPlan, BlockType, BlockTask } from '../types';
+import { Block, DayPlan, BlockType, BlockTask, getAdjustedDate } from '../types';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
@@ -37,22 +38,21 @@ const formatTime = (minutes: number): string => {
 const getNextDate = (dateStr: string): string => {
     const d = new Date(dateStr + 'T12:00:00');
     d.setDate(d.getDate() + 1);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return getAdjustedDate(d);
 };
 
 // --- AUTOMATED BACKLOG MIGRATION LOGIC ---
 
 /**
- * Recursive function to push blocks into a specific date, shift existing blocks,
- * and handle overflow past 12:00 AM (Midnight) into the next day.
+ * Pushes backlog blocks to the TOP of the target date's schedule.
+ * It inserts them BEFORE the earliest existing block.
  */
 const pushBacklogToDate = async (targetDate: string, backlogBlocks: Block[]) => {
     if (backlogBlocks.length === 0) return;
 
     let plan = await getDayPlan(targetDate);
+    
+    // Initialize if empty
     if (!plan) {
         plan = {
             date: targetDate,
@@ -69,159 +69,135 @@ const pushBacklogToDate = async (targetDate: string, backlogBlocks: Block[]) => 
 
     const existingBlocks = plan.blocks || [];
     
-    // 1. Prepare Backlog Blocks (Reset status, set title tag)
-    const newBlocksToInsert = backlogBlocks.map(b => ({
+    // 1. Prepare Backlog Blocks (Reset status, add Carry Over tag)
+    const preparedBacklog = backlogBlocks.map(b => ({
         ...b,
-        id: generateId(), // New ID for the new day
+        id: generateId(), // Regenerate ID to avoid conflicts if logic runs weirdly
         date: targetDate,
         status: 'NOT_STARTED' as const,
+        // Clear execution data
         actualStartTime: undefined,
         actualEndTime: undefined,
         actualDurationMinutes: undefined,
         segments: [],
         interruptions: [],
-        title: b.title.includes('(Carry Over)') ? b.title : `${b.title} (Carry Over)`
+        generatedLogIds: [],
+        generatedTimeLogIds: [],
+        // Tag Title
+        title: b.title.includes('(Carry Over)') ? b.title : `(Carry Over) ${b.title}`,
+        // Ensure tasks are reset too
+        tasks: b.tasks?.map(t => ({ ...t, completed: false, execution: undefined }))
     }));
 
-    // 2. Merge & Sort for Domino Effect
-    // We place backlog at 8:00 AM initially.
-    // Then we iterate and push anything that overlaps.
+    // 2. Find Earliest Start Time in Today's Plan
+    let earliestStartMins = 8 * 60; // Default 08:00 AM
     
-    const START_OF_DAY_MINS = 8 * 60; // 08:00 AM
-    const MIDNIGHT_CUTOFF_MINS = 24 * 60; // 12:00 AM (Next Day boundary)
-
-    // Sort existing by planned time
-    const sortedExisting = [...existingBlocks].sort((a, b) => 
-        parseTimeToMinutes(a.plannedStartTime) - parseTimeToMinutes(b.plannedStartTime)
-    );
-
-    const finalBlocksForToday: Block[] = [];
-    const overflowBlocksForTomorrow: Block[] = [];
-
-    let currentCursorMins = START_OF_DAY_MINS;
-
-    // A. Place Backlog Blocks First sequentially starting at 8 AM
-    for (const block of newBlocksToInsert) {
-        const duration = block.plannedDurationMinutes;
-        const startMins = currentCursorMins;
-        const endMins = startMins + duration;
-
-        // Check Midnight Overflow immediately for backlog
-        if (endMins > MIDNIGHT_CUTOFF_MINS) {
-            overflowBlocksForTomorrow.push(block); // Pushes with stale times, will be fixed in recursive call
-        } else {
-            finalBlocksForToday.push({
-                ...block,
-                plannedStartTime: formatTime(startMins),
-                plannedEndTime: formatTime(endMins)
-            });
-            currentCursorMins = endMins;
+    if (existingBlocks.length > 0) {
+        const starts = existingBlocks.map(b => parseTimeToMinutes(b.plannedStartTime));
+        earliestStartMins = Math.min(...starts);
+        
+        // If plan explicitly says start time is earlier (e.g. user set 7am but blocks start 8am), respect plan setting
+        if (plan.startTimePlanned) {
+            const planStartMins = parseTimeToMinutes(plan.startTimePlanned);
+            if (planStartMins < earliestStartMins) earliestStartMins = planStartMins;
         }
     }
 
-    // B. Place Existing Blocks (Domino Shift)
-    // We reset cursor to the end of the last backlog block, but we must compare 
-    // with the existing block's original start time.
-    // If OriginalStart < CurrentCursor, we must push it to CurrentCursor.
-    // If OriginalStart >= CurrentCursor, we leave it there (gap preserved), but update Cursor to its end.
+    // 3. Calculate New Start Time by stacking backlog backwards
+    // We want the LAST backlog item to end at 'earliestStartMins'
+    // So we stack them in reverse order of time from that anchor point.
     
-    for (const block of sortedExisting) {
-        // If this block was already done, we ideally shouldn't move it if we are rewriting history,
-        // but for "Future/Today" planning, existing blocks likely aren't done if 8 AM is the start.
-        // If they ARE done (e.g. user woke up at 6 AM), we shouldn't move them.
-        if (block.status === 'DONE') {
-            finalBlocksForToday.push(block);
-            continue; 
-        }
+    let currentCursorMins = earliestStartMins;
+    const scheduledBacklog: Block[] = [];
 
-        const originalStart = parseTimeToMinutes(block.plannedStartTime);
-        const duration = block.plannedDurationMinutes;
+    // Process in reverse so the first backlog item ends up at the earliest time
+    // Actually, let's process forward but subtract total time first?
+    // Better: Stack them backwards from the cursor.
+    // Iterate backlog in reverse order (if they were chronological). 
+    // But backlog order is usually arbitrary coming from 'incomplete'.
+    // Let's just stack them sequentially backwards.
+    
+    for (let i = preparedBacklog.length - 1; i >= 0; i--) {
+        const block = preparedBacklog[i];
+        const duration = block.plannedDurationMinutes || 30;
         
-        let newStart = originalStart;
+        const endMins = currentCursorMins;
+        const startMins = endMins - duration;
         
-        // If the "Backlog Wave" has reached this block's time slot
-        if (newStart < currentCursorMins) {
-            newStart = currentCursorMins;
-        }
-
-        const newEnd = newStart + duration;
-
-        // Check Overflow
-        if (newEnd > MIDNIGHT_CUTOFF_MINS) {
-            overflowBlocksForTomorrow.push(block);
-        } else {
-            finalBlocksForToday.push({
-                ...block,
-                plannedStartTime: formatTime(newStart),
-                plannedEndTime: formatTime(newEnd)
-            });
-            // Update cursor to end of this block so next one pushes against it
-            currentCursorMins = newEnd;
-        }
+        scheduledBacklog.unshift({ // Add to front of array
+            ...block,
+            plannedStartTime: formatTime(startMins),
+            plannedEndTime: formatTime(endMins)
+        });
+        
+        currentCursorMins = startMins;
     }
 
-    // 3. Save Today
-    const updatedPlan = recalculatePlanStats(plan, finalBlocksForToday);
+    // 4. Merge: [New Backlog Blocks] + [Existing Blocks]
+    // Since existing blocks weren't touched, their times are preserved.
+    // Backlog blocks are now scheduled strictly BEFORE them.
+    const finalBlocks = [...scheduledBacklog, ...existingBlocks];
+    
+    // 5. Update Plan Stats
+    const updatedPlan = recalculatePlanStats(plan, finalBlocks);
+    
+    // Ensure plan start time reflects the new earlier start
+    updatedPlan.startTimePlanned = formatTime(currentCursorMins);
+
+    // 6. Save
     await saveDayPlan(updatedPlan);
-
-    // 4. Recurse for Overflow
-    if (overflowBlocksForTomorrow.length > 0) {
-        const nextDay = getNextDate(targetDate);
-        await pushBacklogToDate(nextDay, overflowBlocksForTomorrow);
-    }
 };
 
 /**
  * Main entry point to check and migrate tasks.
- * Call this on app load.
+ * Checks specifically for tasks from the previous day that weren't done.
  */
 export const checkAndMigrateOverdueTasks = async () => {
     const now = new Date();
     const currentHour = now.getHours();
 
-    // Definition: Day changes at 04:00 AM.
-    // If now is 02:00 AM on Nov 24, "Today" (logical) is Nov 23. We don't migrate yet.
-    // If now is 08:00 AM on Nov 24, "Today" (logical) is Nov 24. "Yesterday" was Nov 23.
-    // We check if Nov 23 has leftovers.
-
-    // Calculate "Logical Today"
+    // Definition: Day changes at 04:00 AM for logical purposes.
+    // If it's 2 AM on Tuesday, "Today" is still Monday.
     const logicalToday = new Date(now);
     if (currentHour < 4) {
         logicalToday.setDate(logicalToday.getDate() - 1);
     }
     
-    // We want to check the *previous* logical day for leftovers.
+    // "Yesterday" is 1 day before Logical Today.
     const logicalYesterday = new Date(logicalToday);
-    logicalYesterday.setDate(logicalYesterday.getDate() - 1); // Go back 1 day
+    logicalYesterday.setDate(logicalYesterday.getDate() - 1); 
 
-    // Format YYYY-MM-DD
-    const yesterdayStr = logicalYesterday.toISOString().split('T')[0]; // Crude but effective for local calculation if timezone aligned, better utilize getAdjustedDate logic internally
-    const year = logicalYesterday.getFullYear();
-    const month = String(logicalYesterday.getMonth() + 1).padStart(2, '0');
-    const day = String(logicalYesterday.getDate()).padStart(2, '0');
-    const adjustedYesterdayStr = `${year}-${month}-${day}`;
-
-    const targetTodayStr = getNextDate(adjustedYesterdayStr); // Should match logicalToday in YYYY-MM-DD
+    const yesterdayStr = getAdjustedDate(logicalYesterday);
+    const targetTodayStr = getAdjustedDate(logicalToday);
 
     // 1. Get Yesterday's Plan
-    const yesterdaysPlan = await getDayPlan(adjustedYesterdayStr);
+    const yesterdaysPlan = await getDayPlan(yesterdayStr);
     
     if (!yesterdaysPlan || !yesterdaysPlan.blocks) return;
 
+    // Identify strictly incomplete blocks
     const incompleteBlocks = yesterdaysPlan.blocks.filter(b => 
-        b.status === 'NOT_STARTED' || b.status === 'PAUSED' || b.completionStatus === 'PARTIAL' || b.completionStatus === 'NOT_DONE'
+        b.status === 'NOT_STARTED' || 
+        b.status === 'PAUSED' || 
+        b.completionStatus === 'PARTIAL' || 
+        b.completionStatus === 'NOT_DONE'
     );
 
+    // If nothing to migrate, stop.
     if (incompleteBlocks.length === 0) return;
 
-    console.log(`Found ${incompleteBlocks.length} incomplete blocks from ${adjustedYesterdayStr}. Migrating to ${targetTodayStr}...`);
+    console.log(`Found ${incompleteBlocks.length} incomplete blocks from ${yesterdayStr}. Moving to ${targetTodayStr} (Top of Schedule)...`);
 
-    // 2. Clean up Yesterday (Remove incomplete blocks so they don't stay there forever)
+    // 2. Clean up Yesterday (Remove incomplete blocks)
+    // We remove them from yesterday so they don't exist in two places.
+    // Note: This does NOT delete the original KnowledgeBaseEntry or Revision schedule.
+    // It just moves the "ToDo Block" to the new day.
     const keptBlocks = yesterdaysPlan.blocks.filter(b => !incompleteBlocks.includes(b));
     const updatedYesterday = recalculatePlanStats(yesterdaysPlan, keptBlocks);
     await saveDayPlan(updatedYesterday);
 
-    // 3. Push to Today (Recursive)
+    // 3. Push to Today
+    // This function handles putting them at the top.
     await pushBacklogToDate(targetTodayStr, incompleteBlocks);
 };
 
@@ -229,8 +205,7 @@ export const checkAndMigrateOverdueTasks = async () => {
 // --- EXISTING SERVICES BELOW ---
 
 /**
- * Recalculates total study/break minutes and start/end times based on current blocks.
- * Strictly excludes BREAKS from study time.
+ * Recalculates total study/break minutes based on blocks.
  */
 const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
     // Sort Chronologically (00:00 -> 23:59)
@@ -253,15 +228,13 @@ const recalculatePlanStats = (plan: DayPlan, blocks: Block[]): DayPlan => {
         }
     });
 
-    // Determine start/end from blocks if possible
+    // Determine estimated end from the last block
     let newStart = plan.startTimePlanned;
     let newEnd = plan.estimatedEndTime;
 
     if (sortedBlocks.length > 0) {
         newStart = sortedBlocks[0].plannedStartTime;
         newEnd = sortedBlocks[sortedBlocks.length - 1].plannedEndTime;
-    } else {
-        if (newStart) newEnd = newStart;
     }
 
     return {
@@ -330,7 +303,8 @@ const shiftScheduleWithOverflow = (blocks: Block[], startIndex: number, minutesT
  * Helper to add moved blocks to the next day's plan
  */
 const appendBlocksToNextDay = async (currentDate: string, blocksToAdd: Block[]) => {
-    // Reuse the robust logic we built for backlog migration
+    // We use pushBacklogToDate because it handles placing things at the START of the day,
+    // which is safer for overflow (it becomes the first thing you do tomorrow).
     const nextDate = getNextDate(currentDate);
     await pushBacklogToDate(nextDate, blocksToAdd);
 };

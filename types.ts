@@ -142,7 +142,7 @@ export interface DayPlanBreak {
   durationMinutes: number;
 }
 
-export type BlockType = "VIDEO" | "REVISION_FA" | "ANKI" | "QBANK" | "BREAK" | "OTHER" | "MIXED";
+export type BlockType = "VIDEO" | "REVISION_FA" | "ANKI" | "QBANK" | "BREAK" | "OTHER" | "MIXED" | "FMGE_REVISION";
 
 export interface BlockSegment {
   start: string; // HH:mm or ISO
@@ -162,7 +162,7 @@ export interface TaskExecution {
 
 export interface BlockTask {
     id: string;
-    type: 'FA' | 'VIDEO' | 'ANKI' | 'QBANK' | 'OTHER';
+    type: 'FA' | 'VIDEO' | 'ANKI' | 'QBANK' | 'OTHER' | 'FMGE' | 'REVISION';
     detail: string; // e.g. "Page 550", "Cardio Video"
     completed: boolean;
     meta?: {
@@ -177,6 +177,9 @@ export interface BlockTask {
         videoStartTime?: number;
         videoEndTime?: number;
         playbackSpeed?: number;
+        // FMGE Specifics
+        slideStart?: number;
+        slideEnd?: number;
     };
     execution?: TaskExecution;
 }
@@ -333,7 +336,7 @@ export type TimeLogCategory =
   | 'LIFE' 
   | 'OTHER';
 
-export type TimeLogSource = 'TODAYS_PLAN_BLOCK' | 'FA_LOGGER' | 'MANUAL' | 'CHAT';
+export type TimeLogSource = 'TODAYS_PLAN_BLOCK' | 'FA_LOGGER' | 'MANUAL' | 'CHAT' | 'FMGE_LOGGER';
 
 export interface TimeLogEntry {
     id: string;
@@ -389,6 +392,15 @@ export interface AppTheme {
     darkBackgroundRGB: string; // Dark Mode Background (fallback)
     isDark?: boolean; // Kept for compatibility, logic handled by App settings
 }
+
+export const THEME_COLORS: { name: string, value: ThemeColor, hex: string, rgb: string }[] = [
+    { name: 'Indigo', value: 'indigo', hex: '#4f46e5', rgb: '79 70 229' },
+    { name: 'Emerald', value: 'emerald', hex: '#10b981', rgb: '16 185 129' },
+    { name: 'Rose', value: 'rose', hex: '#f43f5e', rgb: '244 63 94' },
+    { name: 'Amber', value: 'amber', hex: '#f59e0b', rgb: '245 158 11' },
+    { name: 'Sky', value: 'sky', hex: '#0ea5e9', rgb: '14 165 233' },
+    { name: 'Violet', value: 'violet', hex: '#8b5cf6', rgb: '139 92 246' },
+];
 
 export const APP_THEMES: AppTheme[] = [
     { 
@@ -561,6 +573,7 @@ export const DEFAULT_MENU_ORDER: string[] = [
     'TODAYS_PLAN',
     'CALENDAR',
     'TIME_LOGGER',
+    'FMGE',
     'DAILY_TRACKER',
     'FA_LOGGER',
     'REVISION',
@@ -673,6 +686,35 @@ export interface KnowledgeBaseEntry {
   topics: TrackableItem[];
 }
 
+// --- FMGE SPECIFIC TYPES ---
+export const FMGE_SUBJECTS = [
+    'Anatomy', 'Physiology', 'Biochemistry', 'Pathology', 'Microbiology', 'Pharmacology', 
+    'Forensic Medicine', 'PSM', 'ENT', 'Ophthalmology', 'Medicine', 'Surgery', 'OBG', 
+    'Pediatrics', 'Orthopedics', 'Psychiatry', 'Dermatology', 'Radiology', 'Anesthesia'
+];
+
+export interface FMGELog extends RevisionLog {
+    slideStart: number;
+    slideEnd: number;
+    qBankCount?: number;
+}
+
+export interface FMGEEntry {
+    id: string;
+    subject: string;
+    slideStart: number;
+    slideEnd: number;
+    
+    // SRS Fields
+    revisionCount: number;
+    lastStudiedAt: string | null;
+    nextRevisionAt: string | null;
+    currentRevisionIndex: number;
+    
+    logs: FMGELog[];
+    notes?: string;
+}
+
 // --- REVISION ITEM INTERFACE ---
 export interface RevisionItem {
     type: 'PAGE' | 'TOPIC' | 'SUBTOPIC';
@@ -685,15 +727,25 @@ export interface RevisionItem {
     kbEntry: KnowledgeBaseEntry;
     topic?: TrackableItem;
     subTopic?: TrackableItem;
+    groupedTopics?: TrackableItem[]; // For batch revisions
 }
 
 // --- HISTORY & UNDO TYPES ---
+// Expanded to capture full app state for "Time Travel" restoration
+export interface AppSnapshot {
+    kb: KnowledgeBaseEntry[];
+    dayPlan?: DayPlan | null;
+    fmge: FMGEEntry[];
+    // We can add more stores here as needed
+}
+
 export interface HistoryRecord {
     id: string;
     timestamp: string;
-    type: 'KB_UPDATE'; // Extendable for other types
+    type: 'KB_UPDATE' | 'PLAN_UPDATE' | 'FMGE_UPDATE' | 'FULL_RESTORE' | 'SNAPSHOT' | 'AUTO_DAILY'; 
     description: string;
-    snapshot: KnowledgeBaseEntry; // The state of the item BEFORE the change
+    snapshot: AppSnapshot | KnowledgeBaseEntry | DayPlan | any; // Flexible based on type, but for time machine we use AppSnapshot
+    isFullSnapshot?: boolean; // Flag to easily identify full restoration points
 }
 
 export const REVISION_SCHEDULES: Record<string, number[]> = {

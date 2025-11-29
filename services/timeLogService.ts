@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, query, where, setDoc, deleteDoc, writeBatch } from "firebase/firestore"; 
+
 import { auth, db, getDayPlan, cleanData } from "./firebase";
 import { TimeLogEntry, getAdjustedDate, KnowledgeBaseEntry } from "../types";
 
@@ -7,23 +7,22 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 
 export const getTimeLogs = async (date: string): Promise<TimeLogEntry[]> => {
     if (!auth.currentUser) return [];
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
+    const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
     // Query specifically for the "study day" date
-    const q = query(colRef, where('date', '==', date));
-    const snap = await getDocs(q);
+    const snap = await colRef.where('date', '==', date).get();
     return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 };
 
 export const saveTimeLog = async (entry: TimeLogEntry) => {
     if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', entry.id);
-    await setDoc(docRef, cleanData(entry));
+    const docRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs').doc(entry.id);
+    await docRef.set(cleanData(entry));
 };
 
 export const deleteTimeLog = async (id: string) => {
     if (!auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'timeLogs', id);
-    await deleteDoc(docRef);
+    const docRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs').doc(id);
+    await docRef.delete();
 };
 
 export const getTimeLogsForTimeline = async (date: string): Promise<TimeLogEntry[]> => {
@@ -33,9 +32,8 @@ export const getTimeLogsForTimeline = async (date: string): Promise<TimeLogEntry
     d.setDate(d.getDate() - 1);
     const prevDateStr = getAdjustedDate(d);
 
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
-    const q = query(colRef, where('date', 'in', [date, prevDateStr]));
-    const snap = await getDocs(q);
+    const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
+    const snap = await colRef.where('date', 'in', [date, prevDateStr]).get();
     
     return snap.docs.map(d => d.data() as TimeLogEntry);
 };
@@ -47,10 +45,9 @@ export const getTimeLogsForMonth = async (year: number, month: number): Promise<
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    const colRef = collection(db, 'users', auth.currentUser.uid, 'timeLogs');
-    const q = query(colRef, where('date', '>=', startDate), where('date', '<=', endDate));
+    const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
+    const snap = await colRef.where('date', '>=', startDate).where('date', '<=', endDate).get();
     
-    const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as TimeLogEntry);
 };
 
@@ -144,14 +141,26 @@ export const backfillTimeLogs = async (knowledgeBase: KnowledgeBaseEntry[], date
         console.error("Backfill: Failed to read DayPlan", e);
     }
 
-    // 4. Batch Write
+    // 4. Batch Write with Chunking
     if (newLogs.length > 0) {
-        const batch = writeBatch(db);
-        newLogs.forEach(log => {
-            const ref = doc(db, 'users', auth.currentUser!.uid, 'timeLogs', log.id);
-            batch.set(ref, log);
-        });
-        await batch.commit();
+        const chunkArray = <T>(array: T[], size: number): T[][] => {
+            const chunked: T[][] = [];
+            for (let i = 0; i < array.length; i += size) {
+                chunked.push(array.slice(i, i + size));
+            }
+            return chunked;
+        };
+
+        const chunks = chunkArray(newLogs, 450);
+
+        for (const chunk of chunks) {
+            const batch = db.batch();
+            chunk.forEach(log => {
+                const ref = db.collection('users').doc(auth.currentUser!.uid).collection('timeLogs').doc(log.id);
+                batch.set(ref, log);
+            });
+            await batch.commit();
+        }
         console.log(`Backfilled ${newLogs.length} logs.`);
     }
 };

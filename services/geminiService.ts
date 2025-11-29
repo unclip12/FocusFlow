@@ -1,4 +1,6 @@
 
+
+
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Attachment, StudySession, StudyPlanItem, getAdjustedDate, QuizQuestion, DayPlan, Block, MentorMemory, TimeLogCategory, AISettings } from "../types";
 
@@ -961,6 +963,7 @@ export const chatWithMentor = async (
         1.  **ALWAYS PROVIDE TEXT:** Your primary function is to converse. Every single response you generate MUST contain a user-visible \`text\` component.
         2.  **CONFIRM TOOL USE:** When you use a tool (like \`logFAStudy\` or \`controlSession\`), you MUST accompany the tool call with a confirmation message in the \`text\` component. For example: "Okay, I've started the timer for 'Cardio Block'." or "Logged page 151 for you. Nice work!". A response containing ONLY tool calls is a failure.
         3.  **HANDLE GREETINGS:** If the user provides a simple greeting like "Hi" or "Hello", or a conversational filler, simply respond with a friendly greeting. Do NOT try to call a tool for this. Just be conversational.
+        4.  **DO NOT DELETE DATA UNLESS CONFIRMED:** You are NOT allowed to use \`deleteDayPlan\` or remove blocks via \`createDayPlan\` unless the user explicitly types a confirmation phrase like "I confirm delete" or "Yes delete the plan". If they ask to delete something, warn them first that it cannot be undone.
 
         DETAILED INSTRUCTIONS:
         - Refer to the user by their name if it is provided. Be conversational and motivational based on your personality settings.

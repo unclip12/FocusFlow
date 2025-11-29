@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Block, BlockTask, KnowledgeBaseEntry, SYSTEMS, CATEGORIES } from '../types';
-import { XMarkIcon, PlusIcon, TrashIcon, BookOpenIcon, StarIcon, QIcon, VideoIcon, ChevronDownIcon, CalendarIcon } from './Icons';
+import { XMarkIcon, PlusIcon, TrashIcon, BookOpenIcon, StarIcon, QIcon, VideoIcon, ChevronDownIcon, CalendarIcon, ArrowPathIcon } from './Icons';
 
 interface AddBlockModalProps {
     isOpen: boolean;
@@ -225,6 +225,9 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                 <button onClick={() => addTask('VIDEO')} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm transition-colors" title="Add Video">
                                     <VideoIcon className="w-4 h-4" />
                                 </button>
+                                <button onClick={() => addTask('REVISION')} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm transition-colors" title="Add Revision">
+                                    <ArrowPathIcon className="w-4 h-4" />
+                                </button>
                                 <button onClick={() => addTask('ANKI')} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm transition-colors" title="Add Flashcards">
                                     <StarIcon className="w-4 h-4" />
                                 </button>
@@ -245,12 +248,14 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                 task.type === 'FA' ? 'bg-indigo-100 text-indigo-600' : 
                                                 task.type === 'VIDEO' ? 'bg-blue-100 text-blue-600' :
                                                 task.type === 'ANKI' ? 'bg-amber-100 text-amber-600' :
+                                                task.type === 'REVISION' ? 'bg-fuchsia-100 text-fuchsia-600' :
                                                 'bg-emerald-100 text-emerald-600'
                                             }`}>
                                                 {task.type === 'FA' && <BookOpenIcon className="w-4 h-4" />}
                                                 {task.type === 'VIDEO' && <VideoIcon className="w-4 h-4" />}
                                                 {task.type === 'ANKI' && <StarIcon className="w-4 h-4" />}
                                                 {task.type === 'QBANK' && <QIcon className="w-4 h-4" />}
+                                                {task.type === 'REVISION' && <ArrowPathIcon className="w-4 h-4" />}
                                                 {task.type === 'OTHER' && <PlusIcon className="w-4 h-4" />}
                                             </span>
                                             
@@ -323,6 +328,16 @@ export const AddBlockModal: React.FC<AddBlockModalProps> = ({ isOpen, onClose, o
                                                                         </span>
                                                                     )}
                                                                 </div>
+                                                            </div>
+                                                        ) : task.type === 'REVISION' ? (
+                                                            <div className="flex gap-2 items-center flex-1">
+                                                                <input 
+                                                                    className="flex-1 p-1 border rounded px-2 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                    placeholder="Revision Topic..."
+                                                                    value={task.detail}
+                                                                    onChange={(e) => updateTask(task.id, { detail: e.target.value })}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                />
                                                             </div>
                                                         ) : (
                                                             <div className="flex items-center gap-2">

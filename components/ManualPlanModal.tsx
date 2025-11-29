@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { DayPlan, Block, BlockTask } from '../types';
-import { XMarkIcon, PlusIcon, TrashIcon, ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, VideoIcon, CoffeeIcon } from './Icons';
+import { XMarkIcon, PlusIcon, TrashIcon, ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, VideoIcon, CoffeeIcon, ArrowPathIcon } from './Icons';
 
 interface ManualPlanModalProps {
     isOpen: boolean;
@@ -123,6 +123,7 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
             if (counts.VIDEO) titleParts.push('Watch Video');
             if (counts.ANKI) titleParts.push('Flashcards');
             if (counts.QBANK) titleParts.push('QBank');
+            if (counts.REVISION) titleParts.push('Revision');
             if (titleParts.length > 0) block.title = titleParts.join(' + ');
         }
 
@@ -228,6 +229,7 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
                                             task.type === 'FA' ? 'bg-indigo-100 text-indigo-700' : 
                                             task.type === 'VIDEO' ? 'bg-blue-100 text-blue-700' :
                                             task.type === 'ANKI' ? 'bg-amber-100 text-amber-700' :
+                                            task.type === 'REVISION' ? 'bg-fuchsia-100 text-fuchsia-700' :
                                             'bg-emerald-100 text-emerald-700'
                                         }`}>
                                             {task.type}
@@ -248,6 +250,13 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
                                             <input 
                                                 className="flex-1 p-1 border rounded px-2 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500" 
                                                 placeholder="Video Topic..."
+                                                value={task.detail}
+                                                onChange={(e) => updateTask(bIdx, tIdx, { detail: e.target.value })}
+                                            />
+                                        ) : task.type === 'REVISION' ? (
+                                            <input 
+                                                className="flex-1 p-1 border rounded px-2 bg-white dark:bg-slate-700 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500" 
+                                                placeholder="Revision Topic..."
                                                 value={task.detail}
                                                 onChange={(e) => updateTask(bIdx, tIdx, { detail: e.target.value })}
                                             />
@@ -282,6 +291,9 @@ export const ManualPlanModal: React.FC<ManualPlanModalProps> = ({ isOpen, onClos
                                 </button>
                                 <button onClick={() => addTaskToBlock(bIdx, 'VIDEO')} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors">
                                     <VideoIcon className="w-3 h-3 text-blue-500" /> + Video
+                                </button>
+                                <button onClick={() => addTaskToBlock(bIdx, 'REVISION')} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30 text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors">
+                                    <ArrowPathIcon className="w-3 h-3 text-fuchsia-500" /> + Revision
                                 </button>
                                 <button onClick={() => addTaskToBlock(bIdx, 'ANKI')} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-700 hover:bg-amber-50 dark:hover:bg-amber-900/30 text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors">
                                     <FireIcon className="w-3 h-3 text-amber-500" /> + Flashcards

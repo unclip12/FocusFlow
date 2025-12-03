@@ -14,14 +14,26 @@ const firebaseConfig = {
   projectId: "arsh-projects",
   storageBucket: "arsh-projects.firebasestorage.app",
   messagingSenderId: "666347925472",
-  appId: "1:666347925472:web:a5e8177c0e886178c44585",
-  measurementId: "G-R8M1GRBTSX"
+  appId: "1:666347925472:web:2bb83fee081ccd2bc44585",
+  measurementId: "G-5MZ7M91X5Q"
 };
 
 // Initialize Firebase (Compat)
 const app = firebase.initializeApp(firebaseConfig);
 export const auth = app.auth();
 export const db = app.firestore();
+
+// Enable Offline Persistence
+// This prevents "Failed to get document because the client is offline" errors
+db.enablePersistence({ synchronizeTabs: true })
+  .catch((err) => {
+      if (err.code == 'failed-precondition') {
+          console.warn('Firestore Persistence: Multiple tabs open, persistence can only be enabled in one tab at a time.');
+      } else if (err.code == 'unimplemented') {
+          console.warn('Firestore Persistence: Current browser does not support all of the features required to enable persistence.');
+      }
+  });
+
 export const storage = app.storage();
 
 // Initialize Messaging safely
@@ -76,9 +88,15 @@ export const getUserProfile = async (): Promise<UserProfile | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('profile').doc('main');
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            return docSnap.data() as UserProfile;
+        // Using get() can fail if offline unless persistence is enabled. 
+        // With persistence enabled above, this should now work from cache if offline.
+        try {
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                return docSnap.data() as UserProfile;
+            }
+        } catch (e) {
+            console.warn("Network error fetching profile, returning null to prevent crash:", e);
         }
         return null;
     });
@@ -159,8 +177,13 @@ export const getStudyMaterials = async (): Promise<StudyMaterial[]> => {
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('materials');
-        const snap = await colRef.get();
-        return snap.docs.map(d => d.data() as StudyMaterial).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        try {
+            const snap = await colRef.get();
+            return snap.docs.map(d => d.data() as StudyMaterial).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        } catch (e) {
+            console.warn("Failed to fetch study materials (offline?)", e);
+            return [];
+        }
     });
 };
 
@@ -176,19 +199,23 @@ export const toggleMaterialActive = async (materialId: string, isActive: boolean
         if (!auth.currentUser) return;
         const materialsRef = db.collection('users').doc(auth.currentUser.uid).collection('materials');
         
-        if (isActive) {
-            const batch = db.batch();
-            // Since we can't easily batch update based on query in client SDK without fetching, we fetch active ones.
-            // Optimally we fetch all, but for safety let's fetch active.
-            const activeSnap = await materialsRef.where('isActive', '==', true).get();
-            activeSnap.forEach(doc => {
-                if (doc.id !== materialId) {
-                    batch.update(doc.ref, { isActive: false });
-                }
-            });
-            await batch.commit();
+        try {
+            if (isActive) {
+                const batch = db.batch();
+                // Since we can't easily batch update based on query in client SDK without fetching, we fetch active ones.
+                // Optimally we fetch all, but for safety let's fetch active.
+                const activeSnap = await materialsRef.where('isActive', '==', true).get();
+                activeSnap.forEach(doc => {
+                    if (doc.id !== materialId) {
+                        batch.update(doc.ref, { isActive: false });
+                    }
+                });
+                await batch.commit();
+            }
+            await materialsRef.doc(materialId).update({ isActive });
+        } catch (e) {
+            console.error("Failed to toggle material active state", e);
         }
-        await materialsRef.doc(materialId).update({ isActive });
     });
 };
 
@@ -211,8 +238,13 @@ export const getMaterialChats = async (materialId: string): Promise<MaterialChat
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('materials').doc(materialId).collection('chats');
-        const snap = await colRef.orderBy('timestamp', 'asc').get();
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as MaterialChatMessage));
+        try {
+            const snap = await colRef.orderBy('timestamp', 'asc').get();
+            return snap.docs.map(d => ({ id: d.id, ...d.data() } as MaterialChatMessage));
+        } catch (e) {
+            console.warn("Failed to load material chats", e);
+            return [];
+        }
     });
 };
 
@@ -228,8 +260,13 @@ export const getMentorMessages = async (): Promise<MentorMessage[]> => {
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('mentorMessages');
-        const snap = await colRef.orderBy('timestamp', 'asc').get();
-        return snap.docs.map(d => d.data() as MentorMessage);
+        try {
+            const snap = await colRef.orderBy('timestamp', 'asc').get();
+            return snap.docs.map(d => d.data() as MentorMessage);
+        } catch (e) {
+            console.warn("Failed to load mentor messages", e);
+            return [];
+        }
     });
 };
 
@@ -237,12 +274,16 @@ export const clearMentorMessages = async () => {
     return withSync(async () => {
         if (!auth.currentUser) return;
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('mentorMessages');
-        const snap = await colRef.get();
-        const batch = db.batch();
-        snap.docs.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-        await batch.commit();
+        try {
+            const snap = await colRef.get();
+            const batch = db.batch();
+            snap.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+        } catch (e) {
+            console.error("Failed to clear mentor messages", e);
+        }
     });
 };
 
@@ -265,9 +306,13 @@ export const getMentorMemoryData = async (): Promise<MentorMemory | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('aiMentorMemory').doc('profile');
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            return docSnap.data() as MentorMemory;
+        try {
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                return docSnap.data() as MentorMemory;
+            }
+        } catch (e) {
+            console.warn("Failed to fetch Mentor Memory", e);
         }
         return null;
     });
@@ -295,8 +340,13 @@ export const getAISettings = async (): Promise<AISettings | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('config').doc('aiSettings');
-        const docSnap = await docRef.get();
-        return docSnap.exists ? docSnap.data() as AISettings : null;
+        try {
+            const docSnap = await docRef.get();
+            return docSnap.exists ? docSnap.data() as AISettings : null;
+        } catch (e) {
+            console.warn("Failed to fetch AI Settings", e);
+            return null;
+        }
     });
 };
 
@@ -312,8 +362,13 @@ export const getRevisionSettings = async (): Promise<RevisionSettings | null> =>
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('config').doc('revisionSettings');
-        const docSnap = await docRef.get();
-        return docSnap.exists ? docSnap.data() as RevisionSettings : null;
+        try {
+            const docSnap = await docRef.get();
+            return docSnap.exists ? docSnap.data() as RevisionSettings : null;
+        } catch (e) {
+            console.warn("Failed to fetch Revision Settings", e);
+            return null;
+        }
     });
 };
 
@@ -331,8 +386,13 @@ export const getAppSettings = async (): Promise<AppSettings | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('config').doc('appSettings');
-        const docSnap = await docRef.get();
-        return docSnap.exists ? docSnap.data() as AppSettings : null;
+        try {
+            const docSnap = await docRef.get();
+            return docSnap.exists ? docSnap.data() as AppSettings : null;
+        } catch (e) {
+            console.warn("Failed to fetch App Settings", e);
+            return null;
+        }
     });
 };
 
@@ -375,9 +435,13 @@ export const getDayPlan = async (date: string): Promise<DayPlan | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('dayPlans').doc(date);
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            return docSnap.data() as DayPlan;
+        try {
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                return docSnap.data() as DayPlan;
+            }
+        } catch (e) {
+            console.warn("Failed to fetch day plan (offline?)", e);
         }
         return null;
     });
@@ -396,9 +460,13 @@ export const getDailyTracker = async (date: string): Promise<DailyTracker | null
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('dailyTrackers').doc(date);
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            return docSnap.data() as DailyTracker;
+        try {
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                return docSnap.data() as DailyTracker;
+            }
+        } catch (e) {
+            console.warn("Failed to fetch Daily Tracker", e);
         }
         return null;
     });
@@ -414,12 +482,17 @@ export const saveDailyTracker = async (tracker: DailyTracker) => {
 
 
 // --- KNOWLEDGE BASE (FA PAGES) ---
-export const getKnowledgeBase = async (): Promise<KnowledgeBaseEntry[]> => {
+export const getKnowledgeBase = async (): Promise<KnowledgeBaseEntry[] | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('knowledgeBase');
-        const snap = await colRef.get();
-        return snap.docs.map(d => d.data() as KnowledgeBaseEntry);
+        try {
+            const snap = await colRef.get();
+            return snap.docs.map(d => d.data() as KnowledgeBaseEntry);
+        } catch (e) {
+            console.warn("Failed to fetch Knowledge Base (offline?)", e);
+            return null; // Return null on error so App.tsx knows not to overwrite local cache
+        }
     });
 };
 
@@ -470,8 +543,13 @@ export const getTimeLogs = async (date: string): Promise<TimeLogEntry[]> => {
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
-        const snap = await colRef.where('date', '==', date).get();
-        return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        try {
+            const snap = await colRef.where('date', '==', date).get();
+            return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+        } catch (e) {
+            console.warn("Failed to fetch time logs", e);
+            return [];
+        }
     });
 };
 
@@ -485,12 +563,17 @@ export const deleteTimeLog = async (id: string) => {
 
 // --- FMGE DATA ---
 
-export const getFMGEData = async (): Promise<FMGEEntry[]> => {
+export const getFMGEData = async (): Promise<FMGEEntry[] | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return [];
         const colRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeData');
-        const snap = await colRef.get();
-        return snap.docs.map(d => d.data() as FMGEEntry);
+        try {
+            const snap = await colRef.get();
+            return snap.docs.map(d => d.data() as FMGEEntry);
+        } catch (e) {
+            console.warn("Failed to fetch FMGE Data (offline?)", e);
+            return null; // Return null on error
+        }
     });
 };
 

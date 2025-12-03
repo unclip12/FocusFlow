@@ -3,12 +3,13 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: "AIzaSyCpASx-JIkZr88rJLhpfeqI_11oVnbOLNI", // Using provided API Key
+  apiKey: "AIzaSyCpASx-JIkZr88rJLhpfeqI_11oVnbOLNI",
   authDomain: "arsh-projects.firebaseapp.com",
   projectId: "arsh-projects",
   storageBucket: "arsh-projects.firebasestorage.app",
   messagingSenderId: "666347925472",
-  appId: "1:666347925472:web:a5e8177c0e886178c44585",
+  appId: "1:666347925472:web:2bb83fee081ccd2bc44585",
+  measurementId: "G-5MZ7M91X5Q"
 });
 
 // Safely attempt to initialize messaging in SW

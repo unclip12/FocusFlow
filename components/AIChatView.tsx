@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { StudySession, StudyPlanItem, VideoResource, Attachment, getAdjustedDate, StudyMaterial, MentorMessage, Block, MentorMemory, KnowledgeBaseEntry, AISettings, RevisionSettings, TrackableItem, DayPlan } from '../types';
-import { chatWithMentor, chatWithStudyBuddy, speakText, extractTextFromMedia } from '../services/geminiService';
+import { chatWithMentor, chatWithStudyBuddy, speakText } from '../services/geminiService'; // Removed extractTextFromMedia
 import { SparklesIcon, PaperAirplaneIcon, CheckCircleIcon, SpeakerWaveIcon, StopCircleIcon, BookOpenIcon, ArrowRightIcon, DocumentTextIcon, CalendarIcon, TrashIcon, PaperClipIcon, XMarkIcon, DatabaseIcon, PlusIcon } from './Icons';
 import { getStudyMaterials, saveMaterialChat, auth, saveDayPlan, saveMentorMessage, getMentorMessages, clearMentorMessages, getDayPlan, getMentorMemoryData, saveMentorMemoryData, saveStudyMaterial, getAISettings, getRevisionSettings, deleteDayPlan, saveKnowledgeBase } from '../services/firebase';
 import { generateBlocks } from '../services/blockGenerator';
@@ -91,7 +91,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [stopAudio, setStopAudio] = useState<(() => void) | null>(null);
 
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  // const [isUploadingFile, setIsUploadingFile] = useState(false); // Removed
   const [attachedImage, setAttachedImage] = useState<{ data: string; mimeType: string; filename: string } | null>(null);
 
   useEffect(() => {
@@ -221,99 +221,11 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
       }
   };
 
-  // --- FILE HANDLING & MENTOR SAVE ---
+  /* REMOVED FILE SELECT HANDLER
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        const file = e.target.files[0];
-        setIsUploadingFile(true);
-
-        // Part 1: Prepare UI attachment for current message (if image)
-        if (file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64data = (reader.result as string).split(',')[1];
-                setAttachedImage({
-                    data: base64data,
-                    mimeType: file.type,
-                    filename: file.name,
-                });
-            };
-            reader.readAsDataURL(file);
-        } else {
-             setAttachedImage({
-                data: '',
-                mimeType: file.type,
-                filename: `[Processing PDF] ${file.name}`
-            });
-        }
-
-        // Part 2: Process Local File & Save to Info Files
-        try {
-            // Skip uploadTempFile to avoid storage permission errors. Process locally.
-            const base64ForExtraction = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-
-            const extractedText = await extractTextFromMedia(base64ForExtraction, file.type);
-
-            if (extractedText) {
-                const newMaterial: StudyMaterial = {
-                    id: generateId(),
-                    title: file.name,
-                    text: extractedText,
-                    sourceType: file.type.startsWith('image/') ? 'IMAGE' : 'PDF',
-                    createdAt: new Date().toISOString(),
-                    isActive: false,
-                    source: 'MENTOR', // Explicitly tag as from Mentor
-                };
-                await saveStudyMaterial(newMaterial);
-                // Refresh local list
-                setAllMaterials(prev => [...prev, newMaterial]);
-                
-                const sysMsg: MentorMessage = {
-                    id: generateId(),
-                    role: 'model',
-                    text: `✅ Processed and saved "${file.name}" to Info Files. I can now reuse this knowledge later. 📂`,
-                    timestamp: new Date().toISOString(),
-                    isSystemAction: true
-                };
-                setMentorMessages(prev => [...prev, sysMsg]);
-                await saveMentorMessage(sysMsg);
-            } else {
-                 const sysMsg: MentorMessage = {
-                    id: generateId(),
-                    role: 'model',
-                    text: `⚠️ Could not extract text from "${file.name}". File not saved.`,
-                    timestamp: new Date().toISOString(),
-                    isSystemAction: true
-                };
-                setMentorMessages(prev => [...prev, sysMsg]);
-                await saveMentorMessage(sysMsg);
-                if (!file.type.startsWith('image/')) {
-                    setAttachedImage(null);
-                }
-            }
-        } catch (error) {
-            console.error("File processing error:", error);
-            const sysMsg: MentorMessage = {
-                id: generateId(),
-                role: 'model',
-                text: `⚠️ Error processing "${file.name}".`,
-                timestamp: new Date().toISOString(),
-                isSystemAction: true
-            };
-            setMentorMessages(prev => [...prev, sysMsg]);
-            await saveMentorMessage(sysMsg);
-            setAttachedImage(null);
-        } finally {
-            setIsUploadingFile(false);
-             e.target.value = ''; // Allow re-selecting
-        }
-    }
+    // Disabled
   };
+  */
 
   const handleRemoveAttachment = () => {
       setAttachedImage(null);
@@ -1241,10 +1153,13 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                 </div>
             )}
             <div className="relative flex items-end gap-2 w-full">
+                {/* UPLOAD BUTTON REMOVED */}
+                {/* 
                 <label className={`flex-shrink-0 p-3 self-stretch flex items-center justify-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isUploadingFile ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <PaperClipIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
                     <input type="file" onChange={handleFileSelect} className="hidden" disabled={isUploadingFile} />
                 </label>
+                */}
                 <textarea
                     ref={textareaRef}
                     value={input}
@@ -1261,7 +1176,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({ sessions, studyPlan, str
                 />
                 <button
                     onClick={handleSend}
-                    disabled={(!input.trim() && !attachedImage) || isTyping || isUploadingFile}
+                    // disabled={(!input.trim() && !attachedImage) || isTyping || isUploadingFile}
+                    disabled={(!input.trim() && !attachedImage) || isTyping}
                     className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/30 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:scale-95 disabled:shadow-none"
                 >
                     <PaperAirplaneIcon className="w-5 h-5" />

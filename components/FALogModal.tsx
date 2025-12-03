@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate } from '../types';
+import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, FALogData } from '../types';
 import { XMarkIcon, BookOpenIcon, ClockIcon, PlusIcon, CheckCircleIcon, TrashIcon, HistoryIcon, ArrowPathIcon } from './Icons';
 
 interface FALogModalProps {
@@ -12,16 +13,6 @@ interface FALogModalProps {
     mode?: 'STUDY' | 'REVISION';
     onDeletePastLog?: (logId: string, pageNumber: string) => void;
     onStateChange?: (data: FALogData) => void; // New prop for reporting state
-}
-
-export interface FALogData {
-    logId?: string; // If editing
-    pageNumber: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    selectedTopics: string[]; // The checkboxes
-    notes: string;
 }
 
 export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave, knowledgeBase, initialData, mode = 'STUDY', onDeletePastLog, onStateChange }) => {

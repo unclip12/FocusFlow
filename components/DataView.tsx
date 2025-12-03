@@ -30,7 +30,7 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
 
     // Upload State
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadStatus, setUploadStatus] = useState('');
+    // const [uploadStatus, setUploadStatus] = useState(''); // Removed
     const [pastedText, setPastedText] = useState('');
 
     // Delete State
@@ -58,80 +58,11 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
         return materials.filter(m => m.source === 'UPLOAD' || m.source === 'PASTE' || !m.source);
     }, [materials, filterSource]);
 
+    /* REMOVED FILE UPLOAD HANDLER
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setIsUploading(true);
-            
-            try {
-                setUploadStatus('Processing file locally...');
-                
-                let extractedText: string | null = null;
-                let sourceType: 'PDF' | 'IMAGE' | 'TEXT' = 'TEXT';
-
-                // Expanded Text Detection
-                const isTextFile = file.type.startsWith('text/') || 
-                                   /\.(txt|md|json|csv|js|ts|tsx|jsx|py|rb|html|css|xml|yml|yaml)$/i.test(file.name);
-
-                if (isTextFile) {
-                    sourceType = 'TEXT';
-                    extractedText = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result as string);
-                        reader.onerror = reject;
-                        reader.readAsText(file);
-                    });
-                } else {
-                    // PDF or Image path: Read as Base64 for AI processing
-                    sourceType = file.type === 'application/pdf' ? 'PDF' : 'IMAGE';
-                    const base64data = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
-                    });
-
-                    setUploadStatus('Extracting text with AI (this may take a moment)...');
-                    
-                    const mimeType = file.type === 'application/pdf' ? 'application/pdf' : file.type;
-                    extractedText = await extractTextFromMedia(base64data, mimeType);
-                }
-                
-                if (extractedText) {
-                    // FIRESTORE SIZE LIMIT CHECK (~1MB safe limit)
-                    // 1 char is roughly 1-4 bytes depending on encoding, assuming UTF-8 average roughly 1 byte for english
-                    if (extractedText.length > 950000) {
-                        alert("Warning: File content exceeds the 1MB storage limit. It will be truncated.");
-                        extractedText = extractedText.substring(0, 950000);
-                    }
-
-                    setUploadStatus('Saving info...');
-                    const newMaterial: StudyMaterial = {
-                        id: generateId(),
-                        title: file.name,
-                        text: extractedText,
-                        sourceType: sourceType,
-                        createdAt: new Date().toISOString(),
-                        isActive: false,
-                        tokenEstimate: extractedText.length / 4, // Rough estimate
-                        source: 'UPLOAD'
-                    };
-                    
-                    await saveStudyMaterial(newMaterial);
-                    await loadMaterials();
-                } else {
-                    alert("Could not extract text from this file.");
-                }
-            } catch (error) {
-                console.error("Processing error", error);
-                setUploadStatus('Error occurred during processing.');
-            } finally {
-                setIsUploading(false);
-                setUploadStatus('');
-                e.target.value = ''; // Reset input to allow selecting same file again
-            }
-        }
+        // Disabled logic
     };
+    */
 
     const handlePasteSave = async () => {
         if (!pastedText.trim()) return;
@@ -139,7 +70,7 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
         // Size Check for Paste
         let textToSave = pastedText;
         if (textToSave.length > 950000) {
-             alert("Warning: Pasted content exceeds the 1MB storage limit. It will be truncated.");
+             alert("Warning: Pasted content exceeds the safe storage limit. It will be truncated.");
              textToSave = textToSave.substring(0, 950000);
         }
 
@@ -232,7 +163,8 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
 
             {/* Add Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* File Upload Card */}
+                {/* File Upload Card - REMOVED */}
+                {/* 
                 <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-6 border border-white/40 dark:border-slate-700/50 shadow-sm flex flex-col items-center justify-center text-center space-y-4 hover:border-indigo-300 transition-colors">
                     <div className={`w-16 h-16 rounded-full bg-indigo-50/50 dark:bg-indigo-900/20 flex items-center justify-center backdrop-blur-sm ${isUploading ? 'animate-pulse' : ''}`}>
                         <CloudArrowUpIcon className="w-8 h-8 text-indigo-500" />
@@ -256,21 +188,24 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
                         </label>
                     )}
                 </div>
+                */}
 
-                {/* Paste Text Card */}
-                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm flex flex-col">
+                {/* Paste Text Card - Expanded to full width if upload removed, but keeping grid for structure */}
+                <div className="col-span-2 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm flex flex-col">
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Save Text Note</h3>
                     <textarea 
                         value={pastedText}
                         onChange={e => setPastedText(e.target.value)}
-                        placeholder="Or paste raw text notes here..."
+                        placeholder="Paste raw text notes here to save as Info File..."
                         className="flex-1 w-full p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/50 border-none focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none text-sm text-slate-700 dark:text-slate-300 mb-3 backdrop-blur-sm"
+                        rows={4}
                     />
                     <button 
                         onClick={handlePasteSave}
                         disabled={!pastedText.trim() || isUploading}
                         className="self-end px-4 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                     >
-                        Save as Text
+                        Save as Info File
                     </button>
                 </div>
             </div>
@@ -327,7 +262,7 @@ export const DataView: React.FC<DataViewProps> = ({ viewState, setViewState }) =
 
                     {filteredMaterials.length === 0 && !isLoading && (
                         <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 dark:text-slate-500 italic">
-                            {filterSource === 'MENTOR' ? 'No materials from Mentor yet. Upload files in Mentor chat!' : 'No materials found.'}
+                            {filterSource === 'MENTOR' ? 'No materials from Mentor yet.' : 'No materials found.'}
                         </div>
                     )}
                 </div>

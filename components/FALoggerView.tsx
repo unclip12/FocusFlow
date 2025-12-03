@@ -1,7 +1,8 @@
 
+
 // components/FALoggerView.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { KnowledgeBaseEntry, RevisionLog, getAdjustedDate, Attachment, TimeLogEntry, RevisionSettings, TrackableItem } from '../types';
+import { KnowledgeBaseEntry, RevisionLog, getAdjustedDate, Attachment, TimeLogEntry, RevisionSettings, TrackableItem, FALogData, ViewStates } from '../types';
 import { ListCheckIcon, PaperAirplaneIcon, SparklesIcon, PaperClipIcon, XMarkIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, TrashIcon, ChevronLeftIcon, ChevronRightIcon, CalendarIcon, PencilSquareIcon, PlusIcon, BookOpenIcon, ArrowPathIcon } from './Icons';
 import { parseFALoggerInput, processLogEntries, ParsedLogEntry, recalculateEntryStats } from '../services/faLoggerService';
 import { RevisionHistoryModal } from './RevisionHistoryModal';
@@ -11,8 +12,7 @@ import { uploadFile, getRevisionSettings } from '../services/firebase';
 import { saveTimeLog } from '../services/timeLogService';
 import { calculateNextRevisionDate } from '../services/srsService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { FALogModal, FALogData } from './FALogModal';
-import { ViewStates } from '../App';
+import { FALogModal } from './FALogModal';
 
 interface FALoggerViewProps {
     knowledgeBase: KnowledgeBaseEntry[];

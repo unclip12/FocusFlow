@@ -1,11 +1,10 @@
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, THEME_COLORS, HistoryRecord, NotificationTrigger, DEFAULT_MENU_ORDER } from '../types';
-import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, LayoutSidebarIcon, ArrowsPointingOutIcon, ListCheckIcon, EyeIcon, EyeSlashIcon, ArrowUpIcon, ArrowDownIcon, InformationCircleIcon, ClockIcon, ArrowPathIcon } from './Icons';
+import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, LayoutSidebarIcon, ArrowsPointingOutIcon, ListCheckIcon, EyeIcon, EyeSlashIcon, ArrowUpIcon, ArrowDownIcon, InformationCircleIcon, ClockIcon, ArrowPathIcon, XMarkIcon } from './Icons';
 import { requestNotificationPermission } from '../services/notificationService';
 import { auth, getAISettings, saveAISettings, getRevisionSettings, saveRevisionSettings } from '../services/firebase';
-import { exportUserData, importUserData, resetAppData } from '../services/dataManagementService';
+import { exportUserData, importUserData, resetAppData, analyzeBackup, BackupAnalysis } from '../services/dataManagementService';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { checkAnkiConnection } from '../services/ankiService';
 import { getHistory, restoreSnapshot, createSnapshot } from '../services/historyService';
@@ -46,6 +45,9 @@ const SettingRow: React.FC<{ label: string, description: string, children: React
     </div>
 );
 
+// ... TriggerList code (unchanged, but needs to be included or imported if split) ...
+// Assuming TriggerList is small enough to keep inline or already exists in file context.
+// For brevity in this response, I will include it to ensure file integrity.
 const TriggerList: React.FC<{ 
     category: NotificationTrigger['category'], 
     triggers: NotificationTrigger[], 
@@ -106,47 +108,157 @@ const TriggerList: React.FC<{
     );
 };
 
+// --- NEW COMPONENTS FOR RESTORE FLOW ---
+
+const RestorePreviewModal: React.FC<{ 
+    analysis: BackupAnalysis | null, 
+    onCancel: () => void, 
+    onConfirm: () => void 
+}> = ({ analysis, onCancel, onConfirm }) => {
+    if (!analysis) return null;
+
+    return (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700 animate-scale-up">
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <DatabaseIcon className="w-5 h-5 text-indigo-500" />
+                        Backup File Analysis
+                    </h3>
+                    <button onClick={onCancel}><XMarkIcon className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+                </div>
+                
+                <div className="p-6 max-h-[60vh] overflow-y-auto">
+                    {!analysis.valid ? (
+                        <div className="text-red-500 bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-900/50 text-sm font-bold text-center">
+                            Invalid Backup File. Missing data structure.
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                {Object.entries(analysis.counts).map(([key, count]) => (
+                                    <div key={key} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-slate-500 uppercase">{key}</span>
+                                        <span className="text-lg font-black text-slate-700 dark:text-slate-200">{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="pt-2">
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Health Check</p>
+                                {analysis.warnings.length > 0 ? (
+                                    <ul className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl border border-amber-100 dark:border-amber-900/50 space-y-1">
+                                        {analysis.warnings.map((w, i) => (
+                                            <li key={i} className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                                                <ExclamationCircleIcon className="w-4 h-4 shrink-0 mt-0.5" /> {w}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-xl border border-green-100 dark:border-green-900/50 text-xs text-green-700 dark:text-green-400 flex items-center gap-2 font-bold">
+                                        <CheckCircleIcon className="w-4 h-4" /> Data structure looks healthy.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 flex justify-end gap-3">
+                    <button onClick={onCancel} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">Cancel</button>
+                    <button 
+                        onClick={onConfirm} 
+                        disabled={!analysis.valid || analysis.totalItems === 0}
+                        className="px-6 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm shadow-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Confirm Restore
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const RestoreResultModal: React.FC<{ 
+    isOpen: boolean, 
+    status: string, 
+    progress: number, 
+    logs: string[],
+    onClose: () => void 
+}> = ({ isOpen, status, progress, logs, onClose }) => {
+    if (!isOpen) return null;
+    const isComplete = progress === 100;
+
+    return (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700 animate-scale-up flex flex-col max-h-[80vh]">
+                <div className="p-6 text-center border-b border-slate-100 dark:border-slate-800">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Restoration Process</h3>
+                    
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden mb-2">
+                        <div 
+                            className={`h-full transition-all duration-300 ease-out ${isComplete ? 'bg-green-500' : 'bg-indigo-500'}`}
+                            style={{ width: `${progress}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{status}</p>
+                </div>
+
+                <div className="flex-1 overflow-hidden flex flex-col p-4 bg-slate-50 dark:bg-slate-950">
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Debug Log</p>
+                    <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 font-mono text-[10px] text-slate-600 dark:text-slate-300 space-y-1">
+                        {logs.map((log, i) => (
+                            <div key={i} className="border-b border-slate-100 dark:border-slate-800/50 last:border-0 pb-1">{log}</div>
+                        ))}
+                        {logs.length === 0 && <span className="text-slate-400 italic">Waiting to start...</span>}
+                    </div>
+                </div>
+
+                {isComplete && (
+                    <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                        <button 
+                            onClick={onClose}
+                            className="px-8 py-3 rounded-xl bg-green-600 text-white font-bold text-sm shadow-lg hover:bg-green-700 transition-all flex items-center gap-2"
+                        >
+                            <CheckCircleIcon className="w-5 h-5" /> Done & Reload
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN COMPONENT ---
+
 export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSettings, secretId, displayName, onUpdateDisplayName }) => {
   const [localName, setLocalName] = useState(displayName);
-  
-  const [aiSettings, setAiSettings] = useState<AISettings>({
-      personalityMode: 'balanced',
-      talkStyle: 'teaching',
-      disciplineLevel: 3,
-      memoryPermissions: {
-          canReadKnowledgeBase: true,
-          canReadTimeLogs: true,
-          canReadInfoFiles: true,
-      }
-  });
-  const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({
-      mode: 'balanced',
-      targetCount: 7,
-      carryForwardRule: 'next_block'
-  });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Data Management State
+  // Restore Flow State
+  const [fileToRestore, setFileToRestore] = useState<any>(null);
+  const [backupAnalysis, setBackupAnalysis] = useState<BackupAnalysis | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+  const [restoreStatus, setRestoreStatus] = useState('');
+  const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [isBackingUp, setIsBackingUp] = useState(false);
-  const [isRestoring, setIsRestoring] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
-  // Anki State
+  // Other State
   const [ankiHostInput, setAnkiHostInput] = useState(settings.ankiHost || 'http://localhost:8765');
   const [ankiStatus, setAnkiStatus] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
   const [ankiError, setAnkiError] = useState<string | null>(null);
-
-  // History State
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
-
-  // Menu Config State
   const [menuConfig, setMenuConfig] = useState(
       settings.menuConfiguration || DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }))
   );
-
-  // Changelog Modal State
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
 
   useEffect(() => {
@@ -159,26 +271,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   const loadConfig = async () => {
       setIsLoading(true);
-      const [aiData, revData] = await Promise.all([
-          getAISettings(),
-          getRevisionSettings()
-      ]);
-      if (aiData) setAiSettings(aiData);
-      if (revData) setRevisionSettings(revData);
-      
       const historyLog = await getHistory();
       setHistory(historyLog);
-      
       setIsLoading(false);
   };
 
-  useEffect(() => {
-      if (settings.menuConfiguration) {
-          setMenuConfig(settings.menuConfiguration);
-      }
-  }, [settings.menuConfiguration]);
-
-  // Menu Handlers
+  // ... (Menu Handlers same as before) ...
   const handleMoveMenu = (index: number, direction: 'up' | 'down') => {
       const newConfig = [...menuConfig];
       const swapIndex = direction === 'up' ? index - 1 : index + 1;
@@ -198,23 +296,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       onUpdateSettings({ ...settings, menuConfiguration: newConfig });
   };
 
-  // Ensure newly added features in DEFAULT_MENU_ORDER appear in config if missing
-  useEffect(() => {
-      const currentIds = new Set(menuConfig.map(m => m.id));
-      const missing = DEFAULT_MENU_ORDER.filter(id => !currentIds.has(id));
-      if (missing.length > 0) {
-          const updatedConfig = [
-              ...menuConfig,
-              ...missing.map(id => ({ id, visible: true }))
-          ];
-          setMenuConfig(updatedConfig);
-          onUpdateSettings({ ...settings, menuConfiguration: updatedConfig });
-      }
-  }, []);
-
   const handleSaveName = () => {
       if (localName !== displayName) {
           onUpdateDisplayName(localName);
+      }
+  };
+
+  const handleSignOut = async () => {
+      if (window.confirm("Are you sure you want to sign out?")) {
+          try {
+              await auth.signOut();
+              window.location.reload();
+          } catch (error) {
+              console.error("Sign out error", error);
+              alert("Unable to sign out. Please check your internet connection.");
+          }
       }
   };
 
@@ -264,26 +360,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       }
   };
 
-  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
-          const reader = new FileReader();
-          setIsRestoring(true);
-          reader.onload = async (ev) => {
-              try {
-                  const json = JSON.parse(ev.target?.result as string);
-                  await importUserData(json);
-                  alert("Data restored successfully! Please reload the app.");
-                  window.location.reload();
-              } catch (err) {
-                  alert("Invalid backup file.");
-              } finally {
-                  setIsRestoring(false);
-              }
-          };
-          reader.readAsText(file);
+  // --- NEW RESTORE LOGIC ---
+
+  const handleRestoreFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+          try {
+              const json = JSON.parse(ev.target?.result as string);
+              // 1. Analyze
+              const analysis = analyzeBackup(json);
+              setFileToRestore(json);
+              setBackupAnalysis(analysis);
+              setShowPreview(true); // Open Preview Modal
+          } catch (err) {
+              alert("Failed to parse JSON file.");
+          }
+      };
+      reader.readAsText(file);
+  };
+
+  const handleConfirmRestore = async () => {
+      if (!fileToRestore) return;
+      
+      setShowPreview(false);
+      setShowResult(true);
+      setRestoreProgress(0);
+      setRestoreStatus('Initializing Import...');
+      setRestoreLogs(["Starting import process..."]);
+
+      try {
+          const result = await importUserData(fileToRestore, (current, total, status) => {
+              const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+              setRestoreProgress(percentage);
+              setRestoreStatus(`${status} (${current}/${total})`);
+          });
+          
+          setRestoreLogs(prev => [...prev, ...result.logs]);
+          setRestoreStatus(result.success ? 'Restoration Complete' : 'Restoration Failed');
+          setRestoreProgress(100);
+
+      } catch (e: any) {
+          setRestoreStatus('Critical Failure');
+          setRestoreLogs(prev => [...prev, `CRITICAL ERROR: ${e.message}`]);
       }
   };
+
+  const handleReloadApp = () => {
+      window.location.reload();
+  };
+
+  // ---
 
   const handleReset = async () => {
       await resetAppData();
@@ -295,7 +424,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const handleCheckAnki = async () => {
       setAnkiStatus('CHECKING');
       setAnkiError(null);
-      // Save host first
       onUpdateSettings({ ...settings, ankiHost: ankiHostInput });
       
       const result = await checkAnkiConnection({ ...settings, ankiHost: ankiHostInput });
@@ -324,7 +452,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const handleCreateManualSnapshot = async () => {
       setCreatingSnapshot(true);
       await createSnapshot("Manual Backup via Settings");
-      // Refresh history list
       const historyLog = await getHistory();
       setHistory(historyLog);
       setCreatingSnapshot(false);
@@ -334,6 +461,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   return (
     <div className="animate-fade-in pb-24 max-w-4xl mx-auto">
+        
+        {/* MODALS */}
+        <RestorePreviewModal 
+            analysis={backupAnalysis} 
+            onCancel={() => { setShowPreview(false); setFileToRestore(null); }}
+            onConfirm={handleConfirmRestore}
+        />
+
+        <RestoreResultModal 
+            isOpen={showResult}
+            status={restoreStatus}
+            progress={restoreProgress}
+            logs={restoreLogs}
+            onClose={handleReloadApp}
+        />
+
         <div className="flex justify-between items-center mb-6 px-2">
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
             {secretId && (
@@ -357,6 +500,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                             className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
                         />
                     </div>
+                    <button 
+                        onClick={handleSignOut}
+                        className="px-6 py-3.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 font-bold rounded-xl transition-colors text-sm shadow-sm border border-slate-200 dark:border-slate-600"
+                    >
+                        Sign Out
+                    </button>
                 </div>
             </Section>
 
@@ -373,7 +522,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     </button>
                 </SettingRow>
 
-                {/* RESTORED THEME GRID */}
                 <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-700/50">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">App Theme</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -416,7 +564,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
-            {/* 3. Interface / Menu Config */}
+            {/* 3. Menu & Layout */}
             <Section title="Menu & Layout" icon={LayoutSidebarIcon}>
                 <SettingRow label="Desktop Layout" description="Sidebar vs Fullscreen">
                     <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
@@ -439,9 +587,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Customize Menu Items</p>
                     <div className="space-y-2">
                         {menuConfig.map((item, idx) => {
-                            // Just using item.id as label key for simplicity
                             const label = item.id.replace(/_/g, ' ');
-                            
                             return (
                                 <div key={item.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
                                     <div className="flex items-center gap-3">
@@ -461,7 +607,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
-            {/* 4. Notifications */}
+            {/* 4. Notifications (Same as before) */}
             <Section title="Notifications" icon={BellIcon}>
                 <SettingRow label="Enable Notifications" description="Get alerts for timers and breaks">
                     <button 
@@ -527,7 +673,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 )}
             </Section>
 
-            {/* 5. Data History & Recovery (Time Machine) */}
+            {/* 5. Cloud Time Machine */}
             <Section title="Cloud Time Machine" icon={ClockIcon}>
                 <div className="space-y-4">
                     <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-200">
@@ -601,13 +747,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                             </button>
                         </div>
                     </div>
-                    
                     {ankiStatus === 'OK' && (
                         <div className="p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-lg text-sm font-bold flex items-center gap-2">
                             <CheckCircleIcon className="w-5 h-5" /> Connected Successfully
                         </div>
                     )}
-                    
                     {ankiStatus === 'FAIL' && (
                         <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">
                             <p className="font-bold flex items-center gap-2 mb-1"><ExclamationCircleIcon className="w-5 h-5" /> Connection Failed</p>
@@ -617,8 +761,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
-            {/* 7. Data Management */}
+            {/* 7. Data Management (UPDATED) */}
             <Section title="Data Management" icon={DatabaseIcon}>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 -mt-2">
+                    Use these options to migrate your data.
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <button 
                         onClick={handleBackup} 
@@ -629,10 +776,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                         <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{isBackingUp ? 'Exporting...' : 'Backup Data'}</span>
                     </button>
 
-                    <label className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 flex flex-col items-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer">
+                    <label className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 flex flex-col items-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer relative overflow-hidden" 
+                        onClick={(e) => {
+                            // Reset value on click so onChange fires even if same file picked
+                            if(fileInputRef.current) fileInputRef.current.value = '';
+                        }}>
                         <ArrowUpTrayIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{isRestoring ? 'Restoring...' : 'Restore Data'}</span>
-                        <input type="file" accept=".json" onChange={handleRestoreFile} disabled={isRestoring} className="hidden" />
+                        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Restore Data</span>
+                        <input 
+                            ref={fileInputRef}
+                            type="file" 
+                            accept=".json" 
+                            onChange={handleRestoreFileSelect} 
+                            className="hidden" 
+                        />
                     </label>
 
                     <button 
@@ -643,6 +800,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                         <span className="text-sm font-bold text-red-700 dark:text-red-300">Reset App</span>
                     </button>
                 </div>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-4 bg-amber-50 dark:bg-amber-900/20 p-2 rounded border border-amber-200 dark:border-amber-800">
+                    <strong>Note:</strong> Backup includes <strong>FMGE logs</strong>, <strong>Knowledge Base</strong>, <strong>Schedules</strong>, and <strong>AI Memory</strong>.
+                </p>
             </Section>
 
             <div className="text-center pt-8 pb-4">
@@ -651,13 +811,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </button>
             </div>
 
-            {/* Modals */}
             <DeleteConfirmationModal 
                 isOpen={isResetModalOpen} 
                 onClose={() => setIsResetModalOpen(false)} 
                 onConfirm={handleReset}
                 title="Factory Reset App?"
-                message="This will wipe ALL data including study plans, knowledge base, and settings. This action is irreversible unless you have a backup."
+                message="This will wipe ALL data including study plans, knowledge base, FMGE logs, and settings. This action is irreversible unless you have a backup."
             />
 
             <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />

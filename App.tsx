@@ -1,7 +1,9 @@
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
-import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry } from './services/firebase';
+import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, saveRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry, getAISettings, saveAISettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
@@ -17,12 +19,14 @@ import {
   MenuItemConfig,
   RevisionItem,
   FMGEEntry,
-  THEME_COLORS
+  THEME_COLORS,
+  ViewStates, // Imported from types
+  FALogData   // Imported from types
 } from './types';
 import { getData, saveData } from './services/dbService';
 import { calculateNextRevisionDate } from './services/srsService';
 import { checkAndMigrateOverdueTasks } from './services/planService';
-import { performFullIntegrityCheck } from './services/faLoggerService';
+import { performFullIntegrityCheck, recalculateEntryStats } from './services/faLoggerService';
 import { createSnapshot, checkAndTriggerDailyBackup } from './services/historyService';
 
 
@@ -52,7 +56,6 @@ import { TimeLoggerView } from './components/TimeLoggerView';
 import { DailyTrackerView } from './components/DailyTrackerView';
 import { FMGEView } from './components/FMGEView'; 
 import { toggleMaterialActive } from './services/firebase';
-import { FALogData } from './components/FALogModal';
 
 // Services
 import { requestNotificationPermission } from './services/notificationService';
@@ -106,49 +109,6 @@ const SyncIndicator = () => {
         </div>
     );
 };
-
-// --- PERSISTED VIEW STATE INTERFACES ---
-export interface ViewStates {
-    kb: {
-        search: string;
-        selectedSystem: string;
-        sortBy: 'PAGE' | 'TOPIC' | 'SYSTEM' | 'SUBJECT' | 'REVISIONS' | 'STUDIED' | 'LAST_STUDIED' | 'RECENTLY_ADDED';
-        sortOrder: 'ASC' | 'DESC';
-        viewMode: 'PAGE_WISE' | 'SUBTOPIC_WISE';
-    };
-    fa: {
-        isLogModalOpen: boolean;
-        modalMode: 'STUDY' | 'REVISION';
-        draftLog: FALogData | null;
-        logToEdit: FALogData | null;
-    };
-    plan: {
-        currentDate: string; // Stores the date currently being viewed in Plan
-        viewMode: 'full' | 'blocks';
-        isManualModalOpen: boolean; // Keeps modal open if navigated away
-    };
-    timeLog: {
-        selectedDate: string;
-        input: string;
-    };
-    revision: {
-        activeTab: 'DUE' | 'UPCOMING' | 'HISTORY';
-        sortBy: 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
-        sortOrder: 'ASC' | 'DESC';
-    };
-    calendar: {
-        currentMonth: Date;
-        selectedDate: Date;
-        viewMode: 'MONTH' | 'DAY';
-    };
-    chat: {
-        mode: 'MENTOR' | 'BUDDY';
-        input: string;
-    };
-    data: {
-        filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
-    };
-}
 
 export default function App() {
   // Auth
@@ -241,6 +201,7 @@ export default function App() {
 
   // Modals
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [sessionLogType, setSessionLogType] = useState<'INITIAL' | 'REVISION'>('INITIAL'); // NEW: Track log intention
   const [editingSession, setEditingSession] = useState<StudySession | null>(null);
   const [sessionPrefill, setSessionPrefill] = useState<any>(null);
   const [planContext, setPlanContext] = useState<any>(null);
@@ -267,9 +228,13 @@ export default function App() {
   }, []);
 
   const loadTodayPlan = async () => {
-      const today = getAdjustedDate(new Date());
-      const plan = await getDayPlan(today);
-      setTodayPlan(plan);
+      try {
+          const today = getAdjustedDate(new Date());
+          const plan = await getDayPlan(today);
+          setTodayPlan(plan);
+      } catch (e) {
+          console.warn("Failed to load today's plan", e);
+      }
   };
 
   // Scheduled Backup Checker
@@ -292,107 +257,156 @@ export default function App() {
       setUser(u);
       
       if (u) {
-        // Load Revision Settings First
-        const loadedRevSettings = await getRevisionSettings();
-        if (loadedRevSettings) setRevisionSettings(loadedRevSettings);
-        const currentRevSettings = loadedRevSettings || { mode: 'balanced', targetCount: 7 }; // Default fallback
-
-        // Load from IndexedDB first for speed, then sync with Firestore
-        const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
-        setStudyPlan(localPlan);
-        
-        const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
-        setKnowledgeBase(localKB);
-
-        // 1. Fetch Firestore
-        const firestoreKB = await getKnowledgeBase();
-        
-        // 2. AUTO-RUN INTEGRITY CHECK ON LOAD - WITH REVISION SETTINGS
-        const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
-        
-        // 3. Update State
-        setKnowledgeBase(checkedKB);
-        await saveData('knowledgeBase_v2', checkedKB);
-
-        // 4. If check found errors, save fixed version back to DB
-        if (updated) {
-            console.log("Self-healing: KB Integrity issues found and fixed.");
-            await saveKnowledgeBase(checkedKB);
-        }
-
-        // LOAD FMGE DATA
-        const fmge = await getFMGEData();
-        setFmgeData(fmge);
-
-        // Automated Task Migration on Load
-        await checkAndMigrateOverdueTasks();
-
-        // Load Today's Plan for Dashboard Stats
-        await loadTodayPlan();
-
-        // --- SETTINGS SYNC (Improved) ---
         try {
-            const localSettings = await getData<AppSettings>('settings');
+            // --- AUTO-INITIALIZATION FOR FRESH DB ---
+            // If the database was wiped, restore essential config structures
+            // This ensures a "proper setup" without manual intervention
+            const [cloudRevConfig, cloudAiConfig] = await Promise.all([
+                getRevisionSettings(),
+                getAISettings()
+            ]);
+
+            // 1. Revision Settings
+            let currentRevSettings: RevisionSettings;
+            if (cloudRevConfig) {
+                currentRevSettings = cloudRevConfig;
+            } else {
+                console.log(" Fresh DB detected: Initializing Revision Settings...");
+                currentRevSettings = { mode: 'balanced', targetCount: 7 };
+                await saveRevisionSettings(currentRevSettings);
+            }
+            setRevisionSettings(currentRevSettings);
+
+            // 2. AI Settings
+            if (!cloudAiConfig) {
+                console.log(" Fresh DB detected: Initializing AI Settings...");
+                await saveAISettings({ personalityMode: 'balanced', talkStyle: 'motivational', disciplineLevel: 3 });
+            }
+
+            // Load from IndexedDB first for speed, then sync with Firestore
+            const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
+            setStudyPlan(localPlan);
             
-            // Initial render with local settings if available to prevent flash of defaults
-            if (localSettings) {
-                setSettings(prev => ({
-                    ...prev,
-                    ...localSettings,
-                    notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
-                    quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
-                }));
-            }
+            const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
+            setKnowledgeBase(localKB);
 
-            // Fetch Cloud Settings
-            const cloudSettings = await getAppSettings();
-            const sourceSettings = cloudSettings || localSettings;
-
-            if (sourceSettings) {
-                setSettings(prev => {
-                    const merged = { 
-                        ...prev, 
-                        ...sourceSettings, 
-                        notifications: { ...prev.notifications, ...(sourceSettings.notifications || {}) }, 
-                        quietHours: { ...prev.quietHours, ...(sourceSettings.quietHours || {}) } 
-                    };
-                    
-                    // Smart Menu Merge: Preserve cloud config but append any new features
-                    if (sourceSettings.menuConfiguration) {
-                        const existingIds = new Set(sourceSettings.menuConfiguration.map((m: MenuItemConfig) => m.id));
-                        const newItems = DEFAULT_MENU_ORDER
-                            .filter(id => !existingIds.has(id))
-                            .map(id => ({ id, visible: true }));
-                        merged.menuConfiguration = [...sourceSettings.menuConfiguration, ...newItems];
-                    } else {
-                        merged.menuConfiguration = DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }));
-                    }
-
-                    return merged;
-                });
+            // 1. Fetch Firestore
+            const firestoreKB = await getKnowledgeBase();
+            
+            // Handle offline case where firestoreKB is null
+            if (firestoreKB) {
+                // 2. AUTO-RUN INTEGRITY CHECK ON LOAD - WITH REVISION SETTINGS
+                const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
                 
-                if (cloudSettings) await saveData('settings', cloudSettings);
-                
-                if (!cloudSettings && localSettings) {
-                    await saveAppSettings(localSettings);
+                // 3. Update State
+                setKnowledgeBase(checkedKB);
+                await saveData('knowledgeBase_v2', checkedKB);
+
+                // 4. If check found errors, save fixed version back to DB
+                if (updated) {
+                    console.log("Self-healing: KB Integrity issues found and fixed.");
+                    await saveKnowledgeBase(checkedKB);
                 }
+            } else {
+                console.warn("Failed to fetch latest KB from cloud (offline), keeping local cache.");
             }
-        } catch (err) {
-            console.error("Failed to sync settings", err);
+
+            // LOAD FMGE DATA
+            const fmge = await getFMGEData();
+            if (fmge) {
+                setFmgeData(fmge);
+            }
+
+            // Automated Task Migration on Load - Wrapped to prevent load failure
+            try {
+                await checkAndMigrateOverdueTasks();
+            } catch (e) {
+                console.warn("Task migration failed or skipped (offline?)", e);
+            }
+
+            // Load Today's Plan for Dashboard Stats
+            await loadTodayPlan();
+
+            // --- SETTINGS SYNC (Improved) ---
+            try {
+                const localSettings = await getData<AppSettings>('settings');
+                
+                // Initial render with local settings if available to prevent flash of defaults
+                if (localSettings) {
+                    setSettings(prev => ({
+                        ...prev,
+                        ...localSettings,
+                        notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
+                        quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
+                    }));
+                }
+
+                // Fetch Cloud Settings
+                const cloudSettings = await getAppSettings();
+                
+                // 3. App Settings Auto-Init if missing from cloud
+                if (!cloudSettings) {
+                    console.log(" Fresh DB detected: Initializing App Settings...");
+                    // We use the 'settings' state which contains the robust defaults
+                    // We write this to cloud to hydrate the DB
+                    await saveAppSettings(settings);
+                }
+
+                const sourceSettings = cloudSettings || localSettings;
+
+                if (sourceSettings) {
+                    setSettings(prev => {
+                        const merged = { 
+                            ...prev, 
+                            ...sourceSettings, 
+                            notifications: { ...prev.notifications, ...(sourceSettings.notifications || {}) }, 
+                            quietHours: { ...prev.quietHours, ...(sourceSettings.quietHours || {}) } 
+                        };
+                        
+                        // Smart Menu Merge: Preserve cloud config but append any new features
+                        if (sourceSettings.menuConfiguration) {
+                            const existingIds = new Set(sourceSettings.menuConfiguration.map((m: MenuItemConfig) => m.id));
+                            const newItems = DEFAULT_MENU_ORDER
+                                .filter(id => !existingIds.has(id))
+                                .map(id => ({ id, visible: true }));
+                            merged.menuConfiguration = [...sourceSettings.menuConfiguration, ...newItems];
+                        } else {
+                            merged.menuConfiguration = DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }));
+                        }
+
+                        return merged;
+                    });
+                    
+                    if (cloudSettings) await saveData('settings', cloudSettings);
+                    
+                    if (!cloudSettings && localSettings) {
+                        await saveAppSettings(localSettings);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to sync settings", err);
+            } finally {
+                setSettingsLoaded(true);
+            }
+
+            const loadedExamDate = await getData<string>('examDate');
+            const loadedProfile = await getFirebaseUserProfile();
+
+            if (loadedProfile?.displayName) {
+                setDisplayName(loadedProfile.displayName);
+            }
+            
+            if (loadedExamDate) setExamDate(loadedExamDate);
+
+        } catch (globalError) {
+            console.error("Critical error during initial load sequence:", globalError);
         } finally {
-            setSettingsLoaded(true);
+            // CRITICAL: Ensure loader stops even if errors occurred
+            setAuthLoading(false);
         }
-
-        const loadedExamDate = await getData<string>('examDate');
-        const loadedProfile = await getFirebaseUserProfile();
-
-        if (loadedProfile?.displayName) {
-            setDisplayName(loadedProfile.displayName);
-        }
-        
-        if (loadedExamDate) setExamDate(loadedExamDate);
+      } else {
+          setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -564,27 +578,80 @@ export default function App() {
     if (!entry) return;
 
     let updatedEntry = { ...entry };
+    let logs = [...updatedEntry.logs];
 
-    if (item.type === 'PAGE') {
-        updatedEntry.nextRevisionAt = null;
-    } else if (item.type === 'TOPIC' && item.topic) {
-        updatedEntry.topics = updatedEntry.topics.map(t => {
-            if (t.id === item.topic!.id) {
-                return { ...t, nextRevisionAt: null };
-            }
-            return t;
-        });
-    } else if (item.type === 'SUBTOPIC' && item.topic && item.subTopic) {
-         updatedEntry.topics = updatedEntry.topics.map(t => {
-            if (t.id === item.topic!.id) {
-                const updatedSubTopics = t.subTopics?.map(st => 
-                    st.id === item.subTopic!.id ? { ...st, nextRevisionAt: null } : st
-                );
-                return { ...t, subTopics: updatedSubTopics };
-            }
-            return t;
-        });
+    // Check if we should "Undo" revision (delete log) or just clear schedule
+    const isUpcoming = new Date(item.nextRevisionAt) > new Date();
+
+    if (isUpcoming) {
+        // Rollback Logic: Remove the log that caused this state
+        // Sort to find the latest
+        logs.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        if (item.groupedTopics && item.groupedTopics.length > 0) {
+             // Handle Group: Find log containing these topics
+             const topicNames = new Set(item.groupedTopics.map(t => t.name.trim().toLowerCase()));
+             
+             for (let i = logs.length - 1; i >= 0; i--) {
+                 if (logs[i].topics && logs[i].topics!.some(t => topicNames.has(t.trim().toLowerCase()))) {
+                     logs.splice(i, 1);
+                     break; 
+                 }
+             }
+        } else if (item.type === 'TOPIC' && item.topic) {
+             // Remove the most recent log that mentions this topic
+             for (let i = logs.length - 1; i >= 0; i--) {
+                 if (logs[i].topics && logs[i].topics!.some(t => t.trim().toLowerCase() === item.topic!.name.trim().toLowerCase())) {
+                     logs.splice(i, 1);
+                     break; // Remove only the latest one
+                 }
+             }
+        } else if (item.type === 'PAGE') {
+             // Remove the most recent PAGE log (no topics)
+             for (let i = logs.length - 1; i >= 0; i--) {
+                 // Check if log has NO topics (empty array or undefined)
+                 const hasTopics = logs[i].topics && logs[i].topics!.length > 0;
+                 if (!hasTopics) {
+                     logs.splice(i, 1);
+                     break;
+                 }
+             }
+        } else {
+             // Fallback for edge cases
+             if (logs.length > 0) logs.pop();
+        }
+
+        updatedEntry.logs = logs;
+        
+        // Recalculate stats based on remaining history
+        // This will naturally revert 'nextRevisionAt' to the previous state
+        const recalculated = recalculateEntryStats(updatedEntry, revisionSettings);
+        updatedEntry = recalculated;
+
+    } else {
+        // Simple Delete Schedule (Legacy behavior for "Due" items if needed, or manual override)
+        if (item.type === 'PAGE') {
+            updatedEntry.nextRevisionAt = null;
+        } else if (item.type === 'TOPIC' && item.topic) {
+            updatedEntry.topics = updatedEntry.topics.map(t => {
+                if (t.id === item.topic!.id) {
+                    return { ...t, nextRevisionAt: null };
+                }
+                return t;
+            });
+        } else if (item.type === 'SUBTOPIC' && item.topic && item.subTopic) {
+             updatedEntry.topics = updatedEntry.topics.map(t => {
+                if (t.id === item.topic!.id) {
+                    const updatedSubTopics = t.subTopics?.map(st => 
+                        st.id === item.subTopic!.id ? { ...st, nextRevisionAt: null } : st
+                    );
+                    return { ...t, subTopics: updatedSubTopics };
+                }
+                return t;
+            });
+        }
     }
+
     updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? updatedEntry : k));
   };
 
@@ -866,6 +933,9 @@ export default function App() {
                                 planId: item.id,
                                 subTasks: item.subTasks || []
                             });
+                            // Check if page already exists with revision history to set mode correctly
+                            const exists = knowledgeBase.some(k => k.pageNumber === item.pageNumber && (k.revisionCount > 0 || k.logs.length > 0));
+                            setSessionLogType(exists ? 'REVISION' : 'INITIAL');
                             setIsSessionModalOpen(true);
                         }}
                         onManageSession={(session) => {
@@ -955,6 +1025,7 @@ export default function App() {
                                 ankiTotal: item.kbEntry.ankiTotal,
                                 ankiCovered: item.kbEntry.ankiCovered
                             });
+                            setSessionLogType('REVISION'); // Explicitly set revision mode
                             setIsSessionModalOpen(true);
                         }}
                         onDeleteSession={() => {}}
@@ -1041,6 +1112,7 @@ export default function App() {
               prefillData={sessionPrefill}
               planContext={planContext}
               knowledgeBase={knowledgeBase}
+              defaultLogType={sessionLogType} // PASS NEW PROP
               onSave={(sessionData) => {
                   const { pageNumber, topic, history, notes, ankiCovered, ankiTotal, planUpdates } = sessionData;
                   const latestLog = history && history.length > 0 ? history[0] : null;

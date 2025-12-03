@@ -4,12 +4,13 @@ import { KnowledgeBaseEntry, StudySession, Attachment, QuizQuestion, SYSTEMS, CA
 import { BookOpenIcon, FireIcon, HistoryIcon, PaperClipIcon, PhotoIcon, DocumentIcon, VideoIcon, XMarkIcon, LightBulbIcon, PuzzlePieceIcon, CheckCircleIcon, ArrowRightIcon, SpeakerWaveIcon, StopCircleIcon, CalendarIcon, PencilSquareIcon, TrashIcon, PlusIcon, SparklesIcon, ArrowPathIcon, LinkIcon, ListCheckIcon } from './Icons';
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { explainTopic, generateQuiz, speakText } from '../services/geminiService';
-import { uploadFile, getRevisionSettings } from '../services/firebase';
+// import { uploadFile } from '../services/firebase'; // Removed
 import { getData } from '../services/dbService';
 import { CollapsibleTopic } from './KnowledgeBaseView'; 
 import { syncAnkiToDb, openAnkiBrowser, AnkiStats } from '../services/ankiService';
 import { SubtopicDetailModal } from './SubtopicDetailModal';
 import { recalculateEntryStats } from '../services/faLoggerService';
+import { getRevisionSettings } from '../services/firebase';
 
 interface PageDetailModalProps {
   isOpen: boolean;
@@ -38,7 +39,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   // New state for extended editing
   const [subtopicsInput, setSubtopicsInput] = useState('');
   const [keyPointsInput, setKeyPointsInput] = useState(''); 
-  const [isUploading, setIsUploading] = useState(false);
+  // const [isUploading, setIsUploading] = useState(false); // Removed
 
   // AI Features State
   const [isExplaining, setIsExplaining] = useState(false);
@@ -135,7 +136,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       setEditForm(null);
       setSubtopicsInput('');
       setKeyPointsInput('');
-      setIsUploading(false);
+      // setIsUploading(false);
   };
   
   const handleSaveEdit = () => {
@@ -181,34 +182,11 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       }
   };
 
+  /* REMOVED UPLOAD HANDLER
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0] && editForm) {
-        const file = e.target.files[0];
-        setIsUploading(true);
-        
-        let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
-        if (file.type.startsWith('image/')) type = 'IMAGE';
-        else if (file.type === 'application/pdf') type = 'PDF';
-
-        try {
-           const url = await uploadFile(file);
-           const newAttachment: Attachment = {
-              id: generateId(),
-              name: file.name,
-              type: type,
-              data: url
-          };
-          setEditForm(prev => ({
-              ...prev!,
-              attachments: [...(prev!.attachments || []), newAttachment]
-          }));
-        } catch (error) {
-           alert("Upload failed.");
-        } finally {
-           setIsUploading(false);
-        }
-    }
+    // Disabled
   };
+  */
 
   const removeAttachment = (id: string) => {
     if (editForm) {
@@ -490,11 +468,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                                           </div>
                                       ))}
                                   </div>
-                                  <label className={`flex items-center justify-center gap-2 w-full p-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors ${isUploading ? 'opacity-50' : ''}`}>
-                                      {isUploading ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div> : <PlusIcon className="w-4 h-4 text-slate-500" />}
-                                      <span className="text-sm text-slate-500 font-medium">{isUploading ? 'Uploading...' : 'Add Attachment'}</span>
-                                      <input type="file" onChange={handleFileChange} className="hidden" disabled={isUploading} />
-                                  </label>
+                                  {/* UPLOAD BUTTON REMOVED */}
                               </div>
                           ) : attachments.length > 0 ? (
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">

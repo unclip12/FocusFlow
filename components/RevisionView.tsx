@@ -107,7 +107,7 @@ const RevisionItemCard: React.FC<RevisionItemCardProps> = ({ item, knowledgeBase
                     <button 
                         onClick={(e) => { e.stopPropagation(); onDelete(); }}
                         className="p-2.5 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title="Remove from schedule"
+                        title={isDue ? "Remove from schedule" : "Undo last revision"}
                     >
                         <TrashIcon className="w-5 h-5" />
                     </button>
@@ -215,6 +215,23 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
           onDeleteRevision(itemToDelete);
           setItemToDelete(null);
       }
+  };
+
+  // Dynamic message based on context
+  const getDeleteMessage = (item: RevisionItem | null) => {
+      if (!item) return "";
+      const isUpcoming = new Date(item.nextRevisionAt) > new Date();
+      if (isUpcoming) {
+          return `Deleting this Upcoming Revision acts as an "Undo". \n\nThis will remove the previous revision log, reverting "${item.title}" back to its previous status (Due Now).`;
+      } else {
+          return `Are you sure you want to remove this revision for "${item.title}"? It will be removed from the schedule but progress is kept.`;
+      }
+  };
+
+  const getDeleteTitle = (item: RevisionItem | null) => {
+      if (!item) return "Delete Item?";
+      const isUpcoming = new Date(item.nextRevisionAt) > new Date();
+      return isUpcoming ? "Undo Revision?" : "Remove Revision?";
   };
 
   const todaysLogs = useMemo(() => {
@@ -366,8 +383,8 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
             isOpen={!!itemToDelete}
             onClose={() => setItemToDelete(null)}
             onConfirm={confirmDelete}
-            title="Remove Revision?"
-            message={`Are you sure you want to remove this revision for "${itemToDelete?.title}"? It will be removed from the schedule but progress is kept.`}
+            title={getDeleteTitle(itemToDelete)}
+            message={getDeleteMessage(itemToDelete)}
         />
 
         <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 shadow-sm">
@@ -513,5 +530,6 @@ export const RevisionView: React.FC<RevisionViewProps> = ({ knowledgeBase, onLog
                  )}
             </div>
         </div>
-    );
+    </div>
+  );
 };

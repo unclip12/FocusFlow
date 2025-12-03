@@ -8,9 +8,14 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).su
 export const getTimeLogs = async (date: string): Promise<TimeLogEntry[]> => {
     if (!auth.currentUser) return [];
     const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
-    // Query specifically for the "study day" date
-    const snap = await colRef.where('date', '==', date).get();
-    return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    try {
+        // Query specifically for the "study day" date
+        const snap = await colRef.where('date', '==', date).get();
+        return snap.docs.map(d => d.data() as TimeLogEntry).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    } catch (e) {
+        console.warn("Failed to fetch time logs", e);
+        return [];
+    }
 };
 
 export const saveTimeLog = async (entry: TimeLogEntry) => {
@@ -33,9 +38,13 @@ export const getTimeLogsForTimeline = async (date: string): Promise<TimeLogEntry
     const prevDateStr = getAdjustedDate(d);
 
     const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
-    const snap = await colRef.where('date', 'in', [date, prevDateStr]).get();
-    
-    return snap.docs.map(d => d.data() as TimeLogEntry);
+    try {
+        const snap = await colRef.where('date', 'in', [date, prevDateStr]).get();
+        return snap.docs.map(d => d.data() as TimeLogEntry);
+    } catch (e) {
+        console.warn("Failed to fetch timeline logs", e);
+        return [];
+    }
 };
 
 export const getTimeLogsForMonth = async (year: number, month: number): Promise<TimeLogEntry[]> => {
@@ -46,9 +55,13 @@ export const getTimeLogsForMonth = async (year: number, month: number): Promise<
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const colRef = db.collection('users').doc(auth.currentUser.uid).collection('timeLogs');
-    const snap = await colRef.where('date', '>=', startDate).where('date', '<=', endDate).get();
-    
-    return snap.docs.map(d => d.data() as TimeLogEntry);
+    try {
+        const snap = await colRef.where('date', '>=', startDate).where('date', '<=', endDate).get();
+        return snap.docs.map(d => d.data() as TimeLogEntry);
+    } catch (e) {
+        console.warn("Failed to fetch monthly logs", e);
+        return [];
+    }
 };
 
 

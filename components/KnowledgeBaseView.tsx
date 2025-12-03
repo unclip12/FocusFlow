@@ -1,5 +1,7 @@
+
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession, TrackableItem, getAdjustedDate } from '../types';
+import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession, TrackableItem, getAdjustedDate, ViewStates } from '../types';
 import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon, TrashIcon, ChevronDownIcon, ListCheckIcon, ClockIcon, CalendarIcon, ListCheckIcon as SubtopicIcon, ArrowPathIcon, XMarkIcon } from './Icons';
 import { extractTopicFromImage } from '../services/geminiService';
 import { PageBadge } from './PageBadge';
@@ -7,7 +9,6 @@ import { uploadFile, getUserProfile, saveUserProfile } from '../services/firebas
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { SubtopicDetailModal } from './SubtopicDetailModal';
-import { ViewStates } from '../App';
 
 // Robust ID generator
 const generateId = () => {

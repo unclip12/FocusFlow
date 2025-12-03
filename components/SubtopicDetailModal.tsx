@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrackableItem, KnowledgeBaseEntry, Attachment } from '../types';
 import { XMarkIcon, CheckCircleIcon, PlusIcon, DocumentIcon, PhotoIcon, TrashIcon, HistoryIcon, ArrowPathIcon } from './Icons';
-import { uploadFile } from '../services/firebase';
+// import { uploadFile } from '../services/firebase'; // Removed
 import { AttachmentViewerModal } from './AttachmentViewerModal';
 
 interface SubtopicDetailModalProps {
@@ -19,7 +19,7 @@ export const SubtopicDetailModal: React.FC<SubtopicDetailModalProps> = ({ isOpen
     const [contentInput, setContentInput] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [activeAttachment, setActiveAttachment] = useState<Attachment | null>(null);
-    const [isUploading, setIsUploading] = useState(false);
+    // const [isUploading, setIsUploading] = useState(false); // Removed
 
     useEffect(() => {
         if (isOpen) {
@@ -46,37 +46,11 @@ export const SubtopicDetailModal: React.FC<SubtopicDetailModalProps> = ({ isOpen
         setIsEditing(false);
     };
 
+    /* REMOVED FILE UPLOAD HANDLER
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setIsUploading(true);
-            
-            let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
-            if (file.type.startsWith('image/')) type = 'IMAGE';
-            else if (file.type === 'application/pdf') type = 'PDF';
-
-            try {
-                const url = await uploadFile(file);
-                const newAttachment: Attachment = {
-                    id: generateId(),
-                    name: file.name,
-                    type: type,
-                    data: url
-                };
-                
-                const updatedAttachments = [...(subtopic.attachments || []), newAttachment];
-                onUpdate({
-                    ...subtopic,
-                    attachments: updatedAttachments
-                });
-            } catch (error) {
-                console.error("Upload failed", error);
-                alert("Upload failed. Check connection.");
-            } finally {
-                setIsUploading(false);
-            }
-        }
+        // Disabled
     };
+    */
 
     const removeAttachment = (id: string) => {
         if (confirm("Delete this attachment?")) {
@@ -168,7 +142,7 @@ export const SubtopicDetailModal: React.FC<SubtopicDetailModalProps> = ({ isOpen
                             )}
                         </div>
 
-                        {/* Attachments */}
+                        {/* Attachments (View Only) */}
                         <div>
                             <div className="flex justify-between items-end mb-3">
                                 <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Specific Attachments</h3>
@@ -193,17 +167,7 @@ export const SubtopicDetailModal: React.FC<SubtopicDetailModalProps> = ({ isOpen
                                     </div>
                                 ))}
                                 
-                                <label className={`aspect-square rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all group ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                    {isUploading ? (
-                                        <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <PlusIcon className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 mb-1" />
-                                            <span className="text-[9px] font-bold text-slate-400 group-hover:text-indigo-500 uppercase">Add</span>
-                                        </>
-                                    )}
-                                    <input type="file" onChange={handleFileChange} className="hidden" disabled={isUploading} />
-                                </label>
+                                {/* UPLOAD BUTTON REMOVED */}
                             </div>
                         </div>
 

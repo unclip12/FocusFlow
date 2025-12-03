@@ -818,3 +818,57 @@ export const getAdjustedDate = (dateInput: Date | string): string => {
     
     return `${year}-${month}-${day}`;
 };
+
+// --- LOGGING & VIEW STATE TYPES ---
+
+export interface FALogData {
+    logId?: string;
+    pageNumber: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    selectedTopics: string[];
+    notes: string;
+}
+
+export interface ViewStates {
+    kb: {
+        search: string;
+        selectedSystem: string;
+        sortBy: 'PAGE' | 'TOPIC' | 'SYSTEM' | 'SUBJECT' | 'REVISIONS' | 'STUDIED' | 'LAST_STUDIED' | 'RECENTLY_ADDED';
+        sortOrder: 'ASC' | 'DESC';
+        viewMode: 'PAGE_WISE' | 'SUBTOPIC_WISE';
+    };
+    fa: {
+        isLogModalOpen: boolean;
+        modalMode: 'STUDY' | 'REVISION';
+        draftLog: FALogData | null;
+        logToEdit: FALogData | null;
+    };
+    plan: {
+        currentDate: string;
+        viewMode: 'full' | 'blocks';
+        isManualModalOpen: boolean;
+    };
+    timeLog: {
+        selectedDate: string;
+        input: string;
+    };
+    revision: {
+        activeTab: 'DUE' | 'UPCOMING' | 'HISTORY';
+        sortBy: 'TIME' | 'PAGE' | 'TOPIC' | 'SYSTEM';
+        sortOrder: 'ASC' | 'DESC';
+    };
+    calendar: {
+        currentMonth: Date;
+        selectedDate: Date;
+        viewMode: 'MONTH' | 'DAY';
+    };
+    chat: {
+        mode: 'MENTOR' | 'BUDDY';
+        input: string;
+    };
+    data: {
+        filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
+    };
+}

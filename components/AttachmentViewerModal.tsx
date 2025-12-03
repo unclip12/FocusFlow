@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Attachment } from '../types';
 import { XMarkIcon, ArrowPathIcon, DocumentIcon, ArrowRightIcon, ArrowLeftIcon } from './Icons';
-import { uploadFile } from '../services/firebase';
+// import { uploadFile } from '../services/firebase'; // Removed
 
 interface AttachmentViewerModalProps {
     attachment: Attachment;
@@ -21,7 +22,7 @@ const base64ToBlob = (base64: string, type: string = 'application/pdf') => {
 };
 
 export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({ attachment, onClose, onUpdateAttachment }) => {
-    const [isUploading, setIsUploading] = useState(false);
+    // const [isUploading, setIsUploading] = useState(false); // Removed
 
     useEffect(() => {
         document.body.style.overflow = 'hidden';
@@ -49,33 +50,11 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({ at
         }
     };
 
+    /* REMOVED UPDATE HANDLER
     const handleUpdateFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setIsUploading(true);
-
-            try {
-                const url = await uploadFile(file);
-                
-                // Notify parent of update if callback exists
-                if (onUpdateAttachment) {
-                    const updatedAttachment: Attachment = {
-                        ...attachment,
-                        data: url,
-                        // Preserve ID but update timestamp/name context if needed
-                    };
-                    // Note: To fully implement update, we need to pass a callback from App.tsx down to here
-                    // For now, we alert success as this requires prop drilling updates in App.tsx
-                    alert("File uploaded successfully! Please save the session/page to persist changes.");
-                }
-            } catch (error) {
-                console.error("Upload failed", error);
-                alert("Failed to upload update.");
-            } finally {
-                setIsUploading(false);
-            }
-        }
+        // Disabled
     };
+    */
 
     // --- IMAGE VIEWER (Simple Lightbox) ---
     if (attachment.type === 'IMAGE') {
@@ -115,14 +94,10 @@ export const AttachmentViewerModal: React.FC<AttachmentViewerModalProps> = ({ at
                     </button>
                     
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 px-4">
-                        To edit: Open the file, make changes in your PDF app, save it to 'Files', then tap below to update.
+                        To edit: Open the file, make changes in your PDF app, save it to 'Files'.
                     </p>
 
-                    <label className={`w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-all cursor-pointer flex items-center justify-center gap-2 ${isUploading ? 'opacity-50' : ''}`}>
-                        <ArrowPathIcon className={`w-4 h-4 ${isUploading ? 'animate-spin' : ''}`} />
-                        <span>{isUploading ? 'Uploading...' : 'Replace / Update File'}</span>
-                        <input type="file" accept="application/pdf" className="hidden" onChange={handleUpdateFile} disabled={isUploading} />
-                    </label>
+                    {/* UPDATE BUTTON REMOVED */}
                 </div>
 
                 <button onClick={onClose} className="mt-6 text-slate-400 hover:text-slate-600 text-sm font-medium">

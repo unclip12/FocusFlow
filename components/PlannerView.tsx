@@ -4,12 +4,12 @@ import { StudyPlanItem, KnowledgeBaseEntry, VideoResource, ToDoItem, getAdjusted
 import { CalendarPlusIcon, VideoIcon, LinkIcon, CheckCircleIcon, PlusIcon, FireIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon as CheckIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, HistoryIcon, ChevronDownIcon, TrashIcon, SparklesIcon, PaperClipIcon, DocumentIcon, BookOpenIcon, RepeatIcon, SpeakerWaveIcon, StopCircleIcon } from './Icons';
 import { parseStudyRequest, speakText } from '../services/geminiService';
 import { PageBadge } from './PageBadge';
-import { uploadFile } from '../services/firebase';
+// import { uploadFile } from '../services/firebase'; // Removed to prevent uploads
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 // Robust ID generator fallback
 const generateId = () => {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID) {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
     }
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -337,10 +337,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
   const [videoUrl, setVideoUrl] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
 
-  // Attachments
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  
   // UI State
   const [isResourcesExpanded, setIsResourcesExpanded] = useState(false);
 
@@ -387,9 +383,8 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
           setAnkiCount(editingItem.ankiCount || 0);
           setVideoUrl(editingItem.videoUrl || '');
           setSubTasks(editingItem.subTasks || []);
-          setAttachments(editingItem.attachments || []);
-          // Expand resources if there are any
-          if (editingItem.videoUrl || (editingItem.attachments && editingItem.attachments.length > 0)) {
+          
+          if (editingItem.videoUrl) {
               setIsResourcesExpanded(true);
           } else {
               setIsResourcesExpanded(false);
@@ -398,14 +393,13 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
           // Reset
           setDate(getAdjustedDate(new Date()));
           setPageNumber('');
-          setTopic(sharedContent && !sharedContent.startsWith('http') ? sharedContent : ''); // Preserve shared topic if any
+          setTopic(sharedContent && !sharedContent.startsWith('http') ? sharedContent : ''); 
           setEstimatedMinutes(60);
           setAnkiCount(0);
           setVideoUrl(sharedContent && sharedContent.startsWith('http') ? sharedContent : '');
           setVideoTitle(sharedContent && sharedContent.startsWith('http') ? 'Shared Link' : '');
           setSubTasks([]);
           setNewSubTask('');
-          setAttachments([]);
           setIsResourcesExpanded(false);
       }
   }, [editingItem, sharedContent]);
@@ -418,55 +412,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
 
   const removeSubTask = (id: string) => {
       setSubTasks(prev => prev.filter(t => t.id !== id));
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
-          setIsUploading(true);
-
-          let type: 'IMAGE' | 'PDF' | 'OTHER' = 'OTHER';
-          if (file.type.startsWith('image/')) {
-              type = 'IMAGE';
-          } else if (file.type === 'application/pdf') {
-              type = 'PDF';
-          }
-
-          try {
-              // Attempt upload to Cloud Storage
-              const url = await uploadFile(file);
-              
-              const newAttachment: Attachment = {
-                  id: generateId(),
-                  name: file.name,
-                  type: type,
-                  data: url // Store URL
-              };
-              setAttachments(prev => [...prev, newAttachment]);
-
-          } catch (error) {
-              console.warn("Cloud upload failed, falling back to local base64", error);
-              // Fallback to FileReader (Base64)
-              const reader = new FileReader();
-              reader.onload = (ev) => {
-                  const result = ev.target?.result as string;
-                  const newAttachment: Attachment = {
-                      id: generateId(),
-                      name: file.name,
-                      type: type,
-                      data: result
-                  };
-                  setAttachments(prev => [...prev, newAttachment]);
-              };
-              reader.readAsDataURL(file);
-          } finally {
-              setIsUploading(false);
-          }
-      }
-  };
-
-  const removeAttachment = (id: string) => {
-      setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
   // --- AI HANDLERS ---
@@ -503,8 +448,8 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
       try {
           const result = await parseStudyRequest(textToProcess);
           if (result) {
-              setEditingItem(null); // Ensure new mode
-              setIsFormOpen(true); // Open form to confirm
+              setEditingItem(null); 
+              setIsFormOpen(true); 
               
               if (result.pageNumber) setPageNumber(result.pageNumber);
               if (result.topic) setTopic(result.topic);
@@ -526,7 +471,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isUploading) return; // Prevent submit while uploading
     
     if (editingItem) {
         onUpdatePlanItem({
@@ -539,7 +483,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
             ankiCount,
             videoUrl: videoUrl || undefined,
             subTasks: subTasks,
-            attachments: attachments
         });
         setEditingItem(null);
     } else {
@@ -564,7 +507,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
             subTasks: subTasks,
             logs: [],
             totalMinutesSpent: 0
-        }, newVideo, attachments);
+        }, newVideo, undefined); 
     }
     
     setIsFormOpen(false);
@@ -666,7 +609,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                     </div>
 
                     <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-6">
-                        {/* ... (Form fields remain unchanged) ... */}
                         <div className="space-y-3">
                             <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Core Details</h4>
                             <div className="grid grid-cols-3 gap-3">
@@ -747,27 +689,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                                             <input type="text" value={videoTitle} onChange={e => setVideoTitle(e.target.value)} className={inputBaseClass} placeholder="Video Title" />
                                         )}
                                     </div>
-
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-2"><PaperClipIcon className="w-3 h-3"/> Attachments (Synced to DB)</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {attachments.map(att => (
-                                                <div key={att.id} className="relative w-12 h-12 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 flex items-center justify-center group overflow-hidden">
-                                                    {att.type === 'IMAGE' ? <img src={att.data} alt="" className="w-full h-full object-cover rounded" /> : <DocumentIcon className="w-6 h-6 text-red-400" />}
-                                                    <button type="button" onClick={() => removeAttachment(att.id)} className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">&times;</button>
-                                                </div>
-                                            ))}
-                                            <label className={`w-full sm:w-auto px-4 py-3 rounded border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center gap-2 cursor-pointer hover:border-primary hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                                {isUploading ? (
-                                                    <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
-                                                ) : (
-                                                    <PlusIcon className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                                                )}
-                                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Add PDF / Images</span>
-                                                <input type="file" onChange={handleFileChange} className="hidden" disabled={isUploading} />
-                                            </label>
-                                        </div>
-                                    </div>
                                 </div>
                             )}
                         </div>
@@ -793,10 +714,9 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                         </button>
                         <button 
                             onClick={handleSubmit} 
-                            disabled={isUploading}
                             className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm shadow-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all btn-3d"
                         >
-                            {isUploading ? 'Uploading...' : (editingItem ? 'Update Target' : 'Add Target')}
+                            {editingItem ? 'Update Target' : 'Add Target'}
                         </button>
                     </div>
                 </div>
@@ -913,7 +833,7 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                                 </div>
                                 
                                 <div className="mt-3 flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                                    {session.ankiTotal && (
+                                    {session.ankiTotal && (session.ankiTotal > 0) && (
                                         <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-100 dark:border-slate-700">
                                             <FireIcon className="w-3 h-3 text-amber-500" />
                                             <span className="font-bold">{session.ankiCovered}/{session.ankiTotal}</span>
@@ -935,5 +855,6 @@ export const PlannerView: React.FC<PlannerViewProps> = ({
                 </div>
             </div>
         </div>
-    );
+    </div>
+  );
 };

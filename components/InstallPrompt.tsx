@@ -1,11 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon } from './Icons';
+import { Capacitor } from '@capacitor/core';
 
 export const InstallPrompt: React.FC = () => {
     const [showPrompt, setShowPrompt] = useState(false);
 
     useEffect(() => {
+        // If native, never show
+        if (Capacitor.isNativePlatform()) return;
+
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
         

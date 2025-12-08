@@ -1,8 +1,10 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
+import { App as CapacitorApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { Capacitor } from '@capacitor/core';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, saveRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry, getAISettings, saveAISettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
 import { 
@@ -219,6 +221,63 @@ export default function App() {
   // PWA Shared Content
   const [sharedContent, setSharedContent] = useState<string | null>(null);
 
+  // --- NATIVE BACK BUTTON HANDLING ---
+  // Ref to hold current state values for the listener to read
+  const stateRef = useRef({
+      isSessionModalOpen,
+      isPageDetailOpen,
+      isSidebarOpen,
+      currentView
+  });
+
+  // Keep ref synced with state
+  useEffect(() => {
+      stateRef.current = {
+          isSessionModalOpen,
+          isPageDetailOpen,
+          isSidebarOpen,
+          currentView
+      };
+  }, [isSessionModalOpen, isPageDetailOpen, isSidebarOpen, currentView]);
+
+  useEffect(() => {
+      if (Capacitor.isNativePlatform()) {
+          const handleBackButton = async () => {
+              const { isSessionModalOpen, isPageDetailOpen, isSidebarOpen, currentView } = stateRef.current;
+
+              // 1. Close Modals
+              if (isSessionModalOpen) {
+                  setIsSessionModalOpen(false);
+                  return;
+              }
+              if (isPageDetailOpen) {
+                  setIsPageDetailOpen(false);
+                  return;
+              }
+              if (isSidebarOpen) {
+                  setIsSidebarOpen(false);
+                  return;
+              }
+
+              // 2. Navigation Back
+              if (currentView !== 'DASHBOARD') {
+                  setCurrentView('DASHBOARD');
+                  return;
+              }
+
+              // 3. Exit App
+              CapacitorApp.exitApp();
+          };
+
+          CapacitorApp.addListener('backButton', handleBackButton);
+
+          // Cleanup listener on unmount
+          return () => {
+              CapacitorApp.removeAllListeners();
+          };
+      }
+  }, []);
+
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
@@ -260,7 +319,6 @@ export default function App() {
         try {
             // --- AUTO-INITIALIZATION FOR FRESH DB ---
             // If the database was wiped, restore essential config structures
-            // This ensures a "proper setup" without manual intervention
             const [cloudRevConfig, cloudAiConfig] = await Promise.all([
                 getRevisionSettings(),
                 getAISettings()
@@ -480,9 +538,9 @@ export default function App() {
     return currentStreak;
   }, [studyPlan]);
 
-  // Theme Application
+  // Theme Application & Native Status Bar
   useEffect(() => {
-    const applyTheme = () => {
+    const applyTheme = async () => {
         const activeThemeId = settings.themeId || 'default';
         const theme = APP_THEMES.find(t => t.id === activeThemeId) || APP_THEMES[0];
         const root = document.documentElement;
@@ -502,6 +560,22 @@ export default function App() {
             root.classList.add('dark');
         } else {
             root.classList.remove('dark');
+        }
+
+        // Native Status Bar Styling
+        if (Capacitor.isNativePlatform()) {
+            try {
+                await StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+                // We leave the background transparent or auto handled by the WebView content,
+                // or match the root background if needed.
+                if (isDark) {
+                    await StatusBar.setBackgroundColor({ color: '#0f172a' }); // Slate 900
+                } else {
+                    await StatusBar.setBackgroundColor({ color: '#ffffff' }); // White
+                }
+            } catch (e) {
+                // Ignore errors
+            }
         }
     };
     applyTheme();
@@ -858,7 +932,7 @@ export default function App() {
       )}
 
       {/* MAIN AREA */}
-      <main className={`flex-1 pt-24 ${showSidebar ? 'md:pt-6' : 'md:pt-24'} p-4 md:p-6 overflow-y-auto custom-scrollbar relative z-10 overscroll-contain pb-24`}>
+      <main className={`flex-1 pt-20 ${showSidebar ? 'md:pt-6' : 'md:pt-20'} p-4 md:p-6 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10 overscroll-contain pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`}>
           <div className="max-w-6xl mx-auto h-full">
             <div key={currentView} className="animate-liquid-enter h-full">
                 {currentView === 'DASHBOARD' && (

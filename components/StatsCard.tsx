@@ -166,49 +166,50 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                     data={modalData}
                 />
             )}
-            <div className="card-3d rounded-3xl p-6 mb-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10">
-                <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-6 flex items-center gap-2 tracking-tight">
-                    <span className="w-2 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
+            <div className="card-3d rounded-3xl p-5 mb-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4 flex items-center gap-2 tracking-tight">
+                    <span className="w-1.5 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
                     Today at a Glance
                 </h3>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Horizontal scroll on mobile to save vertical space, Grid on desktop */}
+                <div className="flex overflow-x-auto snap-x gap-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:pb-0 scrollbar-hide">
                     {/* Card 1: Time */}
-                    <button onClick={() => openDetail('TIME')} className="text-left p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                    <button onClick={() => openDetail('TIME')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
                         <div className="absolute top-0 right-0 p-3 opacity-10">
-                            <ClockIcon className="w-16 h-16 text-blue-600" />
+                            <ClockIcon className="w-12 h-12 text-blue-600" />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-3">
-                                <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                    <ClockIcon className="w-4 h-4" />
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
+                                <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                    <ClockIcon className="w-3.5 h-3.5" />
                                 </div>
-                                <span className="text-xs font-bold uppercase tracking-wider">Study Time</span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Study Time</span>
                             </div>
                             <div className="flex items-baseline gap-2 relative z-10">
-                                <p className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
-                                <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
+                                <p className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
+                                <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
                             </div>
                         </div>
                         <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" />
                     </button>
 
                     {/* Card 2: Pages Studied */}
-                    <button onClick={() => openDetail('PAGES')} className="text-left p-5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                    <button onClick={() => openDetail('PAGES')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
                         <div className="absolute top-0 right-0 p-3 opacity-10">
-                            <BookOpenIcon className="w-16 h-16 text-emerald-600" />
+                            <BookOpenIcon className="w-12 h-12 text-emerald-600" />
                         </div>
-                        <div className="flex justify-between items-start mb-2 relative z-10">
+                        <div className="flex justify-between items-start mb-1 relative z-10">
                             <div>
-                                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-3">
-                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                        <BookOpenIcon className="w-4 h-4" />
+                                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <BookOpenIcon className="w-3.5 h-3.5" />
                                     </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider">Pages</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Pages</span>
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
-                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.plannedPagesTotal}</span>
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.plannedPagesTotal}</span>
                                 </div>
                             </div>
                         </div>
@@ -218,21 +219,21 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                     </button>
 
                     {/* Card 3: Revisions */}
-                    <button onClick={() => openDetail('REVISIONS')} className="text-left p-5 rounded-2xl bg-violet-50/60 dark:bg-violet-900/20 border border-violet-100/50 dark:border-violet-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                    <button onClick={() => openDetail('REVISIONS')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-violet-50/60 dark:bg-violet-900/20 border border-violet-100/50 dark:border-violet-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
                         <div className="absolute top-0 right-0 p-3 opacity-10">
-                            <ArrowPathIcon className="w-16 h-16 text-violet-600" />
+                            <ArrowPathIcon className="w-12 h-12 text-violet-600" />
                         </div>
-                        <div className="flex justify-between items-start mb-2 relative z-10">
+                        <div className="flex justify-between items-start mb-1 relative z-10">
                             <div>
-                                <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-3">
-                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                        <ArrowPathIcon className="w-4 h-4" />
+                                <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <ArrowPathIcon className="w-3.5 h-3.5" />
                                     </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider">Revisions</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Revisions</span>
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
-                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.revisionGoalTotal}</span>
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.revisionGoalTotal}</span>
                                 </div>
                             </div>
                         </div>
@@ -242,21 +243,21 @@ export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan
                     </button>
 
                     {/* Card 4: Anki */}
-                    <div className="p-5 rounded-2xl bg-amber-50/60 dark:bg-amber-900/20 border border-amber-100/50 dark:border-amber-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between h-full relative group hover:-translate-y-1 transition-transform">
+                    <div className="snap-start shrink-0 w-[240px] sm:w-auto p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-900/20 border border-amber-100/50 dark:border-amber-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
                         <div className="absolute top-0 right-0 p-3 opacity-10">
-                            <FireIcon className="w-16 h-16 text-amber-600" />
+                            <FireIcon className="w-12 h-12 text-amber-600" />
                         </div>
-                        <div className="flex justify-between items-start mb-2 relative z-10">
+                        <div className="flex justify-between items-start mb-1 relative z-10">
                             <div>
-                                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-3">
-                                    <div className="p-2 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
-                                        <FireIcon className="w-4 h-4" />
+                                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <FireIcon className="w-3.5 h-3.5" />
                                     </div>
-                                    <span className="text-xs font-bold uppercase tracking-wider">Anki Cards</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Anki Cards</span>
                                 </div>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
-                                    <span className="text-xs text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.ankiPlanned}</span>
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.ankiPlanned}</span>
                                 </div>
                             </div>
                         </div>

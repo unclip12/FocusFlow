@@ -135,7 +135,6 @@ const MonthlySummaryChart = () => {
                 const dataMap = new Map<number, number>();
                 const daysInMonth = new Date(year, month, 0).getDate();
                 
-                // Initialize
                 for(let i=1; i<=daysInMonth; i++) dataMap.set(i, 0);
 
                 logs.forEach(log => {
@@ -148,7 +147,7 @@ const MonthlySummaryChart = () => {
 
                 const data = Array.from(dataMap.entries()).map(([day, mins]) => ({
                     name: String(day),
-                    minutes: Math.round(mins / 60 * 10) / 10 // Hours
+                    minutes: Math.round(mins / 60 * 10) / 10
                 }));
                 
                 setChartData(data);
@@ -180,8 +179,8 @@ const MonthlySummaryChart = () => {
                 <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">{chartDate.toLocaleString('default', { month: 'long', year: 'numeric' })} Study Hours</h3>
                 <button onClick={nextMonth} className="p-1 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded backdrop-blur-sm"><ChevronRightIcon className="w-4 h-4 text-slate-500" /></button>
             </div>
-            <div className="h-48 w-full">
-                <ResponsiveContainer width="100%" height="100%">
+            <div className="h-48 w-full min-h-[200px]">
+                <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                     <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
                         <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={2} />
@@ -226,14 +225,13 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
         setProcessing(true);
         
         try {
-            // Use Gemini to parse natural language
-            const nowISO = new Date().toISOString(); // Reference time
+            const nowISO = new Date().toISOString();
             const result = await parseTimeLogRequest(input, nowISO);
             
             if (result) {
                 const newLog: TimeLogEntry = {
                     id: generateId(),
-                    date: getAdjustedDate(new Date(result.startTime)), // Use parsed date if implied, else selectedDate
+                    date: getAdjustedDate(new Date(result.startTime)),
                     startTime: result.startTime,
                     endTime: result.endTime,
                     durationMinutes: result.durationMinutes,
@@ -243,12 +241,9 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                 };
                 
                 await saveTimeLog(newLog);
-                
-                // If date matches view, update list
                 if (newLog.date === selectedDate) {
                     setLogs(prev => [...prev, newLog].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
                 }
-                
                 setInput('');
             } else {
                 alert("Could not understand time log. Try 'Studied Cardio for 1 hour'.");
@@ -340,13 +335,11 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
                     setSelectedDate(getAdjustedDate(d));
                 }} className="p-2 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-full transition-colors"><ChevronLeftIcon className="w-5 h-5 text-slate-500" /></button>
                 
-                <div className="relative">
-                    <input 
-                        type="date" 
-                        value={selectedDate} 
-                        onChange={e => setSelectedDate(e.target.value)}
-                        className="bg-transparent font-bold text-slate-800 dark:text-white text-lg text-center outline-none cursor-pointer"
-                    />
+                <div className="relative group cursor-pointer">
+                    <h3 className="font-bold text-slate-800 dark:text-white text-sm">
+                        {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                    </h3>
+                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
 
                 <button onClick={() => {
@@ -357,37 +350,32 @@ export const TimeLoggerView: React.FC<TimeLoggerViewProps> = ({ knowledgeBase, o
             </div>
 
             <div className="space-y-3">
-                {loading ? <div className="text-center py-8 text-slate-400">Loading...</div> : 
-                 logs.length === 0 ? <div className="text-center py-8 text-slate-400 italic border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">No logs for this day.</div> :
-                 logs.map(log => {
-                     const theme = CATEGORY_THEMES[log.category] || CATEGORY_THEMES['OTHER'];
-                     const Icon = theme.icon;
-                     const startStr = new Date(log.startTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-                     const endStr = new Date(log.endTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-
-                     return (
-                         <div key={log.id} className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm flex items-center gap-4 group transition-all hover:scale-[1.01]">
-                             <div className={`p-3 rounded-xl ${theme.bg} ${theme.text} bg-opacity-80 backdrop-blur-sm`}>
-                                 <Icon className="w-5 h-5" />
-                             </div>
-                             <div className="flex-1 min-w-0">
-                                 <div className="flex justify-between items-start">
-                                     <h4 className="font-bold text-slate-800 dark:text-white truncate">{log.activity}</h4>
-                                     <span className="text-xs font-mono text-slate-400">{startStr} - {endStr}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center mt-1">
-                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${theme.bg} ${theme.text} ${theme.border} border-opacity-30 bg-opacity-50`}>{log.category}</span>
-                                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{log.durationMinutes}m</span>
-                                 </div>
-                             </div>
-                             <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                 <button onClick={() => setEditingLog(log)} className="text-slate-400 hover:text-indigo-500"><PencilSquareIcon className="w-4 h-4" /></button>
-                                 <button onClick={() => setLogToDelete(log.id)} className="text-slate-400 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                             </div>
-                         </div>
-                     );
-                 })
-                }
+                {logs.length > 0 ? logs.map(log => {
+                    const theme = CATEGORY_THEMES[log.category] || CATEGORY_THEMES.OTHER;
+                    return (
+                        <div key={log.id} className="bg-white/40 dark:bg-slate-800/40 backdrop-blur-md rounded-xl p-4 border border-white/30 dark:border-slate-700 flex items-center justify-between group shadow-sm">
+                            <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${theme.bg} ${theme.text}`}>
+                                    <theme.icon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-800 dark:text-white text-sm">{log.activity}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono">
+                                        {new Date(log.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - 
+                                        {new Date(log.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                                        ({log.durationMinutes}m)
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => setEditingLog(log)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><PencilSquareIcon className="w-4 h-4" /></button>
+                                <button onClick={() => setLogToDelete(log.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><TrashIcon className="w-4 h-4" /></button>
+                            </div>
+                        </div>
+                    );
+                }) : (
+                    <div className="text-center py-12 text-slate-400 italic">No logs for this date.</div>
+                )}
             </div>
         </div>
     );

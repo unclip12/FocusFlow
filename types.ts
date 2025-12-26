@@ -1,5 +1,4 @@
 
-
 export interface UserProfile {
     displayName?: string;
     searchHistory?: string[];
@@ -62,7 +61,17 @@ export interface StudyPlanItem {
   completedAt?: string;
 }
 
-// --- DEPRECATED - WILL BE MIGRATED ---
+// New interface for the requested Study Tracker
+export interface StudyEntry {
+    id: string;
+    date: string; // YYYY-MM-DD
+    time: string; // HH:mm
+    taskName: string;
+    progress: number; // 0-100
+    revision: boolean;
+    durationMinutes?: number;
+}
+
 export interface StudyLog {
   id: string;
   date: string; // ISO string of entry creation (Start Time)
@@ -102,7 +111,6 @@ export interface StudySession {
   // Computed for backward compatibility/display
   lastStudied: string; 
 }
-// --- END DEPRECATED ---
 
 
 export interface StudyMaterial {
@@ -180,6 +188,10 @@ export interface BlockTask {
         // FMGE Specifics
         slideStart?: number;
         slideEnd?: number;
+        // Focus Timer Specifics
+        logStart?: string; // HH:mm
+        logEnd?: string; // HH:mm
+        qbankId?: string;
     };
     execution?: TaskExecution;
 }
@@ -508,7 +520,7 @@ export const APP_THEMES: AppTheme[] = [
         bgGradient: 'linear-gradient(to bottom, #d4fc79 0%, #96e6a1 100%)', 
         darkBgGradient: 'linear-gradient(to bottom, #134e5e 0%, #71b280 100%)',
         surfaceRGB: '255 255 255', 
-        darkSurfaceRGB: '6 78 59',
+        darkSurfaceRGB: '66 78 59',
         backgroundRGB: '240 255 245',
         darkBackgroundRGB: '2 44 34',
         isDark: true 
@@ -570,7 +582,9 @@ export interface MenuItemConfig {
 
 export const DEFAULT_MENU_ORDER: string[] = [
     'DASHBOARD',
+    'STUDY_TRACKER', // Added Study Tracker to default menu
     'TODAYS_PLAN',
+    'FOCUS_TIMER', 
     'CALENDAR',
     'TIME_LOGGER',
     'FMGE',
@@ -686,22 +700,70 @@ export interface KnowledgeBaseEntry {
   topics: TrackableItem[];
 }
 
-// --- FMGE SPECIFIC TYPES ---
+// --- FMGE SPECIFIC TYPES (UPDATED) ---
 export const FMGE_SUBJECTS = [
     'Anatomy', 'Physiology', 'Biochemistry', 'Pathology', 'Microbiology', 'Pharmacology', 
     'Forensic Medicine', 'PSM', 'ENT', 'Ophthalmology', 'Medicine', 'Surgery', 'OBG', 
     'Pediatrics', 'Orthopedics', 'Psychiatry', 'Dermatology', 'Radiology', 'Anesthesia'
 ];
 
+export interface FMGEVideoResource {
+    id: string;
+    title: string; // e.g. "Video 1 - Basics"
+    totalDurationMinutes: number; // 255 for 4h 15m
+    watchedMinutes: number; // 60
+    isCompleted: boolean;
+}
+
+export interface FMGEQBankResource {
+    id: string;
+    title: string; // e.g. "QBank 1"
+    totalQuestions: number;
+    completedQuestions: number;
+}
+
+export interface FMGESubject {
+    id: string;
+    name: string; // e.g. "OBG"
+    totalQuestions: number; // Legacy total
+    completedQuestions: number; // Legacy total
+    qbanks: FMGEQBankResource[]; // New: Multiple QBanks
+    videos: FMGEVideoResource[];
+}
+
+// Default OBG Curriculum Videos
+export const DEFAULT_OBG_VIDEOS: Omit<FMGEVideoResource, 'id'>[] = [
+    { title: "OBG Day-1 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 237, watchedMinutes: 237, isCompleted: true },
+    { title: "OBG Day-2 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 320, watchedMinutes: 320, isCompleted: true },
+    { title: "OBG Day-3 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 282, watchedMinutes: 0, isCompleted: false },
+    { title: "OBG Day-4 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 253, watchedMinutes: 253, isCompleted: true },
+    { title: "OBG Day-5 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 252, watchedMinutes: 252, isCompleted: true },
+    { title: "OBG Day-6 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 272, watchedMinutes: 272, isCompleted: true },
+    { title: "OBG Day-7 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 269, watchedMinutes: 0, isCompleted: false },
+    { title: "OBG Day-8 Mission 200+ (DEC 25 & Beyond)", totalDurationMinutes: 135, watchedMinutes: 0, isCompleted: false },
+    { title: "OBG E&D Mission 200+ (DEC 25 & Beyond) - 26-10-2025", totalDurationMinutes: 228, watchedMinutes: 0, isCompleted: false },
+];
+
+// Keeping FMGEEntry for backward compatibility and log storage, 
+// but enhancing logic to sync with FMGESubject
 export interface FMGELog extends RevisionLog {
-    slideStart: number;
-    slideEnd: number;
+    slideStart?: number;
+    slideEnd?: number;
     qBankCount?: number;
+    
+    // NEW FIELDS FOR VIDEO TRACKING
+    videoProgressStart?: number; // in Minutes
+    videoProgressEnd?: number;   // in Minutes
+    videoId?: string;
+    videoTitle?: string;
+    // Added qbankId to support QBank tracking in FMGE logs
+    qbankId?: string;
 }
 
 export interface FMGEEntry {
     id: string;
     subject: string;
+    // Slides fields (Legacy/Hybrid)
     slideStart: number;
     slideEnd: number;
     
@@ -870,5 +932,10 @@ export interface ViewStates {
     };
     data: {
         filterSource: 'ALL' | 'UPLOAD' | 'MENTOR';
+    };
+    studyTracker: {
+        selectedDate: string;
+        search: string;
+        activeTab: 'DAILY' | 'CURRICULUM';
     };
 }

@@ -1,12 +1,11 @@
 
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DayPlan, getAdjustedDate, Block, AppSettings, TimeLogEntry, TimeLogCategory, BlockTask, KnowledgeBaseEntry, RevisionSettings, NotificationTrigger, FMGEEntry } from '../types';
 import { getDayPlan, saveDayPlan, getRevisionSettings, saveKnowledgeBase, saveFMGEEntry, getFMGEData } from '../services/firebase';
 import { saveTimeLog, deleteTimeLog } from '../services/timeLogService';
 import { startBlock, updateBlockInPlan, finishBlock, insertBlockAndShift, moveTasksToNextBlock, deleteBlock, startVirtualBlock, moveTasksToFuturePlan } from '../services/planService';
 import { generateBlocks } from '../services/blockGenerator'; 
-import { CalendarIcon, ClockIcon, VideoIcon, StarIcon, QIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, CursorArrowRaysIcon, SunIcon, MoonIcon, SunCloudIcon, SunsetIcon, ChevronDownIcon, SparklesIcon, ClipboardDocumentCheckIcon, FireIcon } from './Icons';
+import { CalendarIcon, ClockIcon, VideoIcon, StarIcon, QIcon, BookOpenIcon, PlayIcon, PauseIcon, ListCheckIcon, StopIcon, CheckCircleIcon, CoffeeIcon, ChevronLeftIcon, ChevronRightIcon, PencilSquareIcon, PlusIcon, XMarkIcon, TrashIcon, ArrowRightIcon, ChartBarIcon, ArrowPathIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, CursorArrowRaysIcon, SunIcon, MoonIcon, SunCloudIcon, SunsetIcon, ChevronDownIcon, SparklesIcon, ClipboardDocumentCheckIcon, FireIcon, BoltIcon } from './Icons';
 import { TaskCompletionModal } from './TaskCompletionModal'; 
 import { ManualPlanModal } from './ManualPlanModal'; 
 import { AddBlockModal } from './AddBlockModal';
@@ -597,6 +596,7 @@ const BlockCard: React.FC<{
     onUpdate: (b: Block) => void,
     onEditPlan: () => void
 }> = ({ block, isCurrent, isNext, onStart, onPause, onFinish, currentTimeMinutes, onUpdate, onEditPlan }) => {
+    
     const isDone = block.status === 'DONE';
     const isBreak = block.type === 'BREAK';
     const isVirtual = block.isVirtual; 
@@ -612,45 +612,6 @@ const BlockCard: React.FC<{
     useEffect(() => {
         if (isEditing) setEditBlock(block);
     }, [isEditing, block]);
-
-    // Time Calculations for Vertical Line
-    const startMins = parseTimeToMinutes(block.plannedStartTime);
-    const endMins = parseTimeToMinutes(block.plannedEndTime);
-    const effectiveEndMins = endMins < startMins ? endMins + 24*60 : endMins; 
-    
-    // Fill Logic
-    let lineFillColor = 'bg-slate-200/50 dark:bg-slate-700/50';
-    let lineFillHeight = '0%';
-    let lineGlow = '';
-
-    if (block.status === 'DONE') {
-        lineFillColor = 'bg-green-500';
-        lineFillHeight = '100%';
-    } else if (block.completionStatus === 'NOT_DONE' || block.completionStatus === 'PARTIAL' || block.rescheduledTo) {
-        lineFillColor = 'bg-red-500';
-        lineFillHeight = '100%';
-    } else if (block.status === 'NOT_STARTED' || block.status === 'PAUSED') {
-        if (currentTimeMinutes > effectiveEndMins) {
-            lineFillColor = 'bg-orange-500';
-            lineFillHeight = '100%';
-            lineGlow = 'shadow-[0_0_8px_rgba(249,115,22,0.8)]';
-        } else if (currentTimeMinutes > startMins) {
-            const duration = effectiveEndMins - startMins;
-            const elapsed = currentTimeMinutes - startMins;
-            const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
-            lineFillColor = 'bg-orange-400';
-            lineFillHeight = `${pct}%`;
-            lineGlow = 'shadow-[0_0_5px_rgba(249,115,22,0.5)]';
-        }
-    } else if (block.status === 'IN_PROGRESS') {
-        const duration = effectiveEndMins - startMins;
-        const elapsed = currentTimeMinutes - startMins;
-        const pct = Math.min(100, Math.max(0, (elapsed / duration) * 100));
-        lineFillColor = 'bg-emerald-500';
-        lineFillHeight = `${pct}%`;
-        lineGlow = 'shadow-[0_0_5px_rgba(16,185,129,0.5)]';
-    }
-
 
     useEffect(() => {
         if (isCurrent && block.status === 'IN_PROGRESS') {
@@ -711,13 +672,9 @@ const BlockCard: React.FC<{
         };
     }, [isCurrent, block.status, block.segments, block.plannedDurationMinutes]);
 
-    // Auto-calculate time stats when editing segments
     const recalculateStats = (segments: any[]) => {
         if (!segments || segments.length === 0) return;
-
-        // Calculate total effective study time (sum of segment durations)
         let totalMs = 0;
-        // Find absolute start and end time for display bounds
         let earliestStart: Date | null = null;
         let latestEnd: Date | null = null;
 
@@ -750,7 +707,7 @@ const BlockCard: React.FC<{
                 actualStartTime: sStr,
                 actualEndTime: eStr,
                 actualDurationMinutes: durMins,
-                segments // Update state with new segments
+                segments 
             }));
         }
     };
@@ -764,8 +721,6 @@ const BlockCard: React.FC<{
         if (!editBlock.segments) return;
         const newSegments = [...editBlock.segments];
         newSegments[index] = { ...newSegments[index], [field]: value };
-        
-        // Immediate Auto-Calculation
         recalculateStats(newSegments);
     };
 
@@ -786,7 +741,6 @@ const BlockCard: React.FC<{
         setEditBlock({ ...editBlock, tasks: newTasks });
     };
 
-    // Glassy Card Styles
     let cardStyle = 'bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border-white/30 dark:border-slate-700/50';
     let shadowClass = 'card-3d';
     let accentColor = 'bg-slate-200/50 dark:bg-slate-700/50'; 
@@ -811,7 +765,6 @@ const BlockCard: React.FC<{
         accentColor = 'bg-teal-400';
     }
 
-    // Reusable function to display segments timeline
     const renderSegments = () => {
         const items: React.ReactNode[] = [];
         const segmentsSource = isEditing ? editBlock.segments : block.segments;
@@ -904,7 +857,6 @@ const BlockCard: React.FC<{
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Activity Log</p>
                 {items}
                 
-                {/* Add Segment Button for Editing */}
                 {isEditing && (
                     <div className="flex gap-2 mt-2">
                         <button 
@@ -949,7 +901,6 @@ const BlockCard: React.FC<{
 
         return (
             <div className={`rounded-2xl border ${cardStyle} ${shadowClass} overflow-hidden flex flex-col md:flex-row w-full transition-all duration-300`}>
-                {/* Left Side - Plan Info (Click triggers modal edit for title/tasks/plan time) */}
                 <div 
                     className="flex-1 p-4 border-b md:border-b-0 md:border-r border-slate-200/50 dark:border-slate-700/50 bg-white/30 dark:bg-slate-800/30 backdrop-blur-md cursor-pointer hover:bg-slate-100/30 dark:hover:bg-slate-700/30 transition-colors relative group"
                     onClick={(e) => { 
@@ -981,7 +932,6 @@ const BlockCard: React.FC<{
                     </div>
                 </div>
 
-                {/* Right Side - Execution Info (Click triggers INLINE edit only) */}
                 <div 
                     className={`flex-1 p-4 relative backdrop-blur-sm transition-colors group ${isEditing ? 'bg-white dark:bg-slate-900 ring-2 ring-green-500/50' : 'bg-green-50/20 dark:bg-green-900/10 hover:bg-green-100/20 dark:hover:bg-green-900/20 cursor-pointer'}`}
                     onClick={(e) => {
@@ -1040,7 +990,6 @@ const BlockCard: React.FC<{
                         </div>
                     )}
 
-                    {/* Render Segments Breakdown - allow click propogation if editing to inputs work */}
                     <div onClick={e => isEditing && e.stopPropagation()}>
                         {renderSegments()}
                     </div>
@@ -1083,7 +1032,6 @@ const BlockCard: React.FC<{
         );
     }
 
-    // ... (Active/Pending Block Render - Unchanged)
     return (
         <div className={`rounded-3xl p-5 border flex flex-col gap-4 w-full transition-all duration-300 relative ${cardStyle} ${shadowClass}`}>
             
@@ -1342,9 +1290,10 @@ interface TodaysPlanViewProps {
     knowledgeBase: KnowledgeBaseEntry[];
     onUpdateKnowledgeBase?: (newKB: KnowledgeBaseEntry[]) => Promise<void>;
     onUpdateFMGE?: (entry: FMGEEntry) => void;
+    onStartFocus?: () => void;
 }
 
-export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, settings, onUpdateSettings, knowledgeBase = [], onUpdateKnowledgeBase, onUpdateFMGE }) => {
+export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, settings, onUpdateSettings, knowledgeBase = [], onUpdateKnowledgeBase, onUpdateFMGE, onStartFocus }) => {
     const [viewMode, setViewMode] = useState<'full' | 'blocks'>('blocks');
     const [currentDate, setCurrentDate] = useState(targetDate || getAdjustedDate(new Date()));
     const [plan, setPlan] = useState<DayPlan | null>(null);
@@ -1984,7 +1933,8 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
         setSelectedBlock(null); // Clear selection
     };
 
-    const handleSaveUnplanned = async (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => {
+    // Reusable logic for saving completed blocks (Unplanned logs OR Pomodoro finish)
+    const saveCompletedSession = async (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => {
         try {
             const targetDate = date || currentDate;
             // 1. Calculate duration
@@ -1993,10 +1943,10 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
             let duration = (eH * 60 + eM) - (sH * 60 + sM);
             if (duration < 0) duration += 24 * 60;
 
-            // 2. Mark tasks as completed since this is a retrospective log
+            // 2. Mark tasks as completed
             const completedTasks = tasks.map(t => ({ ...t, completed: true, execution: { completed: true } }));
 
-            // 3. Process Logic similar to handleFinishConfirm
+            // 3. Process Logic
             let generatedKbLogIds: string[] = [];
             let generatedTimeLogIds: string[] = [];
 
@@ -2042,7 +1992,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                                 durationMinutes: durationPerTask,
                                 category: res.eventType === 'REVISION' ? 'REVISION' : 'STUDY',
                                 source: 'FA_LOGGER',
-                                activity: `Unplanned: ${title} - FA Pg ${res.pageNumber}`,
+                                activity: `Log: ${title} - FA Pg ${res.pageNumber}`,
                                 pageNumber: String(res.pageNumber),
                                 linkedEntityId: newKbLog ? newKbLog.id : undefined
                             };
@@ -2054,7 +2004,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 }
             }
 
-            // 4. Create the Block directly using insertBlockAndShift with overrides
+            // 4. Create the Block directly
             const blockId = generateId();
             const updatedPlan = await insertBlockAndShift(
                 targetDate, 
@@ -2063,7 +2013,7 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                 completedTasks, 
                 title, 
                 'MIXED', 
-                'Unplanned Study Log',
+                'Completed Session',
                 blockId,
                 'DONE', // Initial status
                 {
@@ -2073,16 +2023,20 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                     completionStatus: 'COMPLETED',
                     generatedLogIds: generatedKbLogIds,
                     generatedTimeLogIds: generatedTimeLogIds,
-                    actualNotes: 'Unplanned session logged manually.',
-                    segments: [{ start: startTime, end: endTime }] // Simple full duration segment
+                    actualNotes: 'Session logged manually.',
+                    segments: [{ start: startTime, end: endTime }] 
                 }
             );
 
             if (updatedPlan) handlePlanChange(updatedPlan);
 
         } catch (e) {
-            console.error("Failed to save unplanned log", e);
+            console.error("Failed to save session", e);
         }
+    };
+
+    const handleSaveUnplanned = (title: string, startTime: string, endTime: string, tasks: BlockTask[], date?: string) => {
+        saveCompletedSession(title, startTime, endTime, tasks, date);
     };
 
     const handleSaveBreak = async (title: string, startTime: string, endTime: string, notes: string) => {
@@ -2277,16 +2231,13 @@ export const TodaysPlanView: React.FC<TodaysPlanViewProps> = ({ targetDate, sett
                         </button>
                     </div>
 
-                    <select 
-                        value={defaultDuration}
-                        onChange={(e) => setDefaultDuration(parseInt(e.target.value))}
-                        className="px-3 py-2.5 bg-white/60 dark:bg-slate-800/60 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500 border border-white/40 dark:border-slate-700 shadow-sm backdrop-blur-md"
+                    <button 
+                        onClick={onStartFocus}
+                        className="btn-3d flex items-center gap-1 px-4 py-2.5 bg-yellow-500 rounded-xl shadow-lg shadow-yellow-500/30 text-xs font-bold text-white hover:bg-yellow-600 transition-all backdrop-blur-sm"
+                        title="Start Pomodoro / Quick Focus"
                     >
-                        <option value={15}>15m</option>
-                        <option value={30}>30m</option>
-                        <option value={45}>45m</option>
-                        <option value={60}>60m</option>
-                    </select>
+                        <BoltIcon className="w-4 h-4" /> Quick Focus
+                    </button>
 
                     <button 
                         onClick={handleOpenAddBlock}

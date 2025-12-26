@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { StudySession, getAdjustedDate, KnowledgeBaseEntry } from '../types';
 import { 
@@ -265,7 +264,7 @@ const PageAnalysisModal: React.FC<PageAnalysisModalProps> = ({ isOpen, onClose, 
                                         <h3 className="font-bold text-slate-800 dark:text-white">Revision Duration Trend</h3>
                                     </div>
                                     <div className="h-64 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                        <ResponsiveContainer width="100%" height="100%" minHeight={100}>
                                             <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.1} />
                                                 <XAxis 

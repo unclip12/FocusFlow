@@ -69,9 +69,6 @@ export const ActivityGraphs: React.FC<ActivityGraphsProps> = ({ knowledgeBase })
                 d.setDate(now.getDate() - i);
                 const dStr = getAdjustedDate(d);
                 const act = activityByDate.get(dStr);
-                
-                // Simplify label for 30 days (e.g. just day number, or every 5th)
-                const isKeyDay = i % 5 === 0 || i === 0;
                 data.push({
                     name: d.getDate().toString(),
                     studied: act ? act.studied.size : 0,
@@ -122,10 +119,10 @@ export const ActivityGraphs: React.FC<ActivityGraphsProps> = ({ knowledgeBase })
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Studied Chart */}
-                <div>
+                <div className="min-h-[250px]">
                     <h4 className="text-xs font-bold text-indigo-500 uppercase mb-4 tracking-wider text-center">Pages Studied</h4>
-                    <div className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="h-56 w-full">
+                        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                             <BarChart data={chartData} margin={{ top: 20, right: 5, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} vertical={false} />
                                 <XAxis 
@@ -149,17 +146,17 @@ export const ActivityGraphs: React.FC<ActivityGraphsProps> = ({ knowledgeBase })
                 </div>
 
                 {/* Revised Chart */}
-                <div>
+                <div className="min-h-[250px]">
                     <h4 className="text-xs font-bold text-sky-500 uppercase mb-4 tracking-wider text-center">Pages Revised</h4>
-                    <div className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="h-56 w-full">
+                        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                             <BarChart data={chartData} margin={{ top: 20, right: 5, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} vertical={false} />
                                 <XAxis 
                                     dataKey="name" 
                                     tick={{ fontSize: 10, fill: '#94a3b8' }} 
                                     axisLine={false} 
-                                    tickLine={false}
+                                    tickLine={false} 
                                     interval={range === 'MONTH' ? 4 : 0}
                                 />
                                 <YAxis hide />

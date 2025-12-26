@@ -17,7 +17,8 @@ export const LoginView = () => {
       try {
           await loginWithSecretId(secretId);
       } catch (err: any) {
-          setError("Failed to login. Please try a simple ID (letters/numbers only) or check connection.");
+          // Display the specific error message thrown from the service
+          setError(err.message || "Failed to login. Please try a simple ID (letters/numbers only).");
           console.error(err);
       } finally {
           setLoading(false);
@@ -41,7 +42,10 @@ export const LoginView = () => {
                       <input 
                           type="text" 
                           value={secretId}
-                          onChange={(e) => setSecretId(e.target.value)}
+                          onChange={(e) => {
+                              setSecretId(e.target.value);
+                              setError(''); // Clear error when user types
+                          }}
                           placeholder="e.g. DracoMalfoy99"
                           className="w-full p-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg"
                           autoCapitalize="none"
@@ -49,14 +53,14 @@ export const LoginView = () => {
                   </div>
 
                   {error && (
-                      <div className="p-3 bg-red-50 text-red-500 text-sm rounded-lg text-center font-medium">
+                      <div className="p-3 bg-red-50 text-red-500 text-sm rounded-lg text-center font-medium animate-pulse">
                           {error}
                       </div>
                   )}
 
                   <button 
                       type="submit" 
-                      disabled={loading}
+                      disabled={loading || !secretId.trim()}
                       className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all disabled:opacity-70 flex justify-center items-center gap-2"
                   >
                       {loading ? (

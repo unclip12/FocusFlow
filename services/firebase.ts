@@ -4,7 +4,7 @@ import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
 import "firebase/compat/messaging";
-import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings, FMGEEntry } from "../types";
+import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings, FMGEEntry, StudyEntry, FMGESubject } from "../types";
 import { notifySyncStart, notifySyncEnd } from "./syncService";
 
 const firebaseConfig = {
@@ -24,7 +24,6 @@ export const auth = app.auth();
 export const db = app.firestore();
 
 // Enable Offline Persistence
-// This prevents "Failed to get document because the client is offline" errors
 db.enablePersistence({ synchronizeTabs: true })
   .catch((err) => {
       if (err.code == 'failed-precondition') {
@@ -88,8 +87,6 @@ export const getUserProfile = async (): Promise<UserProfile | null> => {
     return withSync(async () => {
         if (!auth.currentUser) return null;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('profile').doc('main');
-        // Using get() can fail if offline unless persistence is enabled. 
-        // With persistence enabled above, this should now work from cache if offline.
         try {
             const docSnap = await docRef.get();
             if (docSnap.exists) {
@@ -202,8 +199,6 @@ export const toggleMaterialActive = async (materialId: string, isActive: boolean
         try {
             if (isActive) {
                 const batch = db.batch();
-                // Since we can't easily batch update based on query in client SDK without fetching, we fetch active ones.
-                // Optimally we fetch all, but for safety let's fetch active.
                 const activeSnap = await materialsRef.where('isActive', '==', true).get();
                 activeSnap.forEach(doc => {
                     if (doc.id !== materialId) {
@@ -409,25 +404,9 @@ export const saveAppSettings = async (settings: AppSettings) => {
 export const saveDayPlan = async (plan: DayPlan) => {
     return withSync(async () => {
         if (!auth.currentUser) throw new Error("No user logged in");
-        
-        if (!plan.date || plan.date.length !== 10) {
-            console.error("SESSION UPDATE ERROR: Invalid date format", { plan });
-            throw new Error("Invalid date format. Must be YYYY-MM-DD.");
-        }
-
+        if (!plan.date || plan.date.length !== 10) throw new Error("Invalid date format. Must be YYYY-MM-DD.");
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('dayPlans').doc(plan.date);
-        
-        try {
-            const cleanedPlan = cleanData(plan);
-            await docRef.set(cleanedPlan);
-        } catch (error: any) {
-            console.error("SESSION UPDATE ERROR: Firestore write failed", {
-                function: 'saveDayPlan',
-                data: plan,
-                error: error
-            });
-            throw error;
-        }
+        await docRef.set(cleanData(plan));
     });
 };
 
@@ -491,7 +470,7 @@ export const getKnowledgeBase = async (): Promise<KnowledgeBaseEntry[] | null> =
             return snap.docs.map(d => d.data() as KnowledgeBaseEntry);
         } catch (e) {
             console.warn("Failed to fetch Knowledge Base (offline?)", e);
-            return null; // Return null on error so App.tsx knows not to overwrite local cache
+            return null; 
         }
     });
 };
@@ -499,7 +478,6 @@ export const getKnowledgeBase = async (): Promise<KnowledgeBaseEntry[] | null> =
 export const saveKnowledgeBase = async (kb: KnowledgeBaseEntry[]) => {
     return withSync(async () => {
         if (!auth.currentUser) return;
-        
         const chunkArray = <T>(array: T[], size: number): T[][] => {
             const chunked: T[][] = [];
             for (let i = 0; i < array.length; i += size) {
@@ -507,9 +485,7 @@ export const saveKnowledgeBase = async (kb: KnowledgeBaseEntry[]) => {
             }
             return chunked;
         };
-
         const chunks = chunkArray(kb, 450);
-
         for (const chunk of chunks) {
             const batch = db.batch();
             chunk.forEach(entry => {
@@ -572,7 +548,7 @@ export const getFMGEData = async (): Promise<FMGEEntry[] | null> => {
             return snap.docs.map(d => d.data() as FMGEEntry);
         } catch (e) {
             console.warn("Failed to fetch FMGE Data (offline?)", e);
-            return null; // Return null on error
+            return null;
         }
     });
 };
@@ -589,6 +565,78 @@ export const deleteFMGEEntry = async (id: string) => {
     return withSync(async () => {
         if (!auth.currentUser) return;
         const docRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeData').doc(id);
+        await docRef.delete();
+    });
+};
+
+export const getFMGEMasterData = async (): Promise<FMGESubject[]> => {
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeMaster');
+        try {
+            const snap = await colRef.get();
+            return snap.docs.map(d => d.data() as FMGESubject);
+        } catch (e) {
+            console.warn("Failed to fetch FMGE Master Data", e);
+            return [];
+        }
+    });
+};
+
+export const saveFMGEMasterData = async (subject: FMGESubject) => {
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeMaster').doc(subject.id);
+        await docRef.set(cleanData(subject), { merge: true });
+    });
+};
+
+// --- STUDY TRACKER (Requested View) ---
+
+export const getStudyEntries = async (date: string): Promise<StudyEntry[]> => {
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = db.collection('users').doc(auth.currentUser.uid).collection('studyEntries');
+        try {
+            const snap = await colRef.where('date', '==', date).get();
+            return snap.docs.map(d => d.data() as StudyEntry).sort((a, b) => a.time.localeCompare(b.time));
+        } catch (e) {
+            console.warn("Failed to fetch study entries", e);
+            return [];
+        }
+    });
+};
+
+export const getAllStudyEntries = async (): Promise<StudyEntry[]> => {
+    return withSync(async () => {
+        if (!auth.currentUser) return [];
+        const colRef = db.collection('users').doc(auth.currentUser.uid).collection('studyEntries');
+        try {
+            // Fetch last 100 entries for history
+            const snap = await colRef.orderBy('date', 'desc').limit(100).get();
+            return snap.docs.map(d => d.data() as StudyEntry).sort((a, b) => {
+                if (a.date !== b.date) return b.date.localeCompare(a.date);
+                return b.time.localeCompare(a.time);
+            });
+        } catch (e) {
+            console.warn("Failed to fetch all study entries", e);
+            return [];
+        }
+    });
+};
+
+export const saveStudyEntry = async (entry: StudyEntry) => {
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = db.collection('users').doc(auth.currentUser.uid).collection('studyEntries').doc(entry.id);
+        await docRef.set(cleanData(entry));
+    });
+};
+
+export const deleteStudyEntry = async (id: string) => {
+    return withSync(async () => {
+        if (!auth.currentUser) return;
+        const docRef = db.collection('users').doc(auth.currentUser.uid).collection('studyEntries').doc(id);
         await docRef.delete();
     });
 };

@@ -4,7 +4,7 @@ import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
 import "firebase/compat/messaging";
-import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings, FMGEEntry, StudyEntry, FMGESubject } from "../types";
+import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings, FMGEEntry, StudyEntry } from "../types";
 import { notifySyncStart, notifySyncEnd } from "./syncService";
 
 const firebaseConfig = {
@@ -569,28 +569,6 @@ export const deleteFMGEEntry = async (id: string) => {
     });
 };
 
-export const getFMGEMasterData = async (): Promise<FMGESubject[]> => {
-    return withSync(async () => {
-        if (!auth.currentUser) return [];
-        const colRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeMaster');
-        try {
-            const snap = await colRef.get();
-            return snap.docs.map(d => d.data() as FMGESubject);
-        } catch (e) {
-            console.warn("Failed to fetch FMGE Master Data", e);
-            return [];
-        }
-    });
-};
-
-export const saveFMGEMasterData = async (subject: FMGESubject) => {
-    return withSync(async () => {
-        if (!auth.currentUser) return;
-        const docRef = db.collection('users').doc(auth.currentUser.uid).collection('fmgeMaster').doc(subject.id);
-        await docRef.set(cleanData(subject), { merge: true });
-    });
-};
-
 // --- STUDY TRACKER (Requested View) ---
 
 export const getStudyEntries = async (date: string): Promise<StudyEntry[]> => {
@@ -602,24 +580,6 @@ export const getStudyEntries = async (date: string): Promise<StudyEntry[]> => {
             return snap.docs.map(d => d.data() as StudyEntry).sort((a, b) => a.time.localeCompare(b.time));
         } catch (e) {
             console.warn("Failed to fetch study entries", e);
-            return [];
-        }
-    });
-};
-
-export const getAllStudyEntries = async (): Promise<StudyEntry[]> => {
-    return withSync(async () => {
-        if (!auth.currentUser) return [];
-        const colRef = db.collection('users').doc(auth.currentUser.uid).collection('studyEntries');
-        try {
-            // Fetch last 100 entries for history
-            const snap = await colRef.orderBy('date', 'desc').limit(100).get();
-            return snap.docs.map(d => d.data() as StudyEntry).sort((a, b) => {
-                if (a.date !== b.date) return b.date.localeCompare(a.date);
-                return b.time.localeCompare(a.time);
-            });
-        } catch (e) {
-            console.warn("Failed to fetch all study entries", e);
             return [];
         }
     });

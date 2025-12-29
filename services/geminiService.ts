@@ -1,10 +1,17 @@
 
 
-import { GoogleGenAI, Type, FunctionDeclaration, Modality } from "@google/genai";
+
+import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Attachment, StudySession, StudyPlanItem, getAdjustedDate, QuizQuestion, DayPlan, Block, MentorMemory, TimeLogCategory, AISettings } from "../types";
 
-// Fixed: Initializing GoogleGenAI directly using process.env.API_KEY as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+let ai: GoogleGenAI | null = null;
+
+if (apiKey) {
+  ai = new GoogleGenAI({ apiKey: apiKey });
+} else {
+  console.warn("Gemini API key not found.");
+}
 
 // --- Audio Helper Functions ---
 
@@ -41,6 +48,8 @@ let currentSource: AudioBufferSourceNode | null = null;
 let audioContext: AudioContext | null = null;
 
 export const speakText = async (text: string): Promise<() => void> => {
+  if (!ai) return () => {};
+
   if (currentSource) {
       try { currentSource.stop(); } catch(e) {}
       currentSource = null;
@@ -52,8 +61,7 @@ export const speakText = async (text: string): Promise<() => void> => {
           model: "gemini-2.5-flash-preview-tts",
           contents: [{ parts: [{ text: safeText }] }],
           config: {
-              // Fixed: Using Modality.AUDIO enum for modality property
-              responseModalities: [Modality.AUDIO],
+              responseModalities: ['AUDIO'],
               speechConfig: {
                   voiceConfig: {
                       prebuiltVoiceConfig: { voiceName: 'Kore' },
@@ -100,6 +108,8 @@ export const speakText = async (text: string): Promise<() => void> => {
 }
 
 export const extractTextFromMedia = async (base64Data: string, mimeType: string): Promise<string | null> => {
+    if (!ai) return null;
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -124,6 +134,8 @@ export const extractTextFromMedia = async (base64Data: string, mimeType: string)
 };
 
 export const summarizeTextToTopics = async (text: string): Promise<{ topic: string, subTopics: string[] } | null> => {
+    if (!ai) return null;
+
     const truncatedText = text.substring(0, 15000);
 
     try {
@@ -169,6 +181,14 @@ export const summarizeTextToTopics = async (text: string): Promise<{ topic: stri
 };
 
 export const generateStudyChecklist = async (topic: string, duration: number): Promise<string[]> => {
+  if (!ai) {
+    return [
+      "Review core definitions (Mock)",
+      "Practice 3 basic problems (Mock)",
+      "Summarize key concepts (Mock)"
+    ];
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -197,6 +217,8 @@ export const generateStudyChecklist = async (topic: string, duration: number): P
 };
 
 export const analyzeProgress = async (sessions: any[]): Promise<string> => {
+    if (!ai) return "Connect API Key for insights.";
+
     try {
         const sessionsSummary = JSON.stringify(sessions.slice(0, 10).map(s => ({
             task: s.taskName,
@@ -232,6 +254,11 @@ const urlToBase64 = async (url: string): Promise<{data: string, mimeType: string
 }
 
 export const extractTopicFromImage = async (attachment: Attachment): Promise<{ topic: string, subTopics: string[] } | null> => {
+  if (!ai) {
+      console.warn("Gemini API Key missing.");
+      return null;
+  }
+
   try {
       let base64Data = '';
       let mimeType = '';
@@ -296,6 +323,8 @@ export const parseStudyRequest = async (userInput: string): Promise<{
     duration: number | null;
     ankiCount: number | null;
 } | null> => {
+    if (!ai) return null;
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -339,6 +368,8 @@ export const parseTimeLogRequest = async (userInput: string, referenceTimeISO: s
     category: TimeLogCategory;
     durationMinutes: number;
 } | null> => {
+    if (!ai) return null;
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -381,6 +412,8 @@ export const parseTimeLogRequest = async (userInput: string, referenceTimeISO: s
 };
 
 export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
+    if (!ai) return [];
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -413,6 +446,7 @@ export const generateQuiz = async (topic: string): Promise<QuizQuestion[]> => {
 }
 
 export const explainTopic = async (topic: string): Promise<string> => {
+    if (!ai) return "AI not connected.";
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -553,6 +587,8 @@ async function callGemini(
 
 
 export const generateMentorDailyBrief = async (sessions: any[], plan: StudyPlanItem[], streak: number, displayName?: string): Promise<{ message: string, quote: string }> => {
+    if (!ai) return { message: "AI not connected.", quote: "Medicine is a science of uncertainty and an art of probability." };
+
     const context = getContextSummary(sessions, plan, streak, undefined, displayName);
 
     try {
@@ -828,6 +864,8 @@ export const chatWithMentor = async (
     aiSettings?: AISettings | null,
     modelName: string = 'gemini-2.5-flash'
 ): Promise<{ text: string, toolCalls?: any[] }> => {
+    if (!ai) return { text: "AI Service unavailable." };
+
     let context = "";
     try {
         context = getContextSummary(sessions, plan, streak, todaysBlocks, displayName);
@@ -1012,6 +1050,8 @@ export const chatWithStudyBuddy = async (
     studyMaterial: string,
     modelName: string = 'gemini-2.5-flash'
 ): Promise<{ text: string }> => {
+    if (!ai) return { text: "AI Service unavailable." };
+
     const MAX_CHARS = 100000;
     const processedMaterial = studyMaterial.length > MAX_CHARS 
         ? studyMaterial.substring(0, MAX_CHARS) + "\n...[Material Truncated]..."

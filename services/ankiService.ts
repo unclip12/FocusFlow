@@ -163,3 +163,57 @@ export const syncAnkiToDb = async (settings: AppSettings, kbEntry: any, updateKb
     }
     return null;
 };
+
+// --- NEW: DECK MOVEMENT LOGIC ---
+
+export const createDeck = async (settings: AppSettings, deckName: string): Promise<boolean> => {
+    const host = settings.ankiHost || DEFAULT_HOST;
+    try {
+        await fetchAnki('createDeck', { deck: deckName }, host);
+        return true;
+    } catch (e) {
+        console.error("Failed to create deck", e);
+        return false;
+    }
+};
+
+export const moveCardsToDeck = async (settings: AppSettings, cardIds: number[], deckName: string): Promise<boolean> => {
+    const host = settings.ankiHost || DEFAULT_HOST;
+    try {
+        await fetchAnki('changeDeck', { cards: cardIds, deck: deckName }, host);
+        return true;
+    } catch (e) {
+        console.error("Failed to move cards", e);
+        return false;
+    }
+};
+
+export const createStudySession = async (settings: AppSettings, tag: string, pageNumber: string): Promise<{ success: boolean, count: number, error?: string }> => {
+    const host = settings.ankiHost || DEFAULT_HOST;
+    // Dynamically name the deck based on the page number
+    const DECK_NAME = `FocusFlow::${pageNumber}`;
+
+    try {
+        // 1. Find Cards
+        const cardIds = await fetchAnki('findCards', { query: tag }, host);
+        
+        if (!cardIds || cardIds.length === 0) {
+            return { success: false, count: 0, error: "No cards found with this tag." };
+        }
+
+        // 2. Create Deck (idempotent)
+        await createDeck(settings, DECK_NAME);
+
+        // 3. Move Cards
+        await moveCardsToDeck(settings, cardIds, DECK_NAME);
+
+        // 4. Open Deck Overview
+        await fetchAnki('guiDeckOverview', { name: DECK_NAME }, host);
+
+        return { success: true, count: cardIds.length };
+
+    } catch (e: any) {
+        console.error("Create study session failed", e);
+        return { success: false, count: 0, error: e.message || "Anki connection failed" };
+    }
+};

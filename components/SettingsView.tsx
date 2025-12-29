@@ -251,6 +251,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   // Other State
   const [ankiHostInput, setAnkiHostInput] = useState(settings.ankiHost || 'http://localhost:8765');
+  const [ankiPrefixInput, setAnkiPrefixInput] = useState(settings.ankiTagPrefix || 'FA_Page::');
   const [ankiStatus, setAnkiStatus] = useState<'IDLE' | 'CHECKING' | 'OK' | 'FAIL'>('IDLE');
   const [ankiError, setAnkiError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
@@ -424,7 +425,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const handleCheckAnki = async () => {
       setAnkiStatus('CHECKING');
       setAnkiError(null);
-      onUpdateSettings({ ...settings, ankiHost: ankiHostInput });
+      // Save both settings
+      onUpdateSettings({ ...settings, ankiHost: ankiHostInput, ankiTagPrefix: ankiPrefixInput });
       
       const result = await checkAnkiConnection({ ...settings, ankiHost: ankiHostInput });
       if (result.success) {
@@ -725,25 +727,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
             {/* 6. Anki Integration */}
             <Section title="Anki Integration" icon={LinkIcon}>
                 <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <div className="flex-1">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AnkiConnect URL</label>
-                            <input 
-                                type="text" 
-                                value={ankiHostInput}
-                                onChange={e => setAnkiHostInput(e.target.value)}
-                                className="w-full p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-mono"
-                                placeholder="http://localhost:8765"
-                            />
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex-1">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AnkiConnect URL</label>
+                                <input 
+                                    type="text" 
+                                    value={ankiHostInput}
+                                    onChange={e => setAnkiHostInput(e.target.value)}
+                                    className="w-full p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-mono"
+                                    placeholder="http://localhost:8765"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tag Prefix</label>
+                                <input 
+                                    type="text" 
+                                    value={ankiPrefixInput}
+                                    onChange={e => setAnkiPrefixInput(e.target.value)}
+                                    className="w-full p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-mono"
+                                    placeholder="FA_Page::"
+                                />
+                            </div>
                         </div>
-                        <div className="flex items-end">
+                        <div className="flex justify-end">
                             <button 
                                 onClick={handleCheckAnki}
                                 disabled={ankiStatus === 'CHECKING'}
                                 className="px-4 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-50 text-sm flex items-center gap-2"
                             >
                                 {ankiStatus === 'CHECKING' ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <CheckCircleIcon className="w-4 h-4" />}
-                                Test Connection
+                                Test & Save
                             </button>
                         </div>
                     </div>

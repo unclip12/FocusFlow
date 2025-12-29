@@ -7,7 +7,7 @@ import { explainTopic, generateQuiz, speakText } from '../services/geminiService
 // import { uploadFile } from '../services/firebase'; // Removed
 import { getData } from '../services/dbService';
 import { CollapsibleTopic } from './KnowledgeBaseView'; 
-import { syncAnkiToDb, openAnkiBrowser, AnkiStats } from '../services/ankiService';
+import { syncAnkiToDb, openAnkiBrowser, AnkiStats, createStudySession } from '../services/ankiService';
 import { SubtopicDetailModal } from './SubtopicDetailModal';
 import { recalculateEntryStats } from '../services/faLoggerService';
 import { getRevisionSettings } from '../services/firebase';
@@ -60,6 +60,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   // Anki Integration
   const [ankiStats, setAnkiStats] = useState<AnkiStats | null>(null);
   const [isSyncingAnki, setIsSyncingAnki] = useState(false);
+  const [isMovingCards, setIsMovingCards] = useState(false); // For study session
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [revisionSettings, setRevisionSettings] = useState<RevisionSettings>({ mode: 'balanced', targetCount: 7 });
 
@@ -95,7 +96,10 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   // Anki
   const ankiTotal = isEditing ? (editForm?.ankiTotal || 0) : (displayEntry?.ankiTotal || session?.ankiTotal || 0);
   const ankiCovered = isEditing ? (editForm?.ankiCovered || 0) : (displayEntry?.ankiCovered || session?.ankiCovered || 0);
-  const ankiTag = displayEntry?.ankiTag;
+  
+  // Dynamic Tag Logic
+  const generatedTag = appSettings?.ankiTagPrefix ? `${appSettings.ankiTagPrefix}${pageNumber}` : `FA_Page::${pageNumber}`;
+  const ankiTag = displayEntry?.ankiTag || generatedTag;
 
   // Content
   const topics = displayEntry?.topics || [];
@@ -118,6 +122,14 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
   }, [kbEntry, isEditing, editForm]);
 
   const videoLinks = displayEntry?.videoLinks || [];
+
+  // Init Anki Stats on Open
+  useEffect(() => {
+      if (isOpen && appSettings && kbEntry) {
+          // Auto-sync stats quietly if not editing
+          syncAnkiToDb(appSettings, { ...kbEntry, ankiTag: kbEntry.ankiTag || generatedTag }, onUpdateEntry);
+      }
+  }, [isOpen, appSettings]);
 
   // --- EARLY RETURN MUST BE AFTER ALL HOOKS ---
   if (!isOpen || !pageNumber) return null;
@@ -181,12 +193,6 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
           onUpdateEntry(updatedEntry);
       }
   };
-
-  /* REMOVED UPLOAD HANDLER
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Disabled
-  };
-  */
 
   const removeAttachment = (id: string) => {
     if (editForm) {
@@ -274,18 +280,28 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
       setShowQuizResult(false);
   };
 
+  // --- ANKI HANDLERS ---
+
   const handleSyncAnki = async () => {
       if (!appSettings || !kbEntry) return;
       setIsSyncingAnki(true);
-      const stats = await syncAnkiToDb(appSettings, kbEntry, onUpdateEntry);
+      const stats = await syncAnkiToDb(appSettings, { ...kbEntry, ankiTag }, onUpdateEntry);
       if (stats) setAnkiStats(stats);
       else alert("Failed to sync with Anki. Check if Anki is open on your host computer.");
       setIsSyncingAnki(false);
   };
 
-  const handleOpenAnki = async () => {
-      if (!appSettings || !ankiTag) return;
-      await openAnkiBrowser(appSettings, `tag:${ankiTag}`);
+  const handleStudyNow = async () => {
+      if (!appSettings || !ankiTag || !pageNumber) return;
+      setIsMovingCards(true);
+      // Pass pageNumber to create specific deck
+      const result = await createStudySession(appSettings, `tag:${ankiTag}`, pageNumber);
+      if (result.success) {
+          alert(`${result.count} cards moved to "FocusFlow::${pageNumber}" deck. Check Anki!`);
+      } else {
+          alert(`Failed: ${result.error}`);
+      }
+      setIsMovingCards(false);
   };
 
   const formatText = (text: string) => {
@@ -600,7 +616,7 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                                    </div>
                                    
                                    {/* Anki Integration Buttons */}
-                                   {ankiTag && (
+                                   <div className="flex flex-col gap-2">
                                        <div className="flex gap-2">
                                            <button 
                                                 onClick={handleSyncAnki} 
@@ -611,14 +627,18 @@ export const PageDetailModal: React.FC<PageDetailModalProps> = ({ isOpen, onClos
                                                Sync Stats
                                            </button>
                                            <button 
-                                                onClick={handleOpenAnki} 
+                                                onClick={handleStudyNow} 
+                                                disabled={isMovingCards}
                                                 className="flex-1 text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 py-2 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors flex items-center justify-center gap-1"
                                            >
-                                               <LinkIcon className="w-3 h-3" />
-                                               Open on Host
+                                               <LinkIcon className={`w-3 h-3 ${isMovingCards ? 'animate-spin' : ''}`} />
+                                               Study Now
                                            </button>
                                        </div>
-                                   )}
+                                       <div className="text-[10px] text-slate-400 text-center font-mono truncate px-1">
+                                           Tag: {ankiTag}
+                                       </div>
+                                   </div>
                                </>
                            )}
                        </div>

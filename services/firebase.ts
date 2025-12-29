@@ -7,8 +7,20 @@ import "firebase/compat/messaging";
 import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemory, UserProfile, KnowledgeBaseEntry, TimeLogEntry, AISettings, RevisionSettings, DailyTracker, AppSettings, FMGEEntry, StudyEntry } from "../types";
 import { notifySyncStart, notifySyncEnd } from "./syncService";
 
+// --- CONFIGURATION ---
+// If the environment variable is missing, you can temporarily paste your key here for local development.
+// WARNING: Do not commit hardcoded keys to version control.
+const FALLBACK_API_KEY = ""; // e.g., "AIzaSy..."
+
+const getApiKey = () => {
+    if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
+    if (FALLBACK_API_KEY) return FALLBACK_API_KEY;
+    console.warn("Firebase API Key is missing! Set FIREBASE_API_KEY in .env or use FALLBACK_API_KEY in services/firebase.ts");
+    return "MISSING_KEY";
+};
+
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCpASx-JIkZr88rJLhpfeqI_11oVnbOLNI",
+  apiKey: getApiKey(),
   authDomain: "arsh-projects.firebaseapp.com",
   databaseURL: "https://arsh-projects-default-rtdb.firebaseio.com",
   projectId: "arsh-projects",
@@ -19,19 +31,23 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase (Compat)
-const app = firebase.initializeApp(firebaseConfig);
+// Check if already initialized to prevent hot-reload errors
+const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+
 export const auth = app.auth();
 export const db = app.firestore();
 
 // Enable Offline Persistence
-db.enablePersistence({ synchronizeTabs: true })
-  .catch((err) => {
-      if (err.code == 'failed-precondition') {
-          console.warn('Firestore Persistence: Multiple tabs open, persistence can only be enabled in one tab at a time.');
-      } else if (err.code == 'unimplemented') {
-          console.warn('Firestore Persistence: Current browser does not support all of the features required to enable persistence.');
-      }
-  });
+if (!firebase.apps.length) { // Only try enabling persistence on first init
+    db.enablePersistence({ synchronizeTabs: true })
+    .catch((err) => {
+        if (err.code == 'failed-precondition') {
+            console.warn('Firestore Persistence: Multiple tabs open, persistence can only be enabled in one tab at a time.');
+        } else if (err.code == 'unimplemented') {
+            console.warn('Firestore Persistence: Current browser does not support all of the features required to enable persistence.');
+        }
+    });
+}
 
 export const storage = app.storage();
 

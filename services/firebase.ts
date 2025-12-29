@@ -13,8 +13,16 @@ import { notifySyncStart, notifySyncEnd } from "./syncService";
 const FALLBACK_API_KEY = ""; // e.g., "AIzaSy..."
 
 const getApiKey = () => {
-    if (process.env.FIREBASE_API_KEY) return process.env.FIREBASE_API_KEY;
-    if (FALLBACK_API_KEY) return FALLBACK_API_KEY;
+    // Check environment variable first
+    const envKey = (process.env as any).FIREBASE_API_KEY;
+    if (envKey && envKey.length > 0) {
+        return envKey;
+    }
+    // Check fallback variable
+    if (FALLBACK_API_KEY && FALLBACK_API_KEY.length > 0) {
+        return FALLBACK_API_KEY;
+    }
+    
     console.warn("Firebase API Key is missing! Set FIREBASE_API_KEY in .env or use FALLBACK_API_KEY in services/firebase.ts");
     return "MISSING_KEY";
 };
@@ -31,7 +39,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase (Compat)
-// Check if already initialized to prevent hot-reload errors
+// Check if already initialized to prevent hot-reload errors in development
 const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
 
 export const auth = app.auth();

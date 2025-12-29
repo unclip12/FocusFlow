@@ -1,4 +1,3 @@
-
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
@@ -8,27 +7,9 @@ import { StudyMaterial, MaterialChatMessage, DayPlan, MentorMessage, MentorMemor
 import { notifySyncStart, notifySyncEnd } from "./syncService";
 
 // --- CONFIGURATION ---
-// If the environment variable is missing, you can temporarily paste your key here for local development.
-// WARNING: Do not commit hardcoded keys to version control.
-const FALLBACK_API_KEY = ""; // e.g., "AIzaSy..."
-
-const getApiKey = () => {
-    // Check environment variable first
-    const envKey = (process.env as any).FIREBASE_API_KEY;
-    if (envKey && envKey.length > 0) {
-        return envKey;
-    }
-    // Check fallback variable
-    if (FALLBACK_API_KEY && FALLBACK_API_KEY.length > 0) {
-        return FALLBACK_API_KEY;
-    }
-    
-    console.warn("Firebase API Key is missing! Set FIREBASE_API_KEY in .env or use FALLBACK_API_KEY in services/firebase.ts");
-    return "MISSING_KEY";
-};
 
 const firebaseConfig = {
-  apiKey: getApiKey(),
+  apiKey: (process.env as any).FIREBASE_API_KEY, // Reads from the .env file
   authDomain: "arsh-projects.firebaseapp.com",
   databaseURL: "https://arsh-projects-default-rtdb.firebaseio.com",
   projectId: "arsh-projects",

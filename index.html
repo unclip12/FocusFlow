@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <title>FocusFlow - AI Study Tracker</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    
+    <!-- iOS PWA Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FocusFlow">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2907/2907253.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: 'rgb(var(--color-primary) / <alpha-value>)',
+              secondary: '#64748b',
+              success: '#10b981',
+              warning: '#f59e0b',
+              danger: '#ef4444',
+              background: 'rgb(var(--color-background) / <alpha-value>)',
+              surface: 'rgb(var(--color-surface) / <alpha-value>)',
+              // Dark mode specific helpers
+              dark: {
+                  bg: '#0f172a',
+                  surface: '#1e293b',
+                  border: '#334155',
+                  text: '#f1f5f9',
+                  muted: '#94a3b8'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            screens: {
+              'xs': '475px',
+            },
+            boxShadow: {
+              '3d': '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.4)',
+              '3d-dark': '0 10px 25px -5px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
+              'btn': '0 4px 0 0 rgb(0 0 0 / 0.15)',
+              'btn-active': '0 0 0 0 transparent',
+              'inner-3d': 'inset 0 2px 4px 0 rgb(0 0 0 / 0.05)',
+              'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+            },
+            animation: {
+              'menu-pop': 'menu-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+              'liquid-enter': 'liquid-enter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1.35) forwards',
+            },
+            keyframes: {
+              'menu-pop': {
+                '0%': { opacity: '0', transform: 'scale(0.5) translateY(-20px)' },
+                '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+              },
+              'liquid-enter': {
+                '0%': { opacity: '0', transform: 'scale(0.92) translateY(15px)', filter: 'blur(3px)' },
+                '60%': { transform: 'scale(1.01) translateY(-2px)', filter: 'blur(0px)' },
+                '100%': { opacity: '1', transform: 'scale(1) translateY(0)', filter: 'blur(0px)' },
+              }
+            }
+          },
+        },
+      };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      :root {
+          --color-primary: 79 70 229; /* Default Indigo */
+          
+          /* Default Theme Variables - Vibrant Gradients for Glass Effect */
+          --app-bg: linear-gradient(135deg, #e0e7ff 0%, #f0f9ff 100%);
+          --color-background: 241 245 249; 
+          --color-surface: 255 255 255;
+      }
+      
+      html.dark {
+          /* Default Dark Fallback */
+          --color-background: 15 23 42;
+          --color-surface: 30 41 59;
+      }
+
+      html {
+          height: 100%;
+          background: var(--app-bg);
+          background-attachment: fixed;
+          background-size: cover;
+          -webkit-text-size-adjust: 100%;
+          text-size-adjust: 100%;
+      }
+
+      body { 
+          height: 100%;
+          margin: 0;
+          padding: 0;
+          overflow: hidden; /* Prevent elastic scrolling on the root */
+          overscroll-behavior: none; /* Crucial for stopping rubber-banding */
+          font-family: 'Inter', sans-serif; 
+          background: transparent; /* Rely on html background */
+          color: rgb(var(--color-text, 30 41 59)); /* Default slate-800 */
+      }
+
+      /* Custom scrollbar for webkit */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.3); border-radius: 4px; }
+      
+      /* Hide scrollbar util */
+      .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+      
+      /* Ensure inputs don't zoom on iOS */
+      input, select, textarea {
+          font-size: 16px !important;
+      }
+      @media (min-width: 640px) {
+          input, select, textarea {
+              font-size: 0.875rem !important; /* 14px on desktop/tablet is fine */
+          }
+      }
+
+      /* 
+         LIQUID GLASS EFFECT CLASSES 
+         Overriding existing 3D classes to be translucent
+      */
+      .card-3d {
+        background: rgba(255, 255, 255, 0.55);
+        box-shadow: 
+          0 8px 32px 0 rgba(31, 38, 135, 0.07),
+          inset 0 1px 0 0 rgba(255,255,255,0.6);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 4px solid rgba(255, 255, 255, 0.1); /* Softer bottom border */
+      }
+      
+      html.dark .card-3d {
+        background: rgba(15, 23, 42, 0.6);
+        box-shadow: 
+          0 8px 32px 0 rgba(0, 0, 0, 0.3),
+          inset 0 1px 0 0 rgba(255,255,255,0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 4px solid rgba(0,0,0,0.2);
+      }
+
+      /* Physical Button with Press Effect - also Glassy */
+      .btn-3d {
+        transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 0 0 rgba(0,0,0,0.1);
+        transform: translateY(0);
+        position: relative;
+        top: 0;
+        backdrop-filter: blur(8px);
+      }
+      .btn-3d:active:not(:disabled) {
+        transform: translateY(4px);
+        box-shadow: 0 0 0 0 transparent;
+        top: 4px; 
+      }
+      .btn-3d:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+      
+      .btn-3d-primary {
+        background: linear-gradient(to bottom, rgba(99, 102, 241, 0.9), rgba(79, 70, 229, 0.9));
+        box-shadow: 0 4px 0 0 #3730a3;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+      .btn-3d-primary:active {
+        box-shadow: 0 0 0 0 transparent;
+      }
+
+      /* Recessed Inputs - Glassy */
+      .input-3d {
+        background-color: rgba(255, 255, 255, 0.4);
+        box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.03);
+        border: 1px solid rgba(255,255,255,0.3);
+        transition: all 0.2s;
+        backdrop-filter: blur(4px);
+      }
+      html.dark .input-3d {
+        background-color: rgba(0, 0, 0, 0.2);
+        box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.2);
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+      .input-3d:focus {
+        background-color: rgba(255, 255, 255, 0.7);
+        border-color: rgb(var(--color-primary));
+        box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.03), 0 0 0 3px rgba(var(--color-primary) / 0.2);
+      }
+      html.dark .input-3d:focus {
+        background-color: rgba(30, 41, 59, 0.6);
+      }
+
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "@capacitor/cli": "https://aistudiocdn.com/@capacitor/cli@^7.4.4",
+    "@capacitor/app": "https://aistudiocdn.com/@capacitor/app@^7.1.0",
+    "@capacitor/core": "https://aistudiocdn.com/@capacitor/core@^7.4.4",
+    "@capacitor/status-bar": "https://aistudiocdn.com/@capacitor/status-bar@^7.0.3"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('SW registered: ', registration);
+          }).catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -7,6 +7,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, saveRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry, getAISettings, saveAISettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
+import { haptic } from './services/hapticsService';
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
   getAdjustedDate, VideoResource, Attachment, ToDoItem,
@@ -614,6 +615,7 @@ export default function App() {
   };
 
   const handleViewPage = (page: string) => {
+      haptic.light();
       setViewingPage(page);
       setIsPageDetailOpen(true);
   };
@@ -674,7 +676,11 @@ export default function App() {
               {activeMenuItems.map((item) => (
                   <button
                       key={item.id}
-                      onClick={() => { if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); setCurrentView(item.id as any); }}
+                      onClick={() => { 
+                          haptic.medium();
+                          if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); 
+                          setCurrentView(item.id as any); 
+                      }}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-bold text-sm relative overflow-hidden btn-3d ${currentView === item.id ? 'bg-gradient-to-r from-indigo-50/90 to-indigo-600/90 text-white shadow-lg border border-white/20' : 'bg-white/30 dark:bg-slate-800/30 text-slate-600 dark:text-slate-300 border border-white/20 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                   >
                       <item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : ''}`} />
@@ -695,7 +701,7 @@ export default function App() {
            </div>
            <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 rounded-full border border-orange-200/50 dark:border-orange-900/30 shadow-inner backdrop-blur-sm" title="Current Streak"><FireIcon className="w-4 h-4 text-orange-500" /><span className="text-xs font-bold text-orange-600 dark:text-orange-400">{streak}</span></div>
-                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm btn-3d text-slate-600 dark:text-slate-300"><Bars3Icon className="w-6 h-6" /></button>
+                <button onClick={() => { haptic.light(); setIsSidebarOpen(!isSidebarOpen); }} className="p-2 rounded-lg bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm btn-3d text-slate-600 dark:text-slate-300"><Bars3Icon className="w-6 h-6" /></button>
            </div>
       </div>
 
@@ -704,7 +710,7 @@ export default function App() {
               <div className="absolute top-16 right-4 w-64 max-h-[80vh] overflow-y-auto bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/40 dark:border-slate-700/50 shadow-3d dark:shadow-3d-dark rounded-2xl origin-top-right animate-menu-pop p-2 overscroll-contain" onClick={(e) => e.stopPropagation()}>
                    <nav className="space-y-1">
                       {activeMenuItems.map((item) => (
-                          <button key={item.id} onClick={() => { if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); setCurrentView(item.id as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${currentView === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}><item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />{item.label}</button>
+                          <button key={item.id} onClick={() => { haptic.medium(); if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); setCurrentView(item.id as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${currentView === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}><item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />{item.label}</button>
                       ))}
                   </nav>
                   {!showSidebar && (

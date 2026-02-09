@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy --project focusflow-c98d2",
     "sync": "npx cap sync",
-    "android": "npx cap open android"
+    "android": "npx cap open android",
+    "ios": "npx cap open ios",
+    "build:mobile": "npm run build && npx cap sync",
+    "build:android": "npm run build && npx cap sync android",
+    "build:ios": "npm run build && npx cap sync ios"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -19,6 +23,7 @@
     "firebase": "^10.7.1",
     "@capacitor/core": "^6.0.0",
     "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
     "@capacitor/app": "^6.0.0",
     "@capacitor/haptics": "^6.0.0",
     "@capacitor/keyboard": "^6.0.0",

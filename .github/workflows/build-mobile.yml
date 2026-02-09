@@ -26,15 +26,18 @@ jobs:
     - name: Build web app
       run: npm run build
       
+    - name: Add Android platform
+      run: npx cap add android
+      
+    - name: Sync Capacitor
+      run: npx cap sync android
+      
     - name: Setup JDK 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Sync Capacitor
-      run: npx cap sync android
-      
     - name: Build Android APK
       run: |
         cd android
@@ -66,6 +69,9 @@ jobs:
     - name: Build web app
       run: npm run build
       
+    - name: Add iOS platform
+      run: npx cap add ios
+      
     - name: Sync Capacitor
       run: npx cap sync ios
       
@@ -74,29 +80,34 @@ jobs:
       with:
         xcode-version: 'latest-stable'
         
-    - name: Build iOS Archive
+    - name: Install CocoaPods dependencies
+      run: |
+        cd ios/App
+        pod install
+        
+    - name: Build iOS IPA (Unsigned)
       run: |
         cd ios/App
         xcodebuild -workspace App.xcworkspace \
           -scheme App \
-          -configuration Debug \
-          -archivePath build/App.xcarchive \
           -sdk iphoneos \
-          -destination 'generic/platform=iOS' \
+          -configuration Debug \
+          -derivedDataPath build \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \
-          archive
+          build
           
-    - name: Export IPA
+    - name: Create IPA manually
       run: |
-        cd ios/App
-        xcodebuild -exportArchive \
-          -archivePath build/App.xcarchive \
-          -exportPath build \
-          -exportOptionsPlist ../../.github/ExportOptions.plist
-          
+        cd ios/App/build/Build/Products/Debug-iphoneos
+        mkdir Payload
+        cp -r App.app Payload/
+        zip -r FocusFlow.ipa Payload
+        
     - name: Upload IPA
       uses: actions/upload-artifact@v4
       with:
         name: FocusFlow-iOS-IPA
-        path: ios/App/build/*.ipa
+        path: ios/App/build/Build/Products/Debug-iphoneos/FocusFlow.ipa
         retention-days: 30

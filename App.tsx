@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, saveRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry, getAISettings, saveAISettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
@@ -230,6 +230,13 @@ export default function App() {
 
   // PWA Shared Content
   const [sharedContent, setSharedContent] = useState<string | null>(null);
+
+  // --- SPLASH SCREEN HANDLER ---
+  useEffect(() => {
+      if (!authLoading && Capacitor.isNativePlatform()) {
+          SplashScreen.hide();
+      }
+  }, [authLoading]);
 
   // --- NATIVE BACK BUTTON HANDLING ---
   const stateRef = useRef({

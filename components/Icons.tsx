@@ -54,6 +54,28 @@ export const BoltIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+export const ShareIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <defs>
+      <linearGradient id="share-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#38bdf8" />
+        <stop offset="100%" stopColor="#818cf8" />
+      </linearGradient>
+    </defs>
+    <circle cx="18" cy="5" r="3" stroke="url(#share-grad)" strokeWidth="2" fill="url(#share-grad)" fillOpacity="0.2">
+      <animate attributeName="r" values="3;3.5;3" dur="2s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="6" cy="12" r="3" stroke="url(#share-grad)" strokeWidth="2" fill="url(#share-grad)" fillOpacity="0.2">
+      <animate attributeName="r" values="3;3.5;3" dur="2s" begin="0.5s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="18" cy="19" r="3" stroke="url(#share-grad)" strokeWidth="2" fill="url(#share-grad)" fillOpacity="0.2">
+      <animate attributeName="r" values="3;3.5;3" dur="2s" begin="1s" repeatCount="indefinite" />
+    </circle>
+    <path d="M8.59 13.51L15.42 17.49" stroke="url(#share-grad)" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M15.41 6.51L8.59 10.49" stroke="url(#share-grad)" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
 export const ChartBarIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
     <defs>

@@ -12,6 +12,12 @@ const config: CapacitorConfig = {
       resize: 'body',
       style: 'dark',
       resizeOnFullScreen: true,
+      // iOS-specific: Add toolbar with Done button
+      accessoryBarVisible: true,
+      // Scroll to focused input automatically
+      scrollAssist: true,
+      // Better behavior when keyboard dismisses
+      hideFormAccessoryBar: false
     },
     StatusBar: {
       style: 'DARK',

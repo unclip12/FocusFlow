@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
     androidScheme: 'https'
   },
   plugins: {
+    App: {
+      // Deep linking configuration
+      // iOS: focusflow:// URL scheme
+      // Android: focusflow:// URL scheme + https://focusflow.app universal links
+    },
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: false,

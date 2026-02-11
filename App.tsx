@@ -44,6 +44,7 @@ import LogRevisionModal from './components/LogRevisionModal';
 import { PageDetailModal } from './components/PageDetailModal';
 import TimerModal from './components/TimerModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import { NetworkIndicator } from './components/NetworkIndicator';
 
 // Views
 import { CalendarView } from './components/CalendarView';
@@ -677,7 +678,10 @@ export default function App() {
                   </div>
                   <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-teal-500 tracking-tight drop-shadow-sm">FocusFlow</h1>
               </div>
-              <div className="pl-1 mt-1"><SyncIndicator /></div>
+              <div className="pl-1 mt-1 flex items-center gap-1">
+                  <SyncIndicator />
+                  <NetworkIndicator />
+              </div>
           </div>
           <nav className="flex-1 px-4 space-y-3 pb-4">
               {activeMenuItems.map((item) => (
@@ -705,6 +709,7 @@ export default function App() {
                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border border-white/30"><AppLogo className="w-6 h-6" /></div>
                <span className="font-extrabold text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-teal-500">FocusFlow</span>
                <SyncIndicator />
+               <NetworkIndicator />
            </div>
            <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 bg-orange-100/50 dark:bg-orange-900/20 px-2 py-1 rounded-full border border-orange-200/50 dark:border-orange-900/30 shadow-inner backdrop-blur-sm" title="Current Streak"><FireIcon className="w-4 h-4 text-orange-500" /><span className="text-xs font-bold text-orange-600 dark:text-orange-400">{streak}</span></div>

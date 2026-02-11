@@ -8,15 +8,28 @@ const config: CapacitorConfig = {
     androidScheme: 'https'
   },
   plugins: {
+    SplashScreen: {
+      launchShowDuration: 2000,
+      launchAutoHide: false,
+      launchFadeOutDuration: 500,
+      backgroundColor: '#ffffff',
+      androidSplashResourceName: 'splash',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+      androidSpinnerStyle: 'large',
+      iosSpinnerStyle: 'small',
+      spinnerColor: '#4f46e5',
+      splashFullScreen: true,
+      splashImmersive: true,
+      layoutName: 'launch_screen',
+      useDialog: true,
+    },
     Keyboard: {
       resize: 'body',
       style: 'dark',
       resizeOnFullScreen: true,
-      // iOS-specific: Add toolbar with Done button
       accessoryBarVisible: true,
-      // Scroll to focused input automatically
       scrollAssist: true,
-      // Better behavior when keyboard dismisses
       hideFormAccessoryBar: false
     },
     StatusBar: {

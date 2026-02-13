@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -45,32 +45,39 @@ import { PageDetailModal } from './components/PageDetailModal';
 import TimerModal from './components/TimerModal';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NetworkIndicator } from './components/NetworkIndicator';
-
-// Views
-import { CalendarView } from './components/CalendarView';
-import { PlannerView } from './components/PlannerView';
-import { RevisionView } from './components/RevisionView';
-import KnowledgeBaseView from './components/KnowledgeBaseView';
-import { DataView } from './components/DataView';
-import { AIChatView } from './components/AIChatView';
-import { SettingsView } from './components/SettingsView';
-import { TodaysPlanView } from './components/TodaysPlanView';
-import { AIMemoryView } from './components/AIMemoryView'; 
-import { FALoggerView } from './components/FALoggerView';
-import { TimeLoggerView } from './components/TimeLoggerView';
-import { DailyTrackerView } from './components/DailyTrackerView';
-import { FMGEView } from './components/FMGEView'; 
-import { FocusTimerView } from './components/FocusTimerView'; 
-import { StudyTrackerView } from './components/StudyTrackerView'; // NEW IMPORT
 import { toggleMaterialActive } from './services/firebase';
+
+// Lazy load views for better performance
+const CalendarView = lazy(() => import('./components/CalendarView').then(m => ({ default: m.CalendarView })));
+const PlannerView = lazy(() => import('./components/PlannerView').then(m => ({ default: m.PlannerView })));
+const RevisionView = lazy(() => import('./components/RevisionView').then(m => ({ default: m.RevisionView })));
+const KnowledgeBaseView = lazy(() => import('./components/KnowledgeBaseView'));
+const DataView = lazy(() => import('./components/DataView').then(m => ({ default: m.DataView })));
+const AIChatView = lazy(() => import('./components/AIChatView').then(m => ({ default: m.AIChatView })));
+const SettingsView = lazy(() => import('./components/SettingsView').then(m => ({ default: m.SettingsView })));
+const TodaysPlanView = lazy(() => import('./components/TodaysPlanView').then(m => ({ default: m.TodaysPlanView })));
+const AIMemoryView = lazy(() => import('./components/AIMemoryView').then(m => ({ default: m.AIMemoryView })));
+const FALoggerView = lazy(() => import('./components/FALoggerView').then(m => ({ default: m.FALoggerView })));
+const TimeLoggerView = lazy(() => import('./components/TimeLoggerView').then(m => ({ default: m.TimeLoggerView })));
+const DailyTrackerView = lazy(() => import('./components/DailyTrackerView').then(m => ({ default: m.DailyTrackerView })));
+const FMGEView = lazy(() => import('./components/FMGEView').then(m => ({ default: m.FMGEView })));
+const FocusTimerView = lazy(() => import('./components/FocusTimerView').then(m => ({ default: m.FocusTimerView })));
+const StudyTrackerView = lazy(() => import('./components/StudyTrackerView').then(m => ({ default: m.StudyTrackerView })));
 
 // Services
 import { requestNotificationPermission } from './services/notificationService';
 
+// Loading fallback component
+const ViewLoadingFallback = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
 // MENU DEFINITIONS
 const ALL_MENU_ITEMS = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: ChartBarIcon },
-    { id: 'STUDY_TRACKER', label: 'Study Tracker', icon: TableCellsIcon }, // NEW MENU ITEM
+    { id: 'STUDY_TRACKER', label: 'Study Tracker', icon: TableCellsIcon },
     { id: 'TODAYS_PLAN', label: "Today's Plan", icon: CalendarIcon },
     { id: 'FOCUS_TIMER', label: 'Focus Timer', icon: BoltIcon }, 
     { id: 'FMGE', label: "FMGE Prep", icon: BookOpenIcon },
@@ -86,7 +93,7 @@ const ALL_MENU_ITEMS = [
     { id: 'SETTINGS', label: 'Settings', icon: Cog6ToothIcon },
 ];
 
-const SyncIndicator = () => {
+const SyncIndicator = React.memo(() => {
     const [status, setStatus] = useState<'HIDDEN' | 'SYNCING' | 'SYNCED'>('HIDDEN');
     const timerRef = useRef<any>(null);
 
@@ -117,7 +124,7 @@ const SyncIndicator = () => {
             )}
         </div>
     );
-};
+});
 
 export default function App() {
   // Auth
@@ -293,7 +300,7 @@ export default function App() {
       if (action === 'log') setIsSessionModalOpen(true);
   }, []);
 
-  const loadTodayPlan = async () => {
+  const loadTodayPlan = useCallback(async () => {
       try {
           const today = getAdjustedDate(new Date());
           const plan = await getDayPlan(today);
@@ -301,7 +308,7 @@ export default function App() {
       } catch (e) {
           console.warn("Failed to load today's plan", e);
       }
-  };
+  }, []);
 
   useEffect(() => {
       if (user) {
@@ -422,7 +429,7 @@ export default function App() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [loadTodayPlan]);
 
   useEffect(() => {
       if (settingsLoaded && settings.notifications?.enabled) {
@@ -434,7 +441,7 @@ export default function App() {
       if (currentView === 'DASHBOARD') {
           loadTodayPlan();
       }
-  }, [currentView]);
+  }, [currentView, loadTodayPlan]);
 
   useEffect(() => {
       if (targetPlanDate) {
@@ -509,47 +516,47 @@ export default function App() {
     applyTheme();
   }, [settings.themeId, settings.darkMode, settings.primaryColor]);
 
-  const handleUpdateDisplayName = async (newName: string) => {
+  const handleUpdateDisplayName = useCallback(async (newName: string) => {
       setDisplayName(newName);
       await saveFirebaseUserProfile({ displayName: newName });
-  };
+  }, []);
 
-  const handleUpdateSettings = async (newSettings: AppSettings) => {
+  const handleUpdateSettings = useCallback(async (newSettings: AppSettings) => {
       if (!settingsLoaded) return;
       setSettings(newSettings);
       await saveData('settings', newSettings);
       await saveAppSettings(newSettings);
-  };
+  }, [settingsLoaded]);
 
-  const updatePlan = async (newPlan: StudyPlanItem[]) => {
+  const updatePlan = useCallback(async (newPlan: StudyPlanItem[]) => {
       setStudyPlan(newPlan);
       await saveData('studyPlan', newPlan);
-  };
+  }, []);
 
-  const updateKB = async (newKB: KnowledgeBaseEntry[]) => {
+  const updateKB = useCallback(async (newKB: KnowledgeBaseEntry[]) => {
       setKnowledgeBase(newKB);
       await saveKnowledgeBase(newKB);
       await saveData('knowledgeBase_v2', newKB);
-  };
+  }, []);
 
-  const handleUpdateFMGE = async (entry: FMGEEntry) => {
+  const handleUpdateFMGE = useCallback(async (entry: FMGEEntry) => {
       setFmgeData(prev => prev.filter(e => e.id !== entry.id).concat(entry));
       await saveFMGEEntry(entry);
-  };
+  }, []);
 
-  const handleDeleteFMGE = async (id: string) => {
+  const handleDeleteFMGE = useCallback(async (id: string) => {
       setFmgeData(prev => prev.filter(e => e.id !== id));
       await deleteFMGEEntry(id);
-  };
+  }, []);
 
-  const handleDeleteKBEntry = async (pageNumber: string) => {
+  const handleDeleteKBEntry = useCallback(async (pageNumber: string) => {
       const newKB = knowledgeBase.filter(k => k.pageNumber !== pageNumber);
       setKnowledgeBase(newKB);
       await deleteKnowledgeBaseEntry(pageNumber);
       await saveData('knowledgeBase_v2', newKB);
-  };
+  }, [knowledgeBase]);
 
-  const handleDeleteRevision = (item: RevisionItem) => {
+  const handleDeleteRevision = useCallback((item: RevisionItem) => {
     const entry = knowledgeBase.find(k => k.pageNumber === item.pageNumber);
     if (!entry) return;
     let updatedEntry = { ...entry };
@@ -597,9 +604,9 @@ export default function App() {
         }
     }
     updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? updatedEntry : k));
-  };
+  }, [knowledgeBase, revisionSettings, updateKB]);
 
-  const handleAddToPlan = async (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
+  const handleAddToPlan = useCallback(async (item: Omit<StudyPlanItem, 'id'>, newVideo?: VideoResource, attachments?: Attachment[]) => {
       const newItem: StudyPlanItem = { ...item, id: Date.now().toString(36), createdAt: new Date().toISOString() };
       updatePlan([...studyPlan, newItem]);
       if (newVideo || (attachments && attachments.length > 0)) {
@@ -620,18 +627,18 @@ export default function App() {
           }
           updateKB(updatedKB);
       }
-  };
+  }, [studyPlan, knowledgeBase, updatePlan, updateKB]);
 
-  const handleViewPage = (page: string) => {
+  const handleViewPage = useCallback((page: string) => {
       haptic.light();
       setViewingPage(page);
       setIsPageDetailOpen(true);
-  };
+  }, []);
 
-  const handleViewDayPlan = (date: string) => {
+  const handleViewDayPlan = useCallback((date: string) => {
       setTargetPlanDate(date);
       setCurrentView('TODAYS_PLAN');
-  };
+  }, []);
 
   const dueNowItems = useMemo(() => {
     const items: { id: string, title: string, subtitle: string, type: 'REVISION' | 'TASK', urgent: boolean }[] = [];
@@ -664,10 +671,10 @@ export default function App() {
   return (
     <div className="h-dvh w-full flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
       <InstallPrompt />
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-purple-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-teal-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '2s' }}></div>
-         <div className="absolute top-[40%] left-[30%] w-[40%] h-[40%] rounded-full bg-indigo-400/30 blur-[120px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '4s' }}></div>
+      {/* OPTIMIZED: Reduced animations - only 2 blobs instead of 3, less blur, longer animation delay */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-60">
+         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-purple-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '3s' }}></div>
       </div>
 
       <aside className={`${showSidebar ? 'hidden md:flex' : 'hidden'} w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/30 dark:border-white/10 h-[calc(100vh-2rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overscroll-contain`}>
@@ -736,44 +743,42 @@ export default function App() {
 
       <main className={`flex-1 pt-20 ${showSidebar ? 'md:pt-6' : 'md:pt-20'} p-4 md:p-6 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10 overscroll-contain pb-[env(safe-area-inset-bottom)]`}>
           <div className="max-w-6xl mx-auto h-full relative">
-            <div className={`h-full ${currentView === 'FOCUS_TIMER' ? 'block' : 'hidden'}`}>
-                <FocusTimerView onBack={() => setCurrentView('TODAYS_PLAN')} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} />
-            </div>
             {currentView !== 'FOCUS_TIMER' && (
                 <div key={currentView} className="animate-liquid-enter h-full">
-                    {currentView === 'DASHBOARD' && (
-                        <>
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                                <div><h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight">Hello, {displayName || 'Doctor'} 👋</h1><p className="text-slate-500 dark:text-slate-400 font-medium mt-1 italic">"Act like the person you want to become."</p></div>
-                                <div className="flex gap-3 w-full md:w-auto"><button onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }} className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"><CalendarIcon className="w-4 h-4" />Today's Plan</button></div>
-                            </div>
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                                <div className="space-y-8"><TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} /><ActivityGraphs knowledgeBase={knowledgeBase} /></div>
-                                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 card-3d">
-                                    <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 text-lg"><div className="p-2 bg-indigo-100/80 dark:bg-indigo-900/30 rounded-lg text-indigo-600"><ListCheckIcon className="w-5 h-5" /></div>Due Now</h3>
-                                    <div className="space-y-3">{dueNowItems.length > 0 ? dueNowItems.map(item => (
-                                            <div key={item.id} className={`p-4 rounded-2xl flex items-center justify-between transition-all hover:scale-[1.02] cursor-pointer shadow-sm border card-3d ${item.urgent ? 'bg-amber-50/60 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800' : 'bg-white/50 dark:bg-slate-800/50 border-white/40 dark:border-slate-700'}`}><div><p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</p><p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{item.subtitle}</p></div><button className="btn-3d bg-white/70 dark:bg-slate-800/70 border border-white/40 dark:border-slate-600 text-primary px-4 py-2 rounded-lg text-xs font-bold shadow-sm backdrop-blur-sm">View</button></div>
-                                        )) : (<div className="flex flex-col items-center justify-center py-12 text-center"><CheckCircleIcon className="w-12 h-12 text-green-200/80 mb-3" /><p className="text-slate-400 font-medium">All caught up! Great job.</p></div>)}</div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                    {currentView === 'STUDY_TRACKER' && <StudyTrackerView />}
-                    {currentView === 'PLANNER' && (
-                        <PlannerView plan={studyPlan} knowledgeBase={knowledgeBase} sessions={[]} onAddToPlan={handleAddToPlan} onUpdatePlanItem={async (item) => { updatePlan(studyPlan.map(p => p.id === item.id ? item : p)); }} onCompleteTask={async (item) => { const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined }; updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p)); }} onStartTask={(item) => { setSessionPrefill({ topic: item.topic, pageNumber: item.pageNumber, ankiTotal: item.ankiCount }); setPlanContext({ planId: item.id, subTasks: item.subTasks || [] }); const exists = knowledgeBase.some(k => k.pageNumber === item.pageNumber && (k.revisionCount > 0 || k.logs.length > 0)); setSessionLogType(exists ? 'REVISION' : 'INITIAL'); setIsSessionModalOpen(true); }} onManageSession={(session) => { if(session && session.pageNumber) handleViewPage(session.pageNumber); }} onToggleSubTask={async (planId, subTaskId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.subTasks) { const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t); const updatedItem = { ...planItem, subTasks: updatedSubTasks }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onDeleteLog={async (planId, logId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.logs) { const updatedLogs = planItem.logs.filter(l => l.id !== logId); const updatedItem = { ...planItem, logs: updatedLogs }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onViewPage={handleViewPage} sharedContent={sharedContent} />
-                    )}
-                    {currentView === 'TODAYS_PLAN' && (<TodaysPlanView targetDate={viewStates.plan.currentDate} settings={settings} onUpdateSettings={handleUpdateSettings} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onUpdateFMGE={handleUpdateFMGE} onStartFocus={() => setCurrentView('FOCUS_TIMER')} />)}
-                    {currentView === 'CALENDAR' && (<CalendarView knowledgeBase={knowledgeBase} studyPlan={studyPlan} onAddToPlan={handleAddToPlan} />)}
-                    {currentView === 'TIME_LOGGER' && (<TimeLoggerView knowledgeBase={knowledgeBase} onViewPage={handleViewPage} />)}
-                    {currentView === 'DAILY_TRACKER' && (<DailyTrackerView />)}
-                    {currentView === 'FA_LOGGER' && (<FALoggerView knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onViewPage={handleViewPage} faState={viewStates.fa} setFaState={(update) => setViewStates(prev => ({ ...prev, fa: typeof update === 'function' ? update(prev.fa) : update }))} />)}
-                    {currentView === 'FMGE' && (<FMGEView fmgeData={fmgeData} onUpdateFMGE={handleUpdateFMGE} onDeleteFMGE={handleDeleteFMGE} />)}
-                    {currentView === 'REVISION' && (<RevisionView knowledgeBase={knowledgeBase} onLogRevision={(item) => { setSessionPrefill({ topic: item.title, pageNumber: item.pageNumber, category: item.kbEntry.subject, system: item.kbEntry.system, ankiTotal: item.kbEntry.ankiTotal, ankiCovered: item.kbEntry.ankiCovered }); setSessionLogType('REVISION'); setIsSessionModalOpen(true); }} onDeleteSession={() => {}} onViewPage={handleViewPage} onDeleteRevision={handleDeleteRevision} viewState={viewStates.revision} setViewState={(update) => setViewStates(prev => ({ ...prev, revision: typeof update === 'function' ? update(prev.revision) : update }))} />)}
-                    {currentView === 'KNOWLEDGE_BASE' && (<KnowledgeBaseView data={knowledgeBase} onUpdateEntry={(entry) => { updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k)); }} onDeleteEntry={handleDeleteKBEntry} onViewPage={handleViewPage} onRefreshData={() => {}} kbState={viewStates.kb} setKbState={(update) => setViewStates(prev => ({ ...prev, kb: typeof update === 'function' ? update(prev.kb) : update }))} />)}
-                    {currentView === 'DATA' && (<DataView viewState={viewStates.data} setViewState={(update) => setViewStates(prev => ({ ...prev, data: typeof update === 'function' ? update(prev.data) : update }))} />)}
-                    {currentView === 'CHAT' && (<AIChatView sessions={[]} studyPlan={studyPlan} streak={streak} onAddToPlan={handleAddToPlan} onViewDayPlan={handleViewDayPlan} displayName={displayName} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} viewState={viewStates.chat} setViewState={(update) => setViewStates(prev => ({ ...prev, chat: typeof update === 'function' ? update(prev.chat) : update }))} />)}
-                    {currentView === 'AI_MEMORY' && (<AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />)}
-                    {currentView === 'SETTINGS' && (<SettingsView settings={settings} onUpdateSettings={handleUpdateSettings} secretId={secretId} displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />)}
+                    <Suspense fallback={<ViewLoadingFallback />}>
+                      {currentView === 'DASHBOARD' && (
+                          <>
+                              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                                  <div><h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight">Hello, {displayName || 'Doctor'} 👋</h1><p className="text-slate-500 dark:text-slate-400 font-medium mt-1 italic">"Act like the person you want to become."</p></div>
+                                  <div className="flex gap-3 w-full md:w-auto"><button onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }} className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"><CalendarIcon className="w-4 h-4" />Today's Plan</button></div>
+                              </div>
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                                  <div className="space-y-8"><TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} /><ActivityGraphs knowledgeBase={knowledgeBase} /></div>
+                                  <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/40 dark:border-slate-700/50 card-3d">
+                                      <h3 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 text-lg"><div className="p-2 bg-indigo-100/80 dark:bg-indigo-900/30 rounded-lg text-indigo-600"><ListCheckIcon className="w-5 h-5" /></div>Due Now</h3>
+                                      <div className="space-y-3">{dueNowItems.length > 0 ? dueNowItems.map(item => (
+                                              <div key={item.id} className={`p-4 rounded-2xl flex items-center justify-between transition-all hover:scale-[1.02] cursor-pointer shadow-sm border card-3d ${item.urgent ? 'bg-amber-50/60 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800' : 'bg-white/50 dark:bg-slate-800/50 border-white/40 dark:border-slate-700'}`}><div><p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</p><p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{item.subtitle}</p></div><button className="btn-3d bg-white/70 dark:bg-slate-800/70 border border-white/40 dark:border-slate-600 text-primary px-4 py-2 rounded-lg text-xs font-bold shadow-sm backdrop-blur-sm">View</button></div>
+                                          )) : (<div className="flex flex-col items-center justify-center py-12 text-center"><CheckCircleIcon className="w-12 h-12 text-green-200/80 mb-3" /><p className="text-slate-400 font-medium">All caught up! Great job.</p></div>)}</div>
+                                  </div>
+                              </div>
+                          </>
+                      )}
+                      {currentView === 'STUDY_TRACKER' && <StudyTrackerView />}
+                      {currentView === 'PLANNER' && <PlannerView plan={studyPlan} knowledgeBase={knowledgeBase} sessions={[]} onAddToPlan={handleAddToPlan} onUpdatePlanItem={async (item) => { updatePlan(studyPlan.map(p => p.id === item.id ? item : p)); }} onCompleteTask={async (item) => { const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined }; updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p)); }} onStartTask={(item) => { setSessionPrefill({ topic: item.topic, pageNumber: item.pageNumber, ankiTotal: item.ankiCount }); setPlanContext({ planId: item.id, subTasks: item.subTasks || [] }); const exists = knowledgeBase.some(k => k.pageNumber === item.pageNumber && (k.revisionCount > 0 || k.logs.length > 0)); setSessionLogType(exists ? 'REVISION' : 'INITIAL'); setIsSessionModalOpen(true); }} onManageSession={(session) => { if(session && session.pageNumber) handleViewPage(session.pageNumber); }} onToggleSubTask={async (planId, subTaskId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.subTasks) { const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t); const updatedItem = { ...planItem, subTasks: updatedSubTasks }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onDeleteLog={async (planId, logId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.logs) { const updatedLogs = planItem.logs.filter(l => l.id !== logId); const updatedItem = { ...planItem, logs: updatedLogs }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onViewPage={handleViewPage} sharedContent={sharedContent} />}
+                      {currentView === 'TODAYS_PLAN' && <TodaysPlanView targetDate={viewStates.plan.currentDate} settings={settings} onUpdateSettings={handleUpdateSettings} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onUpdateFMGE={handleUpdateFMGE} onStartFocus={() => setCurrentView('FOCUS_TIMER')} />}
+                      {currentView === 'CALENDAR' && <CalendarView knowledgeBase={knowledgeBase} studyPlan={studyPlan} onAddToPlan={handleAddToPlan} />}
+                      {currentView === 'TIME_LOGGER' && <TimeLoggerView knowledgeBase={knowledgeBase} onViewPage={handleViewPage} />}
+                      {currentView === 'DAILY_TRACKER' && <DailyTrackerView />}
+                      {currentView === 'FA_LOGGER' && <FALoggerView knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onViewPage={handleViewPage} faState={viewStates.fa} setFaState={(update) => setViewStates(prev => ({ ...prev, fa: typeof update === 'function' ? update(prev.fa) : update }))} />}
+                      {currentView === 'FMGE' && <FMGEView fmgeData={fmgeData} onUpdateFMGE={handleUpdateFMGE} onDeleteFMGE={handleDeleteFMGE} />}
+                      {currentView === 'REVISION' && <RevisionView knowledgeBase={knowledgeBase} onLogRevision={(item) => { setSessionPrefill({ topic: item.title, pageNumber: item.pageNumber, category: item.kbEntry.subject, system: item.kbEntry.system, ankiTotal: item.kbEntry.ankiTotal, ankiCovered: item.kbEntry.ankiCovered }); setSessionLogType('REVISION'); setIsSessionModalOpen(true); }} onDeleteSession={() => {}} onViewPage={handleViewPage} onDeleteRevision={handleDeleteRevision} viewState={viewStates.revision} setViewState={(update) => setViewStates(prev => ({ ...prev, revision: typeof update === 'function' ? update(prev.revision) : update }))} />}
+                      {currentView === 'KNOWLEDGE_BASE' && <KnowledgeBaseView data={knowledgeBase} onUpdateEntry={(entry) => { updateKB(knowledgeBase.map(k => k.pageNumber === entry.pageNumber ? entry : k)); }} onDeleteEntry={handleDeleteKBEntry} onViewPage={handleViewPage} onRefreshData={() => {}} kbState={viewStates.kb} setKbState={(update) => setViewStates(prev => ({ ...prev, kb: typeof update === 'function' ? update(prev.kb) : update }))} />}
+                      {currentView === 'DATA' && <DataView viewState={viewStates.data} setViewState={(update) => setViewStates(prev => ({ ...prev, data: typeof update === 'function' ? update(prev.data) : update }))} />}
+                      {currentView === 'CHAT' && <AIChatView sessions={[]} studyPlan={studyPlan} streak={streak} onAddToPlan={handleAddToPlan} onViewDayPlan={handleViewDayPlan} displayName={displayName} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} viewState={viewStates.chat} setViewState={(update) => setViewStates(prev => ({ ...prev, chat: typeof update === 'function' ? update(prev.chat) : update }))} />}
+                      {currentView === 'AI_MEMORY' && <AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />}
+                      {currentView === 'SETTINGS' && <SettingsView settings={settings} onUpdateSettings={handleUpdateSettings} secretId={secretId} displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />}
+                      {currentView === 'FOCUS_TIMER' && <FocusTimerView onBack={() => setCurrentView('TODAYS_PLAN')} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} />}
+                    </Suspense>
                 </div>
             )}
           </div>

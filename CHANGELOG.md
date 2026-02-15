@@ -1,6 +1,6 @@
 # FocusFlow - Changelog & Progress Tracker
 
-**Last Updated:** February 15, 2026, 9:52 PM IST  
+**Last Updated:** February 15, 2026, 10:02 PM IST  
 **Maintainer:** unclip12  
 **Status:** 🚀 Active Development
 
@@ -24,15 +24,17 @@
 - ✅ Performance optimizations (scrolling smoothness)
 - ✅ FA Logger UX improvements (Select All, Quick Duration)
 - ✅ Comprehensive progress tracking
-- 🔄 Testing on iPad Pro M4
+- ✅ Bug fixes (PageBadge text visibility)
+- 🔄 Testing on iPad Pro M4 (ongoing)
 - ⏳ More small UX refinements (ongoing)
 
 ### Priority:
-1. **High:** Performance & smoothness
-2. **High:** FA Logger ease of use
-3. **High:** Documentation & tracking
-4. **Medium:** Mobile optimizations
-5. **Low:** New features (paused)
+1. **High:** Bug fixes & polish
+2. **High:** Performance & smoothness
+3. **High:** FA Logger ease of use
+4. **High:** Documentation & tracking
+5. **Medium:** Mobile optimizations
+6. **Low:** New features (paused)
 
 ---
 
@@ -149,6 +151,35 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 
 ---
 
+### Session 4: Bug Fix - PageBadge Text Visibility (10:00 PM - 10:02 PM)
+**Goal:** Fix invisible page numbers on red background badges
+
+#### ✅ Completed:
+
+**Issue Reported:** Page numbers appearing invisible (red text on red background) in Knowledge Base view for unstudied pages.
+
+**Root Cause:** Text color logic was not explicitly setting white color for 0% progress pages.
+
+**Fix Applied** ([Commit 3402791](https://github.com/unclip12/FocusFlow/commit/34027917856c6d512d55f03400eeeea5bf35bb76)):
+1. Created explicit `getTextColor()` function for clear color logic:
+   - **0% (unstudied)**: White text on red background ✅
+   - **1-49% (partial)**: Dark text on light green background
+   - **50-100% (mostly done)**: White text on dark green background
+
+2. Updated both "PG" label and page number to use proper colors
+3. Added better contrast for all progress states
+
+**Files Changed:**
+- ✅ `components/PageBadge.tsx` (UPDATED)
+
+**Visual Result:**
+- Before: Red badge with invisible text ❌
+- After: Red badge with white "PG 32" text ✅
+
+**Impact:** Improved readability and user experience in Knowledge Base
+
+---
+
 ## ⏸️ Paused Work
 
 ### Phase 1 & Phase 2: New Features (Paused)
@@ -192,6 +223,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - ✅ Revision Hub with SRS algorithm
 - ✅ Topic and subtopic tracking
 - ✅ Revision scheduling
+- ✅ Page progress badges with liquid fill animation
 
 **Analytics & Logs:**
 - ✅ Time Logger
@@ -218,6 +250,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - ✅ Suspense boundaries
 - ✅ Mobile-optimized animations
 - ✅ FA Logger quick actions
+- ✅ PageBadge text visibility fix
 
 ---
 
@@ -228,6 +261,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 **Priority 1: Testing & Validation**
 - [ ] Test performance improvements on iPad Pro M4
 - [ ] Test FA Logger improvements
+- [x] Fix PageBadge text visibility ✅ (Done)
 - [ ] Verify smooth scrolling on mobile devices
 - [ ] Check for any regressions
 
@@ -283,7 +317,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 ## 📚 Version History
 
 ### v0.9.3 - Feb 15, 2026 (Current)
-**Focus:** Performance & FA Logger UX
+**Focus:** Performance, FA Logger UX & Bug Fixes
 
 **Added:**
 - Performance optimization CSS layer
@@ -297,11 +331,15 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - Animation speeds: 0.4s → 0.3s
 - Mobile backdrop blur: 16px → 6-8px
 
+**Fixed:**
+- PageBadge text visibility (white text on red background for unstudied pages)
+
 **Improved:**
 - Scroll performance (+40-50%)
 - FA Logger logging speed (30s → 5s)
 - Mobile GPU usage (-50%)
 - Documentation structure
+- Knowledge Base readability
 
 **Documentation:**
 - Added `PERFORMANCE_OPTIMIZATIONS.md`
@@ -315,6 +353,8 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 4. [90afa0c](https://github.com/unclip12/FocusFlow/commit/90afa0c956921d4efbe41eee1e9be5f3ee7e93e9) - FA Logger improvements
 5. [577be3e](https://github.com/unclip12/FocusFlow/commit/577be3ebf0b9306638ea07a7336ca0f6203d9e0a) - CHANGELOG creation
 6. [2adb047](https://github.com/unclip12/FocusFlow/commit/2adb0477067c158af86beba751465602ce049f7a) - README update
+7. [a037893](https://github.com/unclip12/FocusFlow/commit/a03789328216a7929298ae9b8fd97f8f2626082a) - CHANGELOG update
+8. [3402791](https://github.com/unclip12/FocusFlow/commit/34027917856c6d512d55f03400eeeea5bf35bb76) - PageBadge text fix
 
 ---
 
@@ -340,6 +380,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 | Animation Lag | Noticeable | Minimal | ✅ |
 | FA Logger Time | ~30s | ~5s | -83% |
 | Bundle Size | - | - | 0% (CSS only) |
+| PageBadge Visibility | Broken | Fixed | ✅ |
 
 ### Code Quality
 - ✅ TypeScript strict mode
@@ -348,6 +389,7 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - ✅ Performance monitoring
 - ✅ Error boundaries
 - ✅ Comprehensive documentation
+- ✅ Active bug tracking
 
 ---
 
@@ -390,11 +432,13 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - ✅ Intuitive navigation
 - ✅ Fast common actions
 - ✅ Minimal clicks to complete tasks
+- ✅ Good visibility & contrast
 - ⏳ Helpful error messages
 
 **Quality:**
 - ✅ No console errors
 - ✅ TypeScript strict compliance
+- ✅ Active bug fixing
 - ⏳ Test coverage > 80%
 - ⏳ Accessibility audit passed
 
@@ -414,12 +458,14 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - Small improvements compound
 - Test on real devices (iPad Pro M4)
 - Document everything
+- Fix bugs immediately
 
 **Decision Log:**
 - **Feb 15:** Paused new features to focus on polish
 - **Feb 15:** Reduced default study duration to 30m (more realistic)
 - **Feb 15:** Prioritized performance over new features
 - **Feb 15:** Implemented comprehensive progress tracking
+- **Feb 15:** Fixed PageBadge visibility based on user feedback
 
 **Learnings:**
 - Backdrop blur is expensive on mobile - reduce aggressively
@@ -427,6 +473,8 @@ Click "30m" → Start: 9:10 PM, End: 9:40 PM ✓
 - Users prefer "Select All" over manual selection
 - 30m is more realistic than 60m for focused study
 - Good documentation saves time and prevents confusion
+- Visual bugs (like invisible text) need immediate fixing
+- Test with real users on real devices to catch issues
 
 ---
 
@@ -438,6 +486,7 @@ This is a personal project, but progress is tracked here for:
 - Testing checklist
 - Future planning
 - Learning and improvement
+- Bug tracking
 
 ---
 
@@ -445,7 +494,7 @@ This is a personal project, but progress is tracked here for:
 
 **Developer:** unclip12  
 **Repository:** [github.com/unclip12/FocusFlow](https://github.com/unclip12/FocusFlow)  
-**Last Activity:** Feb 15, 2026, 9:52 PM IST
+**Last Activity:** Feb 15, 2026, 10:02 PM IST
 
 ---
 

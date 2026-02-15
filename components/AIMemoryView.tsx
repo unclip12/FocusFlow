@@ -195,26 +195,26 @@ export const AIMemoryView: React.FC<AIMemoryViewProps> = ({ displayName, onUpdat
                 </div>
             </div>
 
-            {/* BACKLOG SECTION */}
-            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-red-200/50 dark:border-red-900/30 p-6 shadow-sm">
+            {/* BACKLOG SECTION - FIXED: Softened red border */}
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-amber-100/40 dark:border-amber-900/20 p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
                         <ExclamationCircleIcon className="w-5 h-5" />
                         <h3 className="text-sm font-bold uppercase tracking-widest">Critical Backlog</h3>
                     </div>
                     {memory?.backlog && memory.backlog.length > 0 && (
-                        <button onClick={handleClearBacklog} className="text-xs text-red-500 hover:text-red-700 font-bold">Clear All</button>
+                        <button onClick={handleClearBacklog} className="text-xs text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 font-bold">Clear All</button>
                     )}
                 </div>
 
-                <div className="text-xs text-slate-500 mb-4">
+                <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">
                     Items listed here will be forcefully prioritized by the AI Mentor until cleared.
                 </div>
 
                 {memory?.backlog && memory.backlog.length > 0 ? (
                     <div className="space-y-3">
                         {memory.backlog.map((item, idx) => (
-                            <div key={idx} className="flex items-start justify-between p-3 bg-red-50/50 dark:bg-red-900/10 border border-red-100/50 dark:border-red-900/30 rounded-xl backdrop-blur-sm">
+                            <div key={idx} className="flex items-start justify-between p-3 bg-amber-50/30 dark:bg-amber-900/10 border border-amber-100/40 dark:border-amber-900/20 rounded-xl backdrop-blur-sm">
                                 <div>
                                     <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">{item.task}</p>
                                     <div className="flex gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1">

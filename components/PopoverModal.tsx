@@ -72,9 +72,12 @@ export const PopoverModal: React.FC<PopoverModalProps> = ({
                 margin: 'auto',
                 maxWidth: '90vw',
                 maxHeight: '90vh',
+                pointerEvents: 'auto', // FIXED: Ensure clicks work inside popover
             }}
         >
-            {children}
+            <div style={{ pointerEvents: 'auto' }}>
+                {children}
+            </div>
         </div>
     );
 };

@@ -13,8 +13,12 @@
     <meta name="apple-mobile-web-app-title" content="FocusFlow">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2907/2907253.png">
     
-    <!-- Performance CSS -->
+    <!-- View Transitions API Support -->
+    <meta name="view-transition" content="same-origin">
+    
+    <!-- Performance & Modern CSS -->
     <link rel="stylesheet" href="/performance.css">
+    <link rel="stylesheet" href="/modern-web.css">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -30,7 +34,6 @@
               danger: '#ef4444',
               background: 'rgb(var(--color-background) / <alpha-value>)',
               surface: 'rgb(var(--color-surface) / <alpha-value>)',
-              // Dark mode specific helpers
               dark: {
                   bg: '#0f172a',
                   surface: '#1e293b',
@@ -71,6 +74,11 @@
                 '0%': { opacity: '0' },
                 '100%': { opacity: '1' },
               }
+            },
+            supports: {
+              'view-transitions': 'view-transition-name',
+              'container-queries': 'container-type',
+              'color-mix': 'color: color-mix(in srgb, red, blue)',
             }
           },
         },
@@ -79,16 +87,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
       :root {
-          --color-primary: 79 70 229; /* Default Indigo */
-          
-          /* Default Theme Variables - Vibrant Gradients for Glass Effect */
+          --color-primary: 79 70 229;
           --app-bg: linear-gradient(135deg, #e0e7ff 0%, #f0f9ff 100%);
           --color-background: 241 245 249; 
           --color-surface: 255 255 255;
       }
       
       html.dark {
-          /* Default Dark Fallback */
           --color-background: 15 23 42;
           --color-surface: 30 41 59;
       }
@@ -113,24 +118,16 @@
           color: rgb(var(--color-text, 30 41 59));
       }
 
-      /* Custom scrollbar for webkit */
+      /* Custom scrollbar */
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.3); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.5); }
       
-      /* Hide scrollbar util */
-      .hide-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      .hide-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
+      .hide-scrollbar::-webkit-scrollbar { display: none; }
+      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-      /* 
-         LIQUID GLASS EFFECT CLASSES - OPTIMIZED
-      */
+      /* Liquid Glass Effect */
       .card-3d {
         background: rgba(255, 255, 255, 0.55);
         box-shadow: 
@@ -142,7 +139,6 @@
         border-bottom: 4px solid rgba(255, 255, 255, 0.1);
       }
       
-      /* Reduce blur on mobile */
       @media (max-width: 768px) {
         .card-3d {
           backdrop-filter: blur(6px);
@@ -159,7 +155,7 @@
         border-bottom: 4px solid rgba(0,0,0,0.2);
       }
 
-      /* Physical Button with Press Effect - OPTIMIZED */
+      /* 3D Buttons */
       .btn-3d {
         transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 4px 0 0 rgba(0,0,0,0.1);
@@ -176,8 +172,6 @@
       .btn-3d:disabled {
         opacity: 0.6;
         cursor: not-allowed;
-        box-shadow: none;
-        transform: none;
       }
       
       .btn-3d-primary {
@@ -185,11 +179,8 @@
         box-shadow: 0 4px 0 0 #3730a3;
         border: 1px solid rgba(255,255,255,0.2);
       }
-      .btn-3d-primary:active {
-        box-shadow: 0 0 0 0 transparent;
-      }
 
-      /* Recessed Inputs - OPTIMIZED */
+      /* Recessed Inputs */
       .input-3d {
         background-color: rgba(255, 255, 255, 0.4);
         box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.03);
@@ -207,10 +198,6 @@
         border-color: rgb(var(--color-primary));
         box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.03), 0 0 0 3px rgba(var(--color-primary) / 0.2);
       }
-      html.dark .input-3d:focus {
-        background-color: rgba(30, 41, 59, 0.6);
-      }
-
     </style>
 <script type="importmap">
 {
@@ -219,7 +206,7 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@google/genai": "https://aistudiocdn.com/@ @google/genai@^1.30.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
@@ -234,16 +221,55 @@
   <body>
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
+    
+    <!-- View Transitions API Polyfill for older browsers -->
+    <script>
+      // Feature detection and initialization
+      if (!document.startViewTransition) {
+        // Fallback for browsers without View Transitions
+        document.startViewTransition = function(callback) {
+          callback();
+          return { ready: Promise.resolve(), updateCallbackDone: Promise.resolve(), finished: Promise.resolve() };
+        };
+      }
+      
+      // Enable View Transitions for navigation
+      if ('navigation' in window) {
+        navigation.addEventListener('navigate', (e) => {
+          if (!e.canIntercept || e.hashChange || e.downloadRequest) return;
+          
+          e.intercept({
+            handler: () => document.startViewTransition(() => {
+              // Navigation logic handled by React Router
+            })
+          });
+        });
+      }
+    </script>
+    
+    <!-- Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').then(registration => {
-            console.log('SW registered: ', registration);
-          }).catch(registrationError => {
-            console.log('SW registration failed: ', registrationError);
+            console.log('✅ SW registered:', registration);
+          }).catch(error => {
+            console.log('❌ SW registration failed:', error);
           });
         });
       }
+    </script>
+    
+    <!-- Feature Detection Logger -->
+    <script>
+      console.log('🚀 FocusFlow Modern Web Features:');
+      console.log('✨ View Transitions:', 'startViewTransition' in document);
+      console.log('📦 Container Queries:', CSS.supports('container-type: inline-size'));
+      console.log('🎨 CSS :has():', CSS.supports('selector(:has(*)'));
+      console.log('🎨 CSS Nesting:', CSS.supports('selector(&)'));
+      console.log('🎨 Color Mix:', CSS.supports('color: color-mix(in srgb, red, blue)'));
+      console.log('🪟 Popover API:', 'popover' in HTMLElement.prototype);
+      console.log('🔒 Screen Wake Lock:', 'wakeLock' in navigator);
     </script>
   </body>
 </html>

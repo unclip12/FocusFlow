@@ -1,0 +1,240 @@
+/* ==========================================
+   FOCUSFLOW PERFORMANCE OPTIMIZATIONS
+   Created: Feb 15, 2026
+   Purpose: Butter-smooth scrolling & animations
+   ========================================== */
+
+/* ========== SCROLL PERFORMANCE ========== */
+.custom-scrollbar,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto {
+  /* Enable hardware acceleration */
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  
+  /* Contain layout for better performance */
+  contain: layout style paint;
+}
+
+/* Overscroll behavior */
+.overscroll-contain {
+  overscroll-behavior: contain;
+  -ms-scroll-chaining: contain;
+}
+
+/* ========== ANIMATION OPTIMIZATIONS ========== */
+.animate-liquid-enter,
+.animate-fade-in,
+.animate-menu-pop,
+.animate-pulse,
+.animate-spin,
+.transition-all,
+.transition-colors,
+.transition-transform {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Optimize heavy blur effects on mobile */
+@media (max-width: 768px) {
+  .backdrop-blur-xl { backdrop-filter: blur(6px) !important; }
+  .backdrop-blur-2xl { backdrop-filter: blur(8px) !important; }
+  .backdrop-blur-md { backdrop-filter: blur(4px) !important; }
+  .backdrop-blur-sm { backdrop-filter: blur(2px) !important; }
+  
+  /* Reduce animated blobs on mobile */
+  .animated-blob {
+    animation-play-state: paused !important;
+    opacity: 0.5 !important;
+  }
+}
+
+/* Desktop can handle more blur */
+@media (min-width: 769px) {
+  .backdrop-blur-xl { backdrop-filter: blur(12px); }
+  .backdrop-blur-2xl { backdrop-filter: blur(16px); }
+}
+
+/* ========== LAYOUT OPTIMIZATIONS ========== */
+main {
+  contain: layout style paint;
+  isolation: isolate;
+}
+
+aside {
+  contain: layout style;
+  isolation: isolate;
+}
+
+/* Cards and buttons */
+.card-3d,
+.btn-3d {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Optimize transitions */
+.transition-all {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ========== IMAGE/MEDIA OPTIMIZATIONS ========== */
+img, video {
+  content-visibility: auto;
+  will-change: auto;
+}
+
+/* ========== LIST OPTIMIZATIONS ========== */
+/* For long lists, enable content-visibility */
+.list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+/* ========== REDUCED MOTION ========== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .animated-blob {
+    animation: none !important;
+  }
+}
+
+/* ========== PASSIVE EVENT LISTENERS ========== */
+/* Hint to browser that these areas are touch-friendly */
+.touch-target {
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
+}
+
+/* ========== PAINT OPTIMIZATION ========== */
+/* Isolate expensive repaints */
+.isolate-paint {
+  isolation: isolate;
+  contain: paint;
+}
+
+/* Fixed elements */
+.fixed {
+  will-change: auto;
+  transform: translateZ(0);
+}
+
+/* ========== INPUT OPTIMIZATIONS ========== */
+input,
+textarea,
+select {
+  /* Disable iOS zoom on focus */
+  font-size: max(16px, 1em) !important;
+}
+
+/* ========== MODAL/OVERLAY OPTIMIZATIONS ========== */
+.modal-overlay,
+.drawer-overlay {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@media (max-width: 768px) {
+  .modal-overlay,
+  .drawer-overlay {
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+}
+
+/* ========== GRID/FLEX OPTIMIZATIONS ========== */
+.grid,
+.flex {
+  contain: layout;
+}
+
+/* ========== ANIMATION DELAYS ========== */
+/* Stagger animations for smoother feel */
+.stagger-animation:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation:nth-child(2) { animation-delay: 50ms; }
+.stagger-animation:nth-child(3) { animation-delay: 100ms; }
+.stagger-animation:nth-child(4) { animation-delay: 150ms; }
+.stagger-animation:nth-child(5) { animation-delay: 200ms; }
+
+/* ========== FONT RENDERING ========== */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ========== DISABLE ANIMATIONS DURING SCROLL ========== */
+@media (hover: hover) and (pointer: fine) {
+  /* Only enable hover effects on devices with precise pointers */
+  .hover-effect:hover {
+    transform: scale(1.02) translateZ(0);
+  }
+}
+
+/* ========== LOADING SKELETON OPTIMIZATION ========== */
+.skeleton-loading {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  will-change: background-position;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ========== MOMENTUM SCROLLING ========== */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: scroll;
+  scroll-snap-type: y proximity;
+}
+
+/* ========== GPU LAYER PROMOTION ========== */
+.gpu-accelerated {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+/* ========== OPTIMIZE SHADOWS ========== */
+@media (max-width: 768px) {
+  .shadow-3d,
+  .shadow-lg,
+  .shadow-xl {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  }
+}

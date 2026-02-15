@@ -33,8 +33,13 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`group relative flex flex-col items-center justify-center w-[60px] min-w-[60px] max-w-[60px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 ${className}`}
+      className={`group relative flex flex-col items-center justify-center rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 ${className}`}
       style={{
+          width: '64px',
+          minWidth: '64px',
+          maxWidth: '64px',
+          height: '56px',
+          flexShrink: 0,
           boxShadow: isComplete 
             ? '0 0 15px rgba(34, 197, 94, 0.6)' // Green Glow if full
             : isUntouched 
@@ -65,9 +70,9 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
       {/* 4. Content Layer (Z-Index High to stay visible) */}
       <div className="relative z-10 flex flex-col items-center">
           {/* PG label - always white for good contrast */}
-          <span className={`text-[8px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
-          {/* Page Number - color based on progress, optimized for narrow width */}
-          <span className={`text-base font-black drop-shadow-md leading-none tracking-tighter ${getTextColor()}`}>
+          <span className={`text-[9px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
+          {/* Page Number - color based on progress */}
+          <span className={`text-lg font-black drop-shadow-md leading-none ${getTextColor()}`}>
             {pageNumber}
           </span>
       </div>
@@ -82,8 +87,8 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
       {/* 6. Revision Count Footer */}
       {revisionCount > 0 && (
         <div className="absolute bottom-0 left-0 right-0 bg-black/20 h-3.5 flex items-center justify-center z-20 backdrop-blur-[1px]">
-             <div className="flex items-center gap-0.5 text-[8px] font-bold text-white">
-                 <ArrowPathIcon className="w-2 h-2" /> {revisionCount}
+             <div className="flex items-center gap-0.5 text-[9px] font-bold text-white">
+                 <ArrowPathIcon className="w-2.5 h-2.5" /> {revisionCount}
              </div>
         </div>
       )}

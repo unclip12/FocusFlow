@@ -20,6 +20,16 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
   const isComplete = fillPercent === 100;
   const isUntouched = fillPercent === 0;
 
+  // Text color based on progress:
+  // - If 0% (red bg): WHITE text
+  // - If 1-49% (green liquid filling): DARK text (visible on light green/white)
+  // - If 50-100% (mostly green): WHITE text (visible on dark green)
+  const getTextColor = () => {
+    if (isUntouched) return 'text-white'; // White on red
+    if (fillPercent < 50) return 'text-slate-800 dark:text-slate-900'; // Dark on light green
+    return 'text-white'; // White on dark green
+  };
+
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -54,8 +64,12 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
 
       {/* 4. Content Layer (Z-Index High to stay visible) */}
       <div className="relative z-10 flex flex-col items-center">
-          <span className="text-[9px] text-white/80 font-black uppercase drop-shadow-md">PG</span>
-          <span className={`text-xl font-black drop-shadow-md leading-none tracking-tighter ${fillPercent > 0 && fillPercent < 50 ? 'text-slate-700 dark:text-white' : 'text-white'}`}>{pageNumber}</span>
+          {/* PG label - always white for good contrast */}
+          <span className={`text-[9px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
+          {/* Page Number - color based on progress */}
+          <span className={`text-xl font-black drop-shadow-md leading-none tracking-tighter ${getTextColor()}`}>
+            {pageNumber}
+          </span>
       </div>
       
       {/* 5. Indicators */}

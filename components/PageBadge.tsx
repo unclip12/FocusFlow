@@ -33,7 +33,7 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`group relative flex flex-col items-center justify-center w-16 min-w-[64px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 ${className}`}
+      className={`group relative flex flex-col items-center justify-center w-[60px] min-w-[60px] max-w-[60px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 ${className}`}
       style={{
           boxShadow: isComplete 
             ? '0 0 15px rgba(34, 197, 94, 0.6)' // Green Glow if full
@@ -65,9 +65,9 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
       {/* 4. Content Layer (Z-Index High to stay visible) */}
       <div className="relative z-10 flex flex-col items-center">
           {/* PG label - always white for good contrast */}
-          <span className={`text-[9px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
-          {/* Page Number - color based on progress */}
-          <span className={`text-lg font-black drop-shadow-md leading-none tracking-tight ${getTextColor()}`}>
+          <span className={`text-[8px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
+          {/* Page Number - color based on progress, optimized for narrow width */}
+          <span className={`text-base font-black drop-shadow-md leading-none tracking-tighter ${getTextColor()}`}>
             {pageNumber}
           </span>
       </div>

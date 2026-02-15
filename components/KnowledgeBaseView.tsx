@@ -756,8 +756,8 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, onUpdateEnt
 
       {/* VIEW RENDERING */}
       {viewMode === 'PAGE_WISE' ? (
-          {/* 🆕 CONTAINER QUERY WRAPPER */}
           <div className="kb-table-container bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl shadow-sm border border-white/40 dark:border-slate-700/50 overflow-hidden relative z-0">
+            {/* Container Queries */}
             <div className="overflow-x-auto">
                 <table className="kb-table w-full text-left border-collapse min-w-[900px]">
                 <thead>
@@ -818,7 +818,6 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, onUpdateEnt
                         }
 
                         return (
-                            {/* 🆕 SCROLL ANIMATION CLASS */}
                             <tr key={entry.pageNumber} className="scroll-fade-in hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors group">
                                 <td className="p-4 align-top">
                                     <PageBadge 
@@ -882,12 +881,12 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, onUpdateEnt
             </div>
           </div>
       ) : (
-          {/* 🆕 SCROLL ANIMATIONS for Subtopic View */}
           <div className="space-y-4">
+              {/* Scroll animations active */}
               {flattenedSubtopics.map(sub => (
                   <div 
                     key={sub.id} 
-                    className="scroll-fade-in bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer relative group ${sub.isPageFallback ? 'opacity-80 bg-slate-50/50 dark:bg-slate-800/30' : ''}`"
+                    className={`scroll-fade-in bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl rounded-xl p-4 border border-white/40 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-all hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer relative group ${sub.isPageFallback ? 'opacity-80 bg-slate-50/50 dark:bg-slate-800/30' : ''}`}
                     onClick={() => {
                         if (sub.isPageFallback) {
                             onViewPage(sub.pageNumber);

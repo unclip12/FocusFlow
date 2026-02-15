@@ -1,0 +1,606 @@
+/* ==========================================
+   FOCUSFLOW MODERN WEB ENHANCEMENTS 2026
+   Latest CSS Features for Maximum Performance
+   ========================================== */
+
+/* ========== VIEW TRANSITIONS API SUPPORT ========== */
+@view-transition {
+  navigation: auto;
+}
+
+/* Smooth cross-fade for page transitions */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.3s;
+}
+
+/* Custom transition for specific elements */
+::view-transition-old(card),
+::view-transition-new(card) {
+  animation-duration: 0.4s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Slide transition for sidebar */
+::view-transition-old(sidebar),
+::view-transition-new(sidebar) {
+  animation-duration: 0.25s;
+}
+
+::view-transition-old(sidebar) {
+  animation-name: slide-out;
+}
+
+::view-transition-new(sidebar) {
+  animation-name: slide-in;
+}
+
+@keyframes slide-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* ========== CONTAINER QUERIES ========== */
+/* Main app container */
+.app-container {
+  container-type: inline-size;
+  container-name: app;
+}
+
+/* Sidebar container */
+.sidebar-container {
+  container-type: inline-size;
+  container-name: sidebar;
+}
+
+/* Knowledge Base table container */
+.kb-table-container {
+  container-type: inline-size;
+  container-name: kb-table;
+}
+
+/* Card container */
+.card-container {
+  container-type: inline-size;
+  container-name: card;
+}
+
+/* Responsive PageBadge based on container */
+@container kb-table (max-width: 900px) {
+  .page-badge {
+    transform: scale(0.85);
+  }
+  
+  .kb-table th:not(:first-child),
+  .kb-table td:not(:first-child) {
+    font-size: 0.875rem;
+  }
+}
+
+@container kb-table (max-width: 700px) {
+  .page-badge {
+    transform: scale(0.75);
+  }
+  
+  .kb-table .hide-mobile {
+    display: none;
+  }
+}
+
+/* Sidebar-aware main content */
+@container app (min-width: 1200px) {
+  .main-content {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* Card responsiveness based on container */
+@container card (min-width: 500px) {
+  .card-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+}
+
+@container card (max-width: 350px) {
+  .card-title {
+    font-size: 1rem;
+  }
+  
+  .card-stats {
+    flex-direction: column;
+  }
+}
+
+/* ========== CSS :has() SELECTOR MAGIC ========== */
+/* Adjust layout when sidebar is open */
+.app-layout:has(.sidebar.open) {
+  & .main-content {
+    width: calc(100% - 280px);
+    margin-left: 280px;
+  }
+  
+  & .page-badge {
+    flex-shrink: 0;
+  }
+}
+
+/* Adjust table when sidebar is closed */
+.app-layout:has(.sidebar:not(.open)) {
+  & .main-content {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+/* Style parent based on child state */
+.card:has(.status-badge.completed) {
+  border-left: 4px solid #10b981;
+  background: linear-gradient(to right, rgba(16, 185, 129, 0.05), transparent);
+}
+
+.card:has(.status-badge.pending) {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.05), transparent);
+}
+
+.card:has(.status-badge.overdue) {
+  border-left: 4px solid #ef4444;
+  background: linear-gradient(to right, rgba(239, 68, 68, 0.05), transparent);
+}
+
+/* Table row with active checkbox */
+.table-row:has(input[type="checkbox"]:checked) {
+  background: rgba(79, 70, 229, 0.08);
+  
+  & .row-actions {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+/* Modal with open state */
+.modal-container:has(.modal.open) {
+  & .modal-backdrop {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+/* Button with loading spinner */
+.button:has(.spinner) {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Form with errors */
+.form-group:has(.error-message) {
+  & .input-field {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  }
+  
+  & .label {
+    color: #ef4444;
+  }
+}
+
+/* ========== CSS NESTING ========== */
+.knowledge-base-view {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  
+  & .kb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    
+    & .kb-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: rgb(15, 23, 42);
+      
+      &:hover {
+        color: rgb(79, 70, 229);
+      }
+    }
+    
+    & .kb-actions {
+      display: flex;
+      gap: 0.5rem;
+      
+      & button {
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s;
+        
+        &:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        &:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+  
+  & .kb-table {
+    width: 100%;
+    border-collapse: collapse;
+    
+    & thead {
+      background: rgba(15, 23, 42, 0.05);
+      
+      & th {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        font-weight: 700;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgba(15, 23, 42, 0.6);
+      }
+    }
+    
+    & tbody {
+      & tr {
+        border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+        transition: background 0.2s;
+        
+        &:hover {
+          background: rgba(79, 70, 229, 0.05);
+        }
+        
+        & td {
+          padding: 1rem;
+          
+          & .page-badge {
+            width: 64px;
+            min-width: 64px;
+            height: 56px;
+            flex-shrink: 0;
+          }
+        }
+      }
+    }
+  }
+}
+
+/* Dark mode nesting */
+html.dark {
+  & .knowledge-base-view {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    
+    & .kb-title {
+      color: rgb(241, 245, 249);
+      
+      &:hover {
+        color: rgb(129, 140, 248);
+      }
+    }
+    
+    & .kb-table thead {
+      background: rgba(0, 0, 0, 0.2);
+      
+      & th {
+        color: rgba(241, 245, 249, 0.6);
+      }
+    }
+  }
+}
+
+/* ========== CSS COLOR MIX & RELATIVE COLORS ========== */
+:root {
+  --primary: #4f46e5;
+  --primary-rgb: 79, 70, 229;
+  
+  /* Dynamic color variations */
+  --primary-hover: color-mix(in srgb, var(--primary) 90%, black);
+  --primary-light: color-mix(in srgb, var(--primary) 20%, white);
+  --primary-soft: color-mix(in srgb, var(--primary) 10%, white);
+  --primary-shadow: color-mix(in srgb, var(--primary) 30%, transparent);
+  
+  /* Success colors */
+  --success: #10b981;
+  --success-hover: color-mix(in srgb, var(--success) 90%, black);
+  --success-light: color-mix(in srgb, var(--success) 15%, white);
+  
+  /* Warning colors */
+  --warning: #f59e0b;
+  --warning-hover: color-mix(in srgb, var(--warning) 90%, black);
+  --warning-light: color-mix(in srgb, var(--warning) 15%, white);
+  
+  /* Danger colors */
+  --danger: #ef4444;
+  --danger-hover: color-mix(in srgb, var(--danger) 90%, black);
+  --danger-light: color-mix(in srgb, var(--danger) 15%, white);
+}
+
+/* Using relative colors */
+.button-primary {
+  background: var(--primary);
+  color: white;
+  border: 1px solid color-mix(in srgb, var(--primary) 80%, black);
+  
+  &:hover {
+    background: var(--primary-hover);
+  }
+  
+  &:active {
+    background: color-mix(in srgb, var(--primary) 80%, black);
+  }
+}
+
+.badge-success {
+  background: var(--success-light);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+/* ========== CSS @layer FOR CASCADE CONTROL ========== */
+@layer reset, base, components, utilities, overrides;
+
+@layer reset {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+  }
+  
+  input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+  }
+}
+
+@layer components {
+  .card {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+  
+  .button {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  
+  .input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgba(15, 23, 42, 0.2);
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.8);
+  }
+}
+
+@layer utilities {
+  .text-center { text-align: center; }
+  .flex { display: flex; }
+  .grid { display: grid; }
+  .hidden { display: none; }
+}
+
+@layer overrides {
+  /* Custom overrides without !important */
+  .force-white-text {
+    color: white;
+  }
+}
+
+/* ========== SCROLL-DRIVEN ANIMATIONS ========== */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Apply scroll-driven animation */
+.scroll-animate {
+  animation: fade-in-up linear;
+  animation-timeline: view();
+  animation-range: entry 0% cover 40%;
+}
+
+.scroll-scale {
+  animation: scale-in linear;
+  animation-timeline: view();
+  animation-range: entry 0% cover 30%;
+}
+
+/* Parallax effect on scroll */
+.parallax-bg {
+  animation: parallax linear;
+  animation-timeline: scroll();
+}
+
+@keyframes parallax {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50px); }
+}
+
+/* ========== CSS SUBGRID ========== */
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.grid-item {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+}
+
+/* ========== POPOVER API STYLES ========== */
+[popover] {
+  position: absolute;
+  inset: unset;
+  margin: 0;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  overflow: auto;
+  
+  &:popover-open {
+    animation: popover-in 0.2s ease-out;
+  }
+  
+  @starting-style {
+    &:popover-open {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.95);
+    }
+  }
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+[popover]::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  animation: backdrop-fade-in 0.2s ease-out;
+}
+
+@keyframes backdrop-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Dark mode popover */
+html.dark [popover] {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+/* ========== MODERN ANIMATIONS WITH WAAPI SUPPORT ========== */
+.animate-on-mount {
+  animation: mount-animation 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes mount-animation {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ========== ENHANCED FOCUS STYLES ========== */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/* ========== RESPONSIVE TYPOGRAPHY ========== */
+@container (min-width: 400px) {
+  .responsive-text {
+    font-size: clamp(1rem, 2vw, 1.25rem);
+  }
+}
+
+@container (min-width: 700px) {
+  .responsive-heading {
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+  }
+}
+
+/* ========== PERFORMANCE HINTS ========== */
+.gpu-layer {
+  transform: translateZ(0);
+  will-change: transform;
+  contain: layout style paint;
+}
+
+.isolate-repaint {
+  isolation: isolate;
+  contain: paint;
+}
+
+/* ========== PRINT STYLES ========== */
+@media print {
+  [popover],
+  .no-print {
+    display: none !important;
+  }
+  
+  .card {
+    page-break-inside: avoid;
+  }
+}

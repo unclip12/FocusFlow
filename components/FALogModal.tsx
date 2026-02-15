@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { KnowledgeBaseEntry, TrackableItem, getAdjustedDate, FALogData } from '../types';
 import { XMarkIcon, BookOpenIcon, ClockIcon, PlusIcon, CheckCircleIcon, TrashIcon, HistoryIcon, ArrowPathIcon } from './Icons';
@@ -58,8 +57,9 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                     setStartTime(initialData.startTime);
                     setEndTime(initialData.endTime);
                 } else {
+                    // DEFAULT 30 MINUTES
                     const end = new Date();
-                    const start = new Date(end.getTime() - 60 * 60000);
+                    const start = new Date(end.getTime() - 30 * 60000);
                     setStartTime(start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
                     setEndTime(end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
                 }
@@ -74,13 +74,13 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                 setExistingEntry(entry || null);
 
             } else {
-                // Clean New Mode
+                // Clean New Mode - DEFAULT 30 MINUTES
                 const now = new Date();
                 setPageNumber('');
                 setDate(getAdjustedDate(now));
                 
                 const end = new Date();
-                const start = new Date(end.getTime() - 60 * 60000); // Default 60m
+                const start = new Date(end.getTime() - 30 * 60000); // Changed from 60m to 30m
                 
                 setStartTime(start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
                 setEndTime(end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
@@ -165,6 +165,25 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
         setSelectedTopics(newSet);
     };
 
+    // NEW: Handle Select All Topics
+    const handleSelectAllTopics = () => {
+        if (selectedTopics.size === availableTopics.length) {
+            // Deselect all
+            setSelectedTopics(new Set());
+        } else {
+            // Select all
+            setSelectedTopics(new Set(availableTopics));
+        }
+    };
+
+    // NEW: Quick Duration Preset Handler
+    const handleQuickDuration = (minutes: number) => {
+        const end = new Date();
+        const start = new Date(end.getTime() - minutes * 60000);
+        setStartTime(start.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+        setEndTime(end.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+    };
+
     const handleAddCustomTopic = () => {
         if (!newTopicInput.trim()) return;
         const val = newTopicInput.trim();
@@ -215,6 +234,8 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
 
     if (!isOpen) return null;
 
+    const allTopicsSelected = availableTopics.length > 0 && selectedTopics.size === availableTopics.length;
+
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
             <div className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[95vh]">
@@ -250,7 +271,7 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/50">
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/50 custom-scrollbar">
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* LEFT: Input Form */}
@@ -299,13 +320,70 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                                         />
                                     </div>
                                 </div>
+                                
+                                {/* NEW: Quick Duration Buttons */}
+                                <div>
+                                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2 block">Quick Duration</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleQuickDuration(10)}
+                                            className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 hover:border-indigo-300 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-700 transition-all active:scale-95"
+                                        >
+                                            10m
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleQuickDuration(15)}
+                                            className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 hover:border-indigo-300 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-700 transition-all active:scale-95"
+                                        >
+                                            15m
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleQuickDuration(25)}
+                                            className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-indigo-50 hover:border-indigo-300 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-700 transition-all active:scale-95"
+                                        >
+                                            25m
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleQuickDuration(30)}
+                                            className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 border-2 border-indigo-300 dark:border-indigo-700 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all active:scale-95"
+                                        >
+                                            30m
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Subtopics Selection */}
                             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 shadow-sm">
-                                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 block">
-                                    Subtopics Covered (Affects Revision)
-                                </label>
+                                <div className="flex items-center justify-between mb-3">
+                                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                        Subtopics Covered (Affects Revision)
+                                    </label>
+                                    {/* NEW: Select All Checkbox */}
+                                    {availableTopics.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllTopics}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                                                allTopicsSelected 
+                                                    ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700' 
+                                                    : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                            }`}
+                                        >
+                                            <input 
+                                                type="checkbox"
+                                                checked={allTopicsSelected}
+                                                onChange={handleSelectAllTopics}
+                                                className="w-3 h-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 pointer-events-none"
+                                            />
+                                            <span>All</span>
+                                        </button>
+                                    )}
+                                </div>
                                 
                                 {availableTopics.length > 0 ? (
                                     <div className="space-y-2 mb-4 max-h-40 overflow-y-auto custom-scrollbar pr-1">
@@ -338,6 +416,7 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                                         className="flex-1 p-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-xs focus:outline-none focus:border-indigo-500"
                                     />
                                     <button 
+                                        type="button"
                                         onClick={handleAddCustomTopic}
                                         disabled={!newTopicInput.trim()}
                                         className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 disabled:opacity-50 transition-colors"
@@ -370,6 +449,7 @@ export const FALogModal: React.FC<FALogModalProps> = ({ isOpen, onClose, onSave,
                                                         </span>
                                                     </div>
                                                     <button 
+                                                        type="button"
                                                         onClick={() => handleDeleteLog(log.id)} 
                                                         className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                                                         title="Delete Log"

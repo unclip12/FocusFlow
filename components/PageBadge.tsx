@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Attachment } from '../types';
 import { ArrowPathIcon } from './Icons';
@@ -49,11 +48,11 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
       title={`Page ${pageNumber}: ${Math.round(fillPercent)}% Completed`}
     >
       {/* 1. Background: Red if 0%, Light Green if > 0% */}
-      <div className={`absolute inset-0 transition-colors ${fillPercent > 0 ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-500 dark:bg-red-600'}`}></div>
+      <div className={`absolute inset-0 transition-colors z-0 ${fillPercent > 0 ? 'bg-green-100 dark:bg-green-900/40' : 'bg-red-500 dark:bg-red-600'}`}></div>
 
       {/* 2. Liquid Fill (Finished / Green) */}
       <div 
-        className="absolute bottom-0 left-0 right-0 bg-green-500 dark:bg-green-500 transition-all duration-700 ease-out"
+        className="absolute bottom-0 left-0 right-0 bg-green-500 dark:bg-green-500 transition-all duration-700 ease-out z-[1]"
         style={{ height: `${fillPercent}%` }}
       >
           {/* Subtle wave effect at the top of the liquid */}
@@ -64,7 +63,7 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
 
       {/* 3. Background Image Preview Overlay (if available) - Low Opacity */}
       {hasImages && (
-          <div className="absolute inset-0 opacity-20 bg-black/20 pointer-events-none"></div>
+          <div className="absolute inset-0 opacity-20 bg-black/20 pointer-events-none z-[2]"></div>
       )}
 
       {/* 4. Content Layer (Z-Index High to stay visible) */}

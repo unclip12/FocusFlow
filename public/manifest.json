@@ -1,0 +1,38 @@
+{
+  "name": "FocusFlow - Focus & Study Tracker",
+  "short_name": "FocusFlow",
+  "description": "Track your focus sessions, manage knowledge base, and boost productivity",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity", "lifestyle"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Start Focus Timer",
+      "url": "/?view=timer",
+      "description": "Start a new focus session"
+    },
+    {
+      "name": "Knowledge Base",
+      "url": "/?view=knowledge",
+      "description": "View your knowledge base"
+    }
+  ]
+}

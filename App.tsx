@@ -8,6 +8,8 @@ import { Capacitor } from '@capacitor/core';
 import { auth, getUserProfile as getFirebaseUserProfile, saveUserProfile as saveFirebaseUserProfile, getKnowledgeBase, saveKnowledgeBase, deleteKnowledgeBaseEntry, getRevisionSettings, saveRevisionSettings, getDayPlan, getAppSettings, saveAppSettings, getFMGEData, saveFMGEEntry, deleteFMGEEntry, getAISettings, saveAISettings } from './services/firebase';
 import { subscribeToSync } from './services/syncService';
 import { haptic } from './services/hapticsService';
+import { transitionView } from './services/viewTransitions'; // 🆕 View Transitions API
+import { initDB } from './services/offlineStorage'; // 🆕 Offline Storage
 import { 
   StudySession, StudyPlanItem, KnowledgeBaseEntry, AppSettings, 
   getAdjustedDate, VideoResource, Attachment, ToDoItem,
@@ -239,6 +241,22 @@ export default function App() {
   // PWA Shared Content
   const [sharedContent, setSharedContent] = useState<string | null>(null);
 
+  // 🆕 Initialize IndexedDB on app start
+  useEffect(() => {
+      initDB().then(() => {
+          console.log('✅ IndexedDB initialized and ready');
+      }).catch((error) => {
+          console.error('❌ IndexedDB initialization failed:', error);
+      });
+  }, []);
+
+  // 🆕 Smooth View Transitions - wraps setCurrentView
+  const navigateToView = useCallback(async (view: typeof currentView) => {
+      await transitionView(() => {
+          setCurrentView(view);
+      });
+  }, []);
+
   // --- SPLASH SCREEN HANDLER ---
   useEffect(() => {
       if (!authLoading && Capacitor.isNativePlatform()) {
@@ -280,7 +298,7 @@ export default function App() {
                   return;
               }
               if (currentView !== 'DASHBOARD') {
-                  setCurrentView('DASHBOARD');
+                  await navigateToView('DASHBOARD'); // 🆕 With transition
                   return;
               }
               CapacitorApp.exitApp();
@@ -290,15 +308,15 @@ export default function App() {
               CapacitorApp.removeAllListeners();
           };
       }
-  }, []);
+  }, [navigateToView]);
 
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const action = params.get('action');
-      if (action === 'today') setCurrentView('TODAYS_PLAN');
-      if (action === 'planner') setCurrentView('PLANNER');
+      if (action === 'today') navigateToView('TODAYS_PLAN');
+      if (action === 'planner') navigateToView('PLANNER');
       if (action === 'log') setIsSessionModalOpen(true);
-  }, []);
+  }, [navigateToView]);
 
   const loadTodayPlan = useCallback(async () => {
       try {
@@ -637,8 +655,8 @@ export default function App() {
 
   const handleViewDayPlan = useCallback((date: string) => {
       setTargetPlanDate(date);
-      setCurrentView('TODAYS_PLAN');
-  }, []);
+      navigateToView('TODAYS_PLAN'); // 🆕 With transition
+  }, [navigateToView]);
 
   const dueNowItems = useMemo(() => {
     const items: { id: string, title: string, subtitle: string, type: 'REVISION' | 'TASK', urgent: boolean }[] = [];
@@ -669,15 +687,15 @@ export default function App() {
   const showSidebar = settings.desktopLayout !== 'fullscreen';
 
   return (
-    <div className="h-dvh w-full flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
+    <div className="app-container h-dvh w-full flex flex-col md:flex-row font-sans text-slate-800 dark:text-slate-200 transition-colors duration-300 relative overflow-hidden">
       <InstallPrompt />
       {/* OPTIMIZED: Reduced animations - only 2 blobs instead of 3, less blur, longer animation delay */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-60">
-         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-purple-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay" style={{ animationDelay: '3s' }}></div>
+         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-purple-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay animated-blob"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-300/20 blur-[80px] animate-pulse mix-blend-multiply dark:mix-blend-overlay animated-blob" style={{ animationDelay: '3s' }}></div>
       </div>
 
-      <aside className={`${showSidebar ? 'hidden md:flex' : 'hidden'} w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/30 dark:border-white/10 h-[calc(100vh-2rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overscroll-contain`}>
+      <aside className={`${showSidebar ? 'hidden md:flex' : 'hidden'} sidebar-container w-72 flex-col m-4 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/30 dark:border-white/10 h-[calc(100vh-2rem)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sticky top-4 overflow-y-auto z-20 shadow-[0_8px_32px_rgba(0,0,0,0.05)] overscroll-contain`}>
           <div className="p-6 flex flex-col items-start gap-2">
               <div className="flex items-center gap-3">
                   <div className="w-12 h-12 flex items-center justify-center shadow-lg rounded-2xl bg-gradient-to-br from-white/80 to-slate-100/80 dark:from-slate-800/80 dark:to-slate-900/80 border border-white/50 dark:border-white/10 backdrop-blur-sm">
@@ -697,7 +715,7 @@ export default function App() {
                       onClick={() => { 
                           haptic.medium();
                           if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); 
-                          setCurrentView(item.id as any); 
+                          navigateToView(item.id as any); // 🆕 With smooth transition
                       }}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 font-bold text-sm relative overflow-hidden btn-3d ${currentView === item.id ? 'bg-gradient-to-r from-indigo-50/90 to-indigo-600/90 text-white shadow-lg border border-white/20' : 'bg-white/30 dark:bg-slate-800/30 text-slate-600 dark:text-slate-300 border border-white/20 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}
                   >
@@ -729,7 +747,7 @@ export default function App() {
               <div className="absolute top-16 right-4 w-64 max-h-[80vh] overflow-y-auto bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/40 dark:border-slate-700/50 shadow-3d dark:shadow-3d-dark rounded-2xl origin-top-right animate-menu-pop p-2 overscroll-contain" onClick={(e) => e.stopPropagation()}>
                    <nav className="space-y-1">
                       {activeMenuItems.map((item) => (
-                          <button key={item.id} onClick={() => { haptic.medium(); if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); setCurrentView(item.id as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${currentView === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}><item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />{item.label}</button>
+                          <button key={item.id} onClick={() => { haptic.medium(); if (item.id === 'TODAYS_PLAN') setTargetPlanDate(undefined); navigateToView(item.id as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${currentView === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50'}`}><item.icon className={`w-5 h-5 ${currentView === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />{item.label}</button>
                       ))}
                   </nav>
                   {!showSidebar && (
@@ -750,7 +768,7 @@ export default function App() {
                           <>
                               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                                   <div><h1 className="text-3xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight">Hello, {displayName || 'Doctor'} 👋</h1><p className="text-slate-500 dark:text-slate-400 font-medium mt-1 italic">"Act like the person you want to become."</p></div>
-                                  <div className="flex gap-3 w-full md:w-auto"><button onClick={() => { setTargetPlanDate(undefined); setCurrentView('TODAYS_PLAN'); }} className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"><CalendarIcon className="w-4 h-4" />Today's Plan</button></div>
+                                  <div className="flex gap-3 w-full md:w-auto"><button onClick={() => { setTargetPlanDate(undefined); navigateToView('TODAYS_PLAN'); }} className="btn-3d bg-white/50 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50 px-6 py-3 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-2 flex-1 md:flex-none justify-center backdrop-blur-md"><CalendarIcon className="w-4 h-4" />Today's Plan</button></div>
                               </div>
                               <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                                   <div className="space-y-8"><TodayGlance knowledgeBase={knowledgeBase} studyPlan={studyPlan} todayPlan={todayPlan} /><ActivityGraphs knowledgeBase={knowledgeBase} /></div>
@@ -765,7 +783,7 @@ export default function App() {
                       )}
                       {currentView === 'STUDY_TRACKER' && <StudyTrackerView />}
                       {currentView === 'PLANNER' && <PlannerView plan={studyPlan} knowledgeBase={knowledgeBase} sessions={[]} onAddToPlan={handleAddToPlan} onUpdatePlanItem={async (item) => { updatePlan(studyPlan.map(p => p.id === item.id ? item : p)); }} onCompleteTask={async (item) => { const updatedItem = { ...item, isCompleted: !item.isCompleted, completedAt: !item.isCompleted ? new Date().toISOString() : undefined }; updatePlan(studyPlan.map(p => p.id === item.id ? updatedItem : p)); }} onStartTask={(item) => { setSessionPrefill({ topic: item.topic, pageNumber: item.pageNumber, ankiTotal: item.ankiCount }); setPlanContext({ planId: item.id, subTasks: item.subTasks || [] }); const exists = knowledgeBase.some(k => k.pageNumber === item.pageNumber && (k.revisionCount > 0 || k.logs.length > 0)); setSessionLogType(exists ? 'REVISION' : 'INITIAL'); setIsSessionModalOpen(true); }} onManageSession={(session) => { if(session && session.pageNumber) handleViewPage(session.pageNumber); }} onToggleSubTask={async (planId, subTaskId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.subTasks) { const updatedSubTasks = planItem.subTasks.map(t => t.id === subTaskId ? { ...t, done: !t.done } : t); const updatedItem = { ...planItem, subTasks: updatedSubTasks }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onDeleteLog={async (planId, logId) => { const planItem = studyPlan.find(p => p.id === planId); if (planItem && planItem.logs) { const updatedLogs = planItem.logs.filter(l => l.id !== logId); const updatedItem = { ...planItem, logs: updatedLogs }; updatePlan(studyPlan.map(p => p.id === planId ? updatedItem : p)); } }} onViewPage={handleViewPage} sharedContent={sharedContent} />}
-                      {currentView === 'TODAYS_PLAN' && <TodaysPlanView targetDate={viewStates.plan.currentDate} settings={settings} onUpdateSettings={handleUpdateSettings} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onUpdateFMGE={handleUpdateFMGE} onStartFocus={() => setCurrentView('FOCUS_TIMER')} />}
+                      {currentView === 'TODAYS_PLAN' && <TodaysPlanView targetDate={viewStates.plan.currentDate} settings={settings} onUpdateSettings={handleUpdateSettings} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} onUpdateFMGE={handleUpdateFMGE} onStartFocus={() => navigateToView('FOCUS_TIMER')} />}
                       {currentView === 'CALENDAR' && <CalendarView knowledgeBase={knowledgeBase} studyPlan={studyPlan} onAddToPlan={handleAddToPlan} />}
                       {currentView === 'TIME_LOGGER' && <TimeLoggerView knowledgeBase={knowledgeBase} onViewPage={handleViewPage} />}
                       {currentView === 'DAILY_TRACKER' && <DailyTrackerView />}
@@ -777,7 +795,7 @@ export default function App() {
                       {currentView === 'CHAT' && <AIChatView sessions={[]} studyPlan={studyPlan} streak={streak} onAddToPlan={handleAddToPlan} onViewDayPlan={handleViewDayPlan} displayName={displayName} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} viewState={viewStates.chat} setViewState={(update) => setViewStates(prev => ({ ...prev, chat: typeof update === 'function' ? update(prev.chat) : update }))} />}
                       {currentView === 'AI_MEMORY' && <AIMemoryView displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />}
                       {currentView === 'SETTINGS' && <SettingsView settings={settings} onUpdateSettings={handleUpdateSettings} secretId={secretId} displayName={displayName} onUpdateDisplayName={handleUpdateDisplayName} />}
-                      {currentView === 'FOCUS_TIMER' && <FocusTimerView onBack={() => setCurrentView('TODAYS_PLAN')} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} />}
+                      {currentView === 'FOCUS_TIMER' && <FocusTimerView onBack={() => navigateToView('TODAYS_PLAN')} knowledgeBase={knowledgeBase} onUpdateKnowledgeBase={updateKB} />}
                     </Suspense>
                 </div>
             )}

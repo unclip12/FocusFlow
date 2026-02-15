@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { KnowledgeBaseEntry, SYSTEMS, CATEGORIES, VideoResource, Attachment, StudySession, TrackableItem, getAdjustedDate, ViewStates } from '../types';
 import { BookOpenIcon, VideoIcon, FireIcon, LinkIcon, PlusIcon, DatabaseIcon, SparklesIcon, PaperClipIcon, PhotoIcon, DocumentIcon, BarsArrowUpIcon, BarsArrowDownIcon, ChartBarIcon, CheckCircleIcon, TrashIcon, ChevronDownIcon, ListCheckIcon, ClockIcon, CalendarIcon, ListCheckIcon as SubtopicIcon, ArrowPathIcon, XMarkIcon } from './Icons';
@@ -763,7 +761,7 @@ const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ data, onUpdateEnt
                 <table className="w-full text-left border-collapse min-w-[900px]">
                 <thead>
                     <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200/50 dark:border-slate-700/50 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="p-4 w-24">Page #</th>
+                    <th className="p-4 w-32">Page #</th>
                     <th className="p-4">Topic & Subtopics</th>
                     <th className="p-4">System / Subject</th>
                     <th className="p-4">Resources</th>

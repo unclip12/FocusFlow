@@ -19,16 +19,6 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
   const isComplete = fillPercent === 100;
   const isUntouched = fillPercent === 0;
 
-  // Text color based on progress:
-  // - If 0% (red bg): WHITE text
-  // - If 1-49% (green liquid filling): DARK text (visible on light green/white)
-  // - If 50-100% (mostly green): WHITE text (visible on dark green)
-  const getTextColor = () => {
-    if (isUntouched) return 'text-white'; // White on red
-    if (fillPercent < 50) return 'text-slate-800 dark:text-slate-900'; // Dark on light green
-    return 'text-white'; // White on dark green
-  };
-
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -66,12 +56,24 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
           <div className="absolute inset-0 opacity-20 bg-black/20 pointer-events-none z-[2]"></div>
       )}
 
-      {/* 4. Content Layer (Z-Index High to stay visible) */}
+      {/* 4. Content Layer - ALWAYS WHITE TEXT with strong shadows for visibility */}
       <div className="relative z-10 flex flex-col items-center">
-          {/* PG label - always white for good contrast */}
-          <span className={`text-[9px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
-          {/* Page Number - color based on progress */}
-          <span className={`text-lg font-black drop-shadow-md leading-none ${getTextColor()}`}>
+          {/* PG label - ALWAYS WHITE with strong shadow */}
+          <span 
+            className="text-[9px] font-black uppercase text-white"
+            style={{
+              textShadow: '0 1px 3px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.4)'
+            }}
+          >
+            PG
+          </span>
+          {/* Page Number - ALWAYS WHITE with strong shadow */}
+          <span 
+            className="text-lg font-black leading-none text-white"
+            style={{
+              textShadow: '0 2px 4px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5)'
+            }}
+          >
             {pageNumber}
           </span>
       </div>

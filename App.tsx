@@ -46,6 +46,7 @@ import TimerModal from './components/TimerModal';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NetworkIndicator } from './components/NetworkIndicator';
 import { toggleMaterialActive } from './services/firebase';
+import { DetailedLoadingScreen, useDetailedLoading } from './components/DetailedLoadingScreen';
 
 // Lazy load views for better performance
 const CalendarView = lazy(() => import('./components/CalendarView').then(m => ({ default: m.CalendarView })));
@@ -127,6 +128,9 @@ const SyncIndicator = React.memo(() => {
 });
 
 export default function App() {
+  // Detailed Loading
+  const { currentStatus, logs, updateStatus } = useDetailedLoading();
+
   // Auth
   const [user, setUser] = useState<firebase.User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -321,11 +325,16 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    updateStatus('INIT', 'Initializing Firebase authentication', 5);
+    
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       setUser(u);
       
       if (u) {
+        updateStatus('AUTH', `Authenticated as ${u.email}`, 10);
+        
         try {
+            updateStatus('CONFIG', 'Loading revision & AI settings', 15);
             const [cloudRevConfig, cloudAiConfig] = await Promise.all([
                 getRevisionSettings(),
                 getAISettings()
@@ -334,45 +343,71 @@ export default function App() {
             let currentRevSettings: RevisionSettings;
             if (cloudRevConfig) {
                 currentRevSettings = cloudRevConfig;
+                updateStatus('CONFIG', 'Revision settings loaded from cloud', 20);
             } else {
                 currentRevSettings = { mode: 'balanced', targetCount: 7 };
                 await saveRevisionSettings(currentRevSettings);
+                updateStatus('CONFIG', 'Created default revision settings', 20);
             }
             setRevisionSettings(currentRevSettings);
 
             if (!cloudAiConfig) {
                 await saveAISettings({ personalityMode: 'balanced', talkStyle: 'motivational', disciplineLevel: 3 });
+                updateStatus('CONFIG', 'Created default AI settings', 25);
+            } else {
+                updateStatus('CONFIG', 'AI settings loaded', 25);
             }
 
+            updateStatus('DATA_LOCAL', 'Loading local study plan', 30);
             const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
             setStudyPlan(localPlan);
+            updateStatus('DATA_LOCAL', `Loaded ${localPlan.length} plan items`, 35);
             
+            updateStatus('DATA_LOCAL', 'Loading local knowledge base', 40);
             const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
             setKnowledgeBase(localKB);
+            updateStatus('DATA_LOCAL', `Loaded ${localKB.length} KB entries locally`, 45);
 
+            updateStatus('DATA_CLOUD', 'Syncing knowledge base from Firebase', 50);
             const firestoreKB = await getKnowledgeBase();
             if (firestoreKB) {
+                updateStatus('DATA_CLOUD', 'Performing integrity check on KB data', 55);
                 const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
                 setKnowledgeBase(checkedKB);
                 await saveData('knowledgeBase_v2', checkedKB);
                 if (updated) {
+                    updateStatus('DATA_CLOUD', 'Fixed data inconsistencies, syncing back', 60);
                     await saveKnowledgeBase(checkedKB);
+                } else {
+                    updateStatus('DATA_CLOUD', `Synced ${checkedKB.length} KB entries`, 60);
                 }
+            } else {
+                updateStatus('DATA_CLOUD', 'No cloud KB data found', 60);
             }
 
+            updateStatus('DATA_CLOUD', 'Loading FMGE prep data', 65);
             const fmge = await getFMGEData();
             if (fmge) {
                 setFmgeData(fmge);
+                updateStatus('DATA_CLOUD', `Loaded ${fmge.length} FMGE entries`, 70);
+            } else {
+                updateStatus('DATA_CLOUD', 'No FMGE data found', 70);
             }
 
+            updateStatus('MIGRATION', 'Checking for overdue task migrations', 72);
             try {
                 await checkAndMigrateOverdueTasks();
+                updateStatus('MIGRATION', 'Task migration complete', 75);
             } catch (e) {
+                updateStatus('MIGRATION', 'Task migration skipped (non-critical)', 75);
                 console.warn("Task migration failed", e);
             }
 
+            updateStatus('PLAN', "Loading today's plan", 78);
             await loadTodayPlan();
+            updateStatus('PLAN', "Today's plan loaded", 80);
 
+            updateStatus('SETTINGS', 'Loading app settings', 82);
             try {
                 const localSettings = await getData<AppSettings>('settings');
                 if (localSettings) {
@@ -382,11 +417,16 @@ export default function App() {
                         notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
                         quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
                     }));
+                    updateStatus('SETTINGS', 'Loaded local settings', 85);
                 }
+                
+                updateStatus('SETTINGS', 'Syncing settings with cloud', 88);
                 const cloudSettings = await getAppSettings();
                 if (!cloudSettings) {
                     await saveAppSettings(settings);
+                    updateStatus('SETTINGS', 'Pushed local settings to cloud', 90);
                 }
+                
                 const sourceSettings = cloudSettings || localSettings;
                 if (sourceSettings) {
                     setSettings(prev => {
@@ -408,28 +448,38 @@ export default function App() {
                         return merged;
                     });
                     if (cloudSettings) await saveData('settings', cloudSettings);
+                    updateStatus('SETTINGS', 'Settings synced successfully', 92);
                 }
             } catch (err) {
+                updateStatus('SETTINGS', 'Settings sync failed, using defaults', 92, true);
                 console.error("Failed to sync settings", err);
             } finally {
                 setSettingsLoaded(true);
             }
 
+            updateStatus('PROFILE', 'Loading user profile', 94);
             const loadedProfile = await getFirebaseUserProfile();
             if (loadedProfile?.displayName) {
                 setDisplayName(loadedProfile.displayName);
+                updateStatus('PROFILE', `Welcome back, ${loadedProfile.displayName}`, 96);
+            } else {
+                updateStatus('PROFILE', 'Profile loaded', 96);
             }
+            
+            updateStatus('COMPLETE', 'App ready! Launching dashboard', 100);
         } catch (globalError) {
+            updateStatus('ERROR', `Critical error: ${globalError}`, 100, true);
             console.error("Critical error during initial load sequence:", globalError);
         } finally {
-            setAuthLoading(false);
+            setTimeout(() => setAuthLoading(false), 500); // Small delay for smooth transition
         }
       } else {
+          updateStatus('AUTH', 'No user logged in, showing login screen', 100);
           setAuthLoading(false);
       }
     });
     return () => unsubscribe();
-  }, [loadTodayPlan]);
+  }, [loadTodayPlan, updateStatus]);
 
   useEffect(() => {
       if (settingsLoaded && settings.notifications?.enabled) {
@@ -662,7 +712,9 @@ export default function App() {
     return items;
   }, [knowledgeBase, fmgeData]);
 
-  if (authLoading) return <div className="flex items-center justify-center h-screen bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-md"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  // Show detailed loading screen
+  if (authLoading) return <DetailedLoadingScreen status={currentStatus} logs={logs} />;
+  
   if (!user) return <LoginView />;
 
   const secretId = user?.email?.split('@')[0];

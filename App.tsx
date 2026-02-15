@@ -46,7 +46,6 @@ import TimerModal from './components/TimerModal';
 import { InstallPrompt } from './components/InstallPrompt';
 import { NetworkIndicator } from './components/NetworkIndicator';
 import { toggleMaterialActive } from './services/firebase';
-import { DetailedLoadingScreen, useDetailedLoading } from './components/DetailedLoadingScreen';
 
 // Lazy load views for better performance
 const CalendarView = lazy(() => import('./components/CalendarView').then(m => ({ default: m.CalendarView })));
@@ -128,9 +127,6 @@ const SyncIndicator = React.memo(() => {
 });
 
 export default function App() {
-  // Detailed Loading
-  const { currentStatus, logs, updateStatus } = useDetailedLoading();
-
   // Auth
   const [user, setUser] = useState<firebase.User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -324,39 +320,17 @@ export default function App() {
       }
   }, [user]);
 
-  // OPTIMIZED AUTH & LOADING SEQUENCE
   useEffect(() => {
-    let hasInitialized = false; // Prevent duplicate initialization
-    const loadingTimeout = setTimeout(() => {
-        if (authLoading) {
-            updateStatus('ERROR', 'Loading timeout - please refresh', 100, true);
-            setAuthLoading(false);
-        }
-    }, 15000); // 15 second timeout
-
-    updateStatus('INIT', 'Initializing Firebase authentication', 5);
-    
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
-      if (hasInitialized) return; // Prevent duplicate calls
-      hasInitialized = true;
-      clearTimeout(loadingTimeout);
-      
       setUser(u);
       
       if (u) {
-        updateStatus('AUTH', `Authenticated as ${u.email?.split('@')[0] || 'user'}`, 10);
-        
         try {
-            // PARALLEL LOADING: Load config in parallel
-            updateStatus('CONFIG', 'Loading settings', 15);
-            const [cloudRevConfig, cloudAiConfig, localPlan, localKB] = await Promise.all([
+            const [cloudRevConfig, cloudAiConfig] = await Promise.all([
                 getRevisionSettings(),
-                getAISettings(),
-                getData<StudyPlanItem[]>('studyPlan'),
-                getData<KnowledgeBaseEntry[]>('knowledgeBase_v2')
+                getAISettings()
             ]);
 
-            // Process revision config
             let currentRevSettings: RevisionSettings;
             if (cloudRevConfig) {
                 currentRevSettings = cloudRevConfig;
@@ -366,58 +340,54 @@ export default function App() {
             }
             setRevisionSettings(currentRevSettings);
 
-            // Process AI config
             if (!cloudAiConfig) {
                 await saveAISettings({ personalityMode: 'balanced', talkStyle: 'motivational', disciplineLevel: 3 });
             }
-            updateStatus('CONFIG', 'Settings loaded', 20);
 
-            // Load local data
-            updateStatus('DATA_LOCAL', 'Loading local data', 25);
-            const plan = localPlan || [];
-            setStudyPlan(plan);
-            const kb = localKB || [];
-            setKnowledgeBase(kb);
-            updateStatus('DATA_LOCAL', `Loaded ${kb.length} KB entries`, 35);
-
-            // Sync cloud data
-            updateStatus('DATA_CLOUD', 'Syncing from cloud', 40);
-            const [firestoreKB, fmge, cloudSettings] = await Promise.all([
-                getKnowledgeBase(),
-                getFMGEData(),
-                getAppSettings()
-            ]);
+            const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
+            setStudyPlan(localPlan);
             
+            const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
+            setKnowledgeBase(localKB);
+
+            const firestoreKB = await getKnowledgeBase();
             if (firestoreKB) {
                 const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
                 setKnowledgeBase(checkedKB);
                 await saveData('knowledgeBase_v2', checkedKB);
-                if (updated) await saveKnowledgeBase(checkedKB);
-                updateStatus('DATA_CLOUD', `Synced ${checkedKB.length} entries`, 55);
-            } else {
-                updateStatus('DATA_CLOUD', 'Cloud sync complete', 55);
+                if (updated) {
+                    await saveKnowledgeBase(checkedKB);
+                }
             }
 
-            if (fmge) setFmgeData(fmge);
+            const fmge = await getFMGEData();
+            if (fmge) {
+                setFmgeData(fmge);
+            }
 
-            // Migration & Plan
-            updateStatus('MIGRATION', 'Updating tasks', 60);
             try {
                 await checkAndMigrateOverdueTasks();
             } catch (e) {
-                console.warn("Task migration skipped", e);
+                console.warn("Task migration failed", e);
             }
 
-            updateStatus('PLAN', 'Loading today\'s plan', 65);
             await loadTodayPlan();
-            updateStatus('PLAN', 'Plan ready', 70);
 
-            // Settings
-            updateStatus('SETTINGS', 'Syncing app settings', 75);
             try {
                 const localSettings = await getData<AppSettings>('settings');
+                if (localSettings) {
+                    setSettings(prev => ({
+                        ...prev,
+                        ...localSettings,
+                        notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
+                        quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
+                    }));
+                }
+                const cloudSettings = await getAppSettings();
+                if (!cloudSettings) {
+                    await saveAppSettings(settings);
+                }
                 const sourceSettings = cloudSettings || localSettings;
-                
                 if (sourceSettings) {
                     setSettings(prev => {
                         const merged = { 
@@ -439,46 +409,27 @@ export default function App() {
                     });
                     if (cloudSettings) await saveData('settings', cloudSettings);
                 }
-                
-                if (!cloudSettings && localSettings) {
-                    await saveAppSettings(localSettings);
-                }
-                updateStatus('SETTINGS', 'Settings synced', 85);
             } catch (err) {
-                updateStatus('SETTINGS', 'Using default settings', 85);
-                console.error("Settings sync failed", err);
+                console.error("Failed to sync settings", err);
             } finally {
                 setSettingsLoaded(true);
             }
 
-            // Profile
-            updateStatus('PROFILE', 'Loading profile', 90);
             const loadedProfile = await getFirebaseUserProfile();
             if (loadedProfile?.displayName) {
                 setDisplayName(loadedProfile.displayName);
-                updateStatus('PROFILE', `Welcome, ${loadedProfile.displayName}`, 95);
-            } else {
-                updateStatus('PROFILE', 'Profile ready', 95);
             }
-            
-            updateStatus('COMPLETE', 'App ready! 🚀', 100);
         } catch (globalError) {
-            updateStatus('ERROR', `Load failed: ${globalError}`, 100, true);
-            console.error("Critical error:", globalError);
+            console.error("Critical error during initial load sequence:", globalError);
         } finally {
-            setTimeout(() => setAuthLoading(false), 300);
+            setAuthLoading(false);
         }
       } else {
-          updateStatus('AUTH', 'Please log in', 100);
           setAuthLoading(false);
       }
     });
-    
-    return () => {
-        clearTimeout(loadingTimeout);
-        unsubscribe();
-    };
-  }, [loadTodayPlan, updateStatus]);
+    return () => unsubscribe();
+  }, [loadTodayPlan]);
 
   useEffect(() => {
       if (settingsLoaded && settings.notifications?.enabled) {
@@ -711,9 +662,7 @@ export default function App() {
     return items;
   }, [knowledgeBase, fmgeData]);
 
-  // Show detailed loading screen
-  if (authLoading) return <DetailedLoadingScreen status={currentStatus} logs={logs} />;
-  
+  if (authLoading) return <div className="flex items-center justify-center h-screen bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-md"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
   if (!user) return <LoginView />;
 
   const secretId = user?.email?.split('@')[0];

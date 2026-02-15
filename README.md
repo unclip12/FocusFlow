@@ -7,7 +7,8 @@
 **A cross-platform study companion built with React + Capacitor**
 
 🌐 **Web App**: [flow-app-dxv8.vercel.app](https://flow-app-dxv8.vercel.app)  
-📱 **Standalone Apps**: iOS & Android (build instructions below)
+📱 **Standalone Apps**: iOS & Android (build instructions below)  
+📋 **Progress Tracker**: [CHANGELOG.md](./CHANGELOG.md) - Track all updates and changes
 
 ---
 
@@ -20,6 +21,16 @@
 - 📝 Note-taking and attachment support
 - 🔄 **Real-time sync** across all devices (Web, iOS, Android)
 - 🎨 Beautiful UI optimized for iPad Pro M4
+- ⚡ **Performance optimized** for 60fps scrolling
+
+---
+
+## 📋 Documentation
+
+- **[CHANGELOG.md](./CHANGELOG.md)** - Complete progress tracker & version history
+- **[BUILD_GUIDE.md](./BUILD_GUIDE.md)** - Detailed build instructions
+- **[PERFORMANCE_OPTIMIZATIONS.md](./PERFORMANCE_OPTIMIZATIONS.md)** - Performance improvements guide
+- **[MOBILE_ENHANCEMENTS.md](./MOBILE_ENHANCEMENTS.md)** - Mobile-specific features
 
 ---
 
@@ -129,6 +140,7 @@ FocusFlow/
 ├── android/             # Android project (generated)
 ├── ios/                 # iOS project (generated)
 ├── capacitor.config.ts  # Mobile configuration
+├── CHANGELOG.md         # Progress tracker (auto-updated)
 └── BUILD_GUIDE.md       # Detailed build instructions
 ```
 
@@ -136,11 +148,18 @@ FocusFlow/
 
 ## 🎯 Roadmap
 
+See [CHANGELOG.md](./CHANGELOG.md) for current progress and upcoming features.
+
+**Recent Updates (Feb 15, 2026):**
+- ⚡ Performance optimizations (+40-50% scroll FPS)
+- 🎯 FA Logger UX improvements (Select All, Quick Duration)
+- 📱 Mobile GPU optimization (-50% usage)
+
+**Coming Soon:**
+- [ ] Virtual scrolling for long lists
+- [ ] More keyboard shortcuts
+- [ ] Enhanced mobile gestures
 - [ ] TestFlight distribution
-- [ ] App Store / Play Store publishing
-- [ ] Offline mode enhancements
-- [ ] Collaborative study groups
-- [ ] More AI-powered features
 
 ---
 
@@ -154,4 +173,4 @@ Private project for personal use.
 
 Built with ♥️ for medical students by **unclip12**
 
-**Need help?** Check [BUILD_GUIDE.md](./BUILD_GUIDE.md) or open an issue!
+**Need help?** Check [BUILD_GUIDE.md](./BUILD_GUIDE.md) or [CHANGELOG.md](./CHANGELOG.md)!

@@ -33,7 +33,7 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
   return (
     <div 
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`group relative flex flex-col items-center justify-center min-w-[60px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 ${className}`}
+      className={`group relative flex flex-col items-center justify-center w-16 min-w-[64px] h-14 rounded-lg cursor-pointer transition-all overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0 ${className}`}
       style={{
           boxShadow: isComplete 
             ? '0 0 15px rgba(34, 197, 94, 0.6)' // Green Glow if full
@@ -67,7 +67,7 @@ export const PageBadge: React.FC<PageBadgeProps> = ({ pageNumber, attachments = 
           {/* PG label - always white for good contrast */}
           <span className={`text-[9px] font-black uppercase drop-shadow-md ${isUntouched ? 'text-white' : 'text-white/80'}`}>PG</span>
           {/* Page Number - color based on progress */}
-          <span className={`text-xl font-black drop-shadow-md leading-none tracking-tighter ${getTextColor()}`}>
+          <span className={`text-lg font-black drop-shadow-md leading-none tracking-tight ${getTextColor()}`}>
             {pageNumber}
           </span>
       </div>

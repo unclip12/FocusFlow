@@ -13,6 +13,9 @@
     <meta name="apple-mobile-web-app-title" content="FocusFlow">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2907/2907253.png">
     
+    <!-- Performance CSS -->
+    <link rel="stylesheet" href="/performance.css">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -51,17 +54,22 @@
               'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
             },
             animation: {
-              'menu-pop': 'menu-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards',
-              'liquid-enter': 'liquid-enter 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards',
+              'menu-pop': 'menu-pop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.1) forwards',
+              'liquid-enter': 'liquid-enter 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
+              'fade-in': 'fade-in 0.2s ease-out forwards',
             },
             keyframes: {
               'menu-pop': {
-                '0%': { opacity: '0', transform: 'scale(0.9) translateY(-10px)' },
+                '0%': { opacity: '0', transform: 'scale(0.95) translateY(-8px)' },
                 '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
               },
               'liquid-enter': {
-                '0%': { opacity: '0', transform: 'scale(0.96) translateY(10px)' },
-                '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+                '0%': { opacity: '0', transform: 'translateY(8px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
               }
             }
           },
@@ -105,52 +113,6 @@
           color: rgb(var(--color-text, 30 41 59));
       }
 
-      /* ========== PERFORMANCE OPTIMIZATIONS ========== */
-      
-      /* GPU-accelerated scrolling */
-      .custom-scrollbar {
-          -webkit-overflow-scrolling: touch;
-          scroll-behavior: smooth;
-          will-change: scroll-position;
-          transform: translateZ(0);
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-      }
-
-      /* Optimize animations */
-      .animate-liquid-enter,
-      .animate-fade-in,
-      .animate-menu-pop,
-      .animate-pulse {
-          will-change: transform, opacity;
-          transform: translateZ(0);
-          backface-visibility: hidden;
-      }
-
-      /* Reduce blur on mobile for performance */
-      @media (max-width: 768px) {
-          .backdrop-blur-xl { backdrop-filter: blur(8px) !important; }
-          .backdrop-blur-2xl { backdrop-filter: blur(10px) !important; }
-          .backdrop-blur-md { backdrop-filter: blur(6px) !important; }
-          .backdrop-blur-sm { backdrop-filter: blur(4px) !important; }
-      }
-
-      /* Optimize heavy elements */
-      .card-3d, .btn-3d {
-          transform: translateZ(0);
-          backface-visibility: hidden;
-      }
-
-      /* Contain paint for better performance */
-      main {
-          contain: layout style paint;
-      }
-
-      /* Optimize sidebar */
-      aside {
-          contain: layout style;
-      }
-
       /* Custom scrollbar for webkit */
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
@@ -165,16 +127,6 @@
           -ms-overflow-style: none;
           scrollbar-width: none;
       }
-      
-      /* Ensure inputs don't zoom on iOS */
-      input, select, textarea {
-          font-size: 16px !important;
-      }
-      @media (min-width: 640px) {
-          input, select, textarea {
-              font-size: 0.875rem !important;
-          }
-      }
 
       /* 
          LIQUID GLASS EFFECT CLASSES - OPTIMIZED
@@ -185,16 +137,16 @@
           0 8px 32px 0 rgba(31, 38, 135, 0.07),
           inset 0 1px 0 0 rgba(255,255,255,0.6);
         border: 1px solid rgba(255, 255, 255, 0.4);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
         border-bottom: 4px solid rgba(255, 255, 255, 0.1);
       }
       
       /* Reduce blur on mobile */
       @media (max-width: 768px) {
         .card-3d {
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
         }
       }
       
@@ -209,12 +161,12 @@
 
       /* Physical Button with Press Effect - OPTIMIZED */
       .btn-3d {
-        transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 4px 0 0 rgba(0,0,0,0.1);
         transform: translateY(0) translateZ(0);
         position: relative;
         top: 0;
-        backdrop-filter: blur(8px);
+        backdrop-filter: blur(6px);
       }
       .btn-3d:active:not(:disabled) {
         transform: translateY(4px) translateZ(0);
@@ -242,7 +194,7 @@
         background-color: rgba(255, 255, 255, 0.4);
         box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.03);
         border: 1px solid rgba(255,255,255,0.3);
-        transition: border-color 0.2s, box-shadow 0.2s;
+        transition: border-color 0.15s, box-shadow 0.15s;
         backdrop-filter: blur(4px);
       }
       html.dark .input-3d {
@@ -267,7 +219,7 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "@google/genai": "https://aistudiocdn.com/@ @google/genai@^1.30.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
     "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",

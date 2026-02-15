@@ -324,110 +324,100 @@ export default function App() {
       }
   }, [user]);
 
+  // OPTIMIZED AUTH & LOADING SEQUENCE
   useEffect(() => {
+    let hasInitialized = false; // Prevent duplicate initialization
+    const loadingTimeout = setTimeout(() => {
+        if (authLoading) {
+            updateStatus('ERROR', 'Loading timeout - please refresh', 100, true);
+            setAuthLoading(false);
+        }
+    }, 15000); // 15 second timeout
+
     updateStatus('INIT', 'Initializing Firebase authentication', 5);
     
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
+      if (hasInitialized) return; // Prevent duplicate calls
+      hasInitialized = true;
+      clearTimeout(loadingTimeout);
+      
       setUser(u);
       
       if (u) {
-        updateStatus('AUTH', `Authenticated as ${u.email}`, 10);
+        updateStatus('AUTH', `Authenticated as ${u.email?.split('@')[0] || 'user'}`, 10);
         
         try {
-            updateStatus('CONFIG', 'Loading revision & AI settings', 15);
-            const [cloudRevConfig, cloudAiConfig] = await Promise.all([
+            // PARALLEL LOADING: Load config in parallel
+            updateStatus('CONFIG', 'Loading settings', 15);
+            const [cloudRevConfig, cloudAiConfig, localPlan, localKB] = await Promise.all([
                 getRevisionSettings(),
-                getAISettings()
+                getAISettings(),
+                getData<StudyPlanItem[]>('studyPlan'),
+                getData<KnowledgeBaseEntry[]>('knowledgeBase_v2')
             ]);
 
+            // Process revision config
             let currentRevSettings: RevisionSettings;
             if (cloudRevConfig) {
                 currentRevSettings = cloudRevConfig;
-                updateStatus('CONFIG', 'Revision settings loaded from cloud', 20);
             } else {
                 currentRevSettings = { mode: 'balanced', targetCount: 7 };
                 await saveRevisionSettings(currentRevSettings);
-                updateStatus('CONFIG', 'Created default revision settings', 20);
             }
             setRevisionSettings(currentRevSettings);
 
+            // Process AI config
             if (!cloudAiConfig) {
                 await saveAISettings({ personalityMode: 'balanced', talkStyle: 'motivational', disciplineLevel: 3 });
-                updateStatus('CONFIG', 'Created default AI settings', 25);
-            } else {
-                updateStatus('CONFIG', 'AI settings loaded', 25);
             }
+            updateStatus('CONFIG', 'Settings loaded', 20);
 
-            updateStatus('DATA_LOCAL', 'Loading local study plan', 30);
-            const localPlan = await getData<StudyPlanItem[]>('studyPlan') || [];
-            setStudyPlan(localPlan);
-            updateStatus('DATA_LOCAL', `Loaded ${localPlan.length} plan items`, 35);
+            // Load local data
+            updateStatus('DATA_LOCAL', 'Loading local data', 25);
+            const plan = localPlan || [];
+            setStudyPlan(plan);
+            const kb = localKB || [];
+            setKnowledgeBase(kb);
+            updateStatus('DATA_LOCAL', `Loaded ${kb.length} KB entries`, 35);
+
+            // Sync cloud data
+            updateStatus('DATA_CLOUD', 'Syncing from cloud', 40);
+            const [firestoreKB, fmge, cloudSettings] = await Promise.all([
+                getKnowledgeBase(),
+                getFMGEData(),
+                getAppSettings()
+            ]);
             
-            updateStatus('DATA_LOCAL', 'Loading local knowledge base', 40);
-            const localKB = await getData<KnowledgeBaseEntry[]>('knowledgeBase_v2') || [];
-            setKnowledgeBase(localKB);
-            updateStatus('DATA_LOCAL', `Loaded ${localKB.length} KB entries locally`, 45);
-
-            updateStatus('DATA_CLOUD', 'Syncing knowledge base from Firebase', 50);
-            const firestoreKB = await getKnowledgeBase();
             if (firestoreKB) {
-                updateStatus('DATA_CLOUD', 'Performing integrity check on KB data', 55);
                 const { updated, data: checkedKB } = performFullIntegrityCheck(firestoreKB, currentRevSettings);
                 setKnowledgeBase(checkedKB);
                 await saveData('knowledgeBase_v2', checkedKB);
-                if (updated) {
-                    updateStatus('DATA_CLOUD', 'Fixed data inconsistencies, syncing back', 60);
-                    await saveKnowledgeBase(checkedKB);
-                } else {
-                    updateStatus('DATA_CLOUD', `Synced ${checkedKB.length} KB entries`, 60);
-                }
+                if (updated) await saveKnowledgeBase(checkedKB);
+                updateStatus('DATA_CLOUD', `Synced ${checkedKB.length} entries`, 55);
             } else {
-                updateStatus('DATA_CLOUD', 'No cloud KB data found', 60);
+                updateStatus('DATA_CLOUD', 'Cloud sync complete', 55);
             }
 
-            updateStatus('DATA_CLOUD', 'Loading FMGE prep data', 65);
-            const fmge = await getFMGEData();
-            if (fmge) {
-                setFmgeData(fmge);
-                updateStatus('DATA_CLOUD', `Loaded ${fmge.length} FMGE entries`, 70);
-            } else {
-                updateStatus('DATA_CLOUD', 'No FMGE data found', 70);
-            }
+            if (fmge) setFmgeData(fmge);
 
-            updateStatus('MIGRATION', 'Checking for overdue task migrations', 72);
+            // Migration & Plan
+            updateStatus('MIGRATION', 'Updating tasks', 60);
             try {
                 await checkAndMigrateOverdueTasks();
-                updateStatus('MIGRATION', 'Task migration complete', 75);
             } catch (e) {
-                updateStatus('MIGRATION', 'Task migration skipped (non-critical)', 75);
-                console.warn("Task migration failed", e);
+                console.warn("Task migration skipped", e);
             }
 
-            updateStatus('PLAN', "Loading today's plan", 78);
+            updateStatus('PLAN', 'Loading today\'s plan', 65);
             await loadTodayPlan();
-            updateStatus('PLAN', "Today's plan loaded", 80);
+            updateStatus('PLAN', 'Plan ready', 70);
 
-            updateStatus('SETTINGS', 'Loading app settings', 82);
+            // Settings
+            updateStatus('SETTINGS', 'Syncing app settings', 75);
             try {
                 const localSettings = await getData<AppSettings>('settings');
-                if (localSettings) {
-                    setSettings(prev => ({
-                        ...prev,
-                        ...localSettings,
-                        notifications: { ...prev.notifications, ...(localSettings.notifications || {}) },
-                        quietHours: { ...prev.quietHours, ...(localSettings.quietHours || {}) }
-                    }));
-                    updateStatus('SETTINGS', 'Loaded local settings', 85);
-                }
-                
-                updateStatus('SETTINGS', 'Syncing settings with cloud', 88);
-                const cloudSettings = await getAppSettings();
-                if (!cloudSettings) {
-                    await saveAppSettings(settings);
-                    updateStatus('SETTINGS', 'Pushed local settings to cloud', 90);
-                }
-                
                 const sourceSettings = cloudSettings || localSettings;
+                
                 if (sourceSettings) {
                     setSettings(prev => {
                         const merged = { 
@@ -448,37 +438,46 @@ export default function App() {
                         return merged;
                     });
                     if (cloudSettings) await saveData('settings', cloudSettings);
-                    updateStatus('SETTINGS', 'Settings synced successfully', 92);
                 }
+                
+                if (!cloudSettings && localSettings) {
+                    await saveAppSettings(localSettings);
+                }
+                updateStatus('SETTINGS', 'Settings synced', 85);
             } catch (err) {
-                updateStatus('SETTINGS', 'Settings sync failed, using defaults', 92, true);
-                console.error("Failed to sync settings", err);
+                updateStatus('SETTINGS', 'Using default settings', 85);
+                console.error("Settings sync failed", err);
             } finally {
                 setSettingsLoaded(true);
             }
 
-            updateStatus('PROFILE', 'Loading user profile', 94);
+            // Profile
+            updateStatus('PROFILE', 'Loading profile', 90);
             const loadedProfile = await getFirebaseUserProfile();
             if (loadedProfile?.displayName) {
                 setDisplayName(loadedProfile.displayName);
-                updateStatus('PROFILE', `Welcome back, ${loadedProfile.displayName}`, 96);
+                updateStatus('PROFILE', `Welcome, ${loadedProfile.displayName}`, 95);
             } else {
-                updateStatus('PROFILE', 'Profile loaded', 96);
+                updateStatus('PROFILE', 'Profile ready', 95);
             }
             
-            updateStatus('COMPLETE', 'App ready! Launching dashboard', 100);
+            updateStatus('COMPLETE', 'App ready! 🚀', 100);
         } catch (globalError) {
-            updateStatus('ERROR', `Critical error: ${globalError}`, 100, true);
-            console.error("Critical error during initial load sequence:", globalError);
+            updateStatus('ERROR', `Load failed: ${globalError}`, 100, true);
+            console.error("Critical error:", globalError);
         } finally {
-            setTimeout(() => setAuthLoading(false), 500); // Small delay for smooth transition
+            setTimeout(() => setAuthLoading(false), 300);
         }
       } else {
-          updateStatus('AUTH', 'No user logged in, showing login screen', 100);
+          updateStatus('AUTH', 'Please log in', 100);
           setAuthLoading(false);
       }
     });
-    return () => unsubscribe();
+    
+    return () => {
+        clearTimeout(loadingTimeout);
+        unsubscribe();
+    };
   }, [loadTodayPlan, updateStatus]);
 
   useEffect(() => {

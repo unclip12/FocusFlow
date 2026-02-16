@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, ThemeColor, AISettings, RevisionSettings, APP_THEMES, THEME_COLORS, HistoryRecord, NotificationTrigger, DEFAULT_MENU_ORDER } from '../types';
 import { MoonIcon, SunIcon, SwatchIcon, Cog6ToothIcon, BellIcon, UserCircleIcon, BrainIcon, DatabaseIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, ArchiveBoxXMarkIcon, CheckCircleIcon, LinkIcon, ExclamationCircleIcon, ArrowUturnLeftIcon, PlusIcon, TrashIcon, LayoutSidebarIcon, ArrowsPointingOutIcon, ListCheckIcon, EyeIcon, EyeSlashIcon, ArrowUpIcon, ArrowDownIcon, InformationCircleIcon, ClockIcon, ArrowPathIcon, XMarkIcon } from './Icons';
@@ -45,9 +44,6 @@ const SettingRow: React.FC<{ label: string, description: string, children: React
     </div>
 );
 
-// ... TriggerList code (unchanged, but needs to be included or imported if split) ...
-// Assuming TriggerList is small enough to keep inline or already exists in file context.
-// For brevity in this response, I will include it to ensure file integrity.
 const TriggerList: React.FC<{ 
     category: NotificationTrigger['category'], 
     triggers: NotificationTrigger[], 
@@ -247,6 +243,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isBackingUp, setIsBackingUp] = useState(false);
+  // 🔥 FIX: Initialize as FALSE to prevent premature dialog display
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   // Other State
@@ -257,14 +254,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
-  const [menuConfig, setMenuConfig] = useState(
-      settings.menuConfiguration || DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }))
-  );
+  
+  // 🔥 FIX: Properly initialize menuConfig from settings or default
+  const [menuConfig, setMenuConfig] = useState(() => {
+      return settings.menuConfiguration || DEFAULT_MENU_ORDER.map(id => ({ id, visible: true }));
+  });
+  
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
 
   useEffect(() => {
     setLocalName(displayName);
   }, [displayName]);
+
+  // 🔥 FIX: Update menuConfig when settings change externally
+  useEffect(() => {
+      if (settings.menuConfiguration) {
+          setMenuConfig(settings.menuConfiguration);
+      }
+  }, [settings.menuConfiguration]);
 
   useEffect(() => {
       loadConfig();
@@ -272,12 +279,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   const loadConfig = async () => {
       setIsLoading(true);
-      const historyLog = await getHistory();
-      setHistory(historyLog);
-      setIsLoading(false);
+      try {
+          const historyLog = await getHistory();
+          setHistory(historyLog);
+      } catch (error) {
+          console.error('Failed to load history:', error);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
-  // ... (Menu Handlers same as before) ...
   const handleMoveMenu = (index: number, direction: 'up' | 'down') => {
       const newConfig = [...menuConfig];
       const swapIndex = direction === 'up' ? index - 1 : index + 1;
@@ -285,6 +296,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       
       [newConfig[index], newConfig[swapIndex]] = [newConfig[swapIndex], newConfig[index]];
       setMenuConfig(newConfig);
+      // 🔥 FIX: Immediately persist to parent
       onUpdateSettings({ ...settings, menuConfiguration: newConfig });
   };
 
@@ -294,6 +306,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
           item.id === id ? { ...item, visible: !item.visible } : item
       );
       setMenuConfig(newConfig);
+      // 🔥 FIX: Immediately persist to parent
       onUpdateSettings({ ...settings, menuConfiguration: newConfig });
   };
 
@@ -361,8 +374,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       }
   };
 
-  // --- NEW RESTORE LOGIC ---
-
   const handleRestoreFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -371,11 +382,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       reader.onload = (ev) => {
           try {
               const json = JSON.parse(ev.target?.result as string);
-              // 1. Analyze
               const analysis = analyzeBackup(json);
               setFileToRestore(json);
               setBackupAnalysis(analysis);
-              setShowPreview(true); // Open Preview Modal
+              setShowPreview(true);
           } catch (err) {
               alert("Failed to parse JSON file.");
           }
@@ -413,19 +423,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
       window.location.reload();
   };
 
-  // ---
-
   const handleReset = async () => {
-      await resetAppData();
-      setIsResetModalOpen(false);
-      alert("App reset complete. Reloading...");
-      window.location.reload();
+      try {
+          await resetAppData();
+          setIsResetModalOpen(false);
+          alert("App reset complete. Reloading...");
+          window.location.reload();
+      } catch (error) {
+          console.error('Reset failed:', error);
+          alert("Reset failed. Please try again.");
+          setIsResetModalOpen(false);
+      }
   };
 
   const handleCheckAnki = async () => {
       setAnkiStatus('CHECKING');
       setAnkiError(null);
-      // Save both settings
       onUpdateSettings({ ...settings, ankiHost: ankiHostInput, ankiTagPrefix: ankiPrefixInput });
       
       const result = await checkAnkiConnection({ ...settings, ankiHost: ankiHostInput });
@@ -453,10 +466,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
   const handleCreateManualSnapshot = async () => {
       setCreatingSnapshot(true);
-      await createSnapshot("Manual Backup via Settings");
-      const historyLog = await getHistory();
-      setHistory(historyLog);
-      setCreatingSnapshot(false);
+      try {
+          await createSnapshot("Manual Backup via Settings");
+          const historyLog = await getHistory();
+          setHistory(historyLog);
+      } catch (error) {
+          console.error('Snapshot creation failed:', error);
+      } finally {
+          setCreatingSnapshot(false);
+      }
   };
 
   if (isLoading) return <div className="p-8 text-center text-slate-400">Loading settings...</div>;
@@ -464,20 +482,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
   return (
     <div className="animate-fade-in pb-24 max-w-4xl mx-auto">
         
-        {/* MODALS */}
-        <RestorePreviewModal 
-            analysis={backupAnalysis} 
-            onCancel={() => { setShowPreview(false); setFileToRestore(null); }}
-            onConfirm={handleConfirmRestore}
-        />
+        {/* 🔥 FIX: Only render modals when actually open */}
+        {showPreview && (
+            <RestorePreviewModal 
+                analysis={backupAnalysis} 
+                onCancel={() => { setShowPreview(false); setFileToRestore(null); setBackupAnalysis(null); }}
+                onConfirm={handleConfirmRestore}
+            />
+        )}
 
-        <RestoreResultModal 
-            isOpen={showResult}
-            status={restoreStatus}
-            progress={restoreProgress}
-            logs={restoreLogs}
-            onClose={handleReloadApp}
-        />
+        {showResult && (
+            <RestoreResultModal 
+                isOpen={showResult}
+                status={restoreStatus}
+                progress={restoreProgress}
+                logs={restoreLogs}
+                onClose={handleReloadApp}
+            />
+        )}
 
         <div className="flex justify-between items-center mb-6 px-2">
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
@@ -515,7 +537,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
             <Section title="Appearance" icon={SwatchIcon}>
                 <SettingRow label="Dark Mode" description="Switch between light and dark themes">
                     <button 
-                        onClick={() => onUpdateSettings({ ...settings, darkMode: !settings.darkMode })}
+                        onClick={() => {
+                            // 🔥 FIX: Ensure settings object is properly updated
+                            const newSettings = { ...settings, darkMode: !settings.darkMode };
+                            onUpdateSettings(newSettings);
+                        }}
                         className={`w-14 h-8 rounded-full p-1 transition-colors ${settings.darkMode ? 'bg-indigo-600' : 'bg-slate-200'}`}
                     >
                         <div className={`w-6 h-6 rounded-full bg-white shadow-sm transform transition-transform duration-300 flex items-center justify-center ${settings.darkMode ? 'translate-x-6' : 'translate-x-0'}`}>
@@ -530,7 +556,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                         {APP_THEMES.map(theme => (
                             <button
                                 key={theme.id}
-                                onClick={() => onUpdateSettings({ ...settings, themeId: theme.id })}
+                                onClick={() => {
+                                    // 🔥 FIX: Ensure theme change is properly saved
+                                    const newSettings = { ...settings, themeId: theme.id };
+                                    onUpdateSettings(newSettings);
+                                }}
                                 className={`relative p-1 rounded-xl border-2 transition-all duration-200 group text-left ${settings.themeId === theme.id ? 'border-indigo-500 ring-2 ring-indigo-500/20 scale-[1.02]' : 'border-transparent hover:border-slate-300 dark:hover:border-slate-600'}`}
                             >
                                 <div 
@@ -556,7 +586,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                         {THEME_COLORS.map(color => (
                             <button
                                 key={color.value}
-                                onClick={() => onUpdateSettings({ ...settings, primaryColor: color.value })}
+                                onClick={() => {
+                                    // 🔥 FIX: Ensure color change is properly saved
+                                    const newSettings = { ...settings, primaryColor: color.value };
+                                    onUpdateSettings(newSettings);
+                                }}
                                 className={`w-10 h-10 rounded-full border-2 transition-all transform active:scale-95 ${settings.primaryColor === color.value ? 'border-slate-800 dark:border-white scale-110 shadow-md' : 'border-transparent'}`}
                                 style={{ backgroundColor: color.hex }}
                                 title={color.name}
@@ -609,7 +643,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
-            {/* 4. Notifications (Same as before) */}
+            {/* 4. Notifications */}
             <Section title="Notifications" icon={BellIcon}>
                 <SettingRow label="Enable Notifications" description="Get alerts for timers and breaks">
                     <button 
@@ -775,7 +809,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </div>
             </Section>
 
-            {/* 7. Data Management (UPDATED) */}
+            {/* 7. Data Management */}
             <Section title="Data Management" icon={DatabaseIcon}>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 -mt-2">
                     Use these options to migrate your data.
@@ -792,7 +826,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
 
                     <label className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 flex flex-col items-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer relative overflow-hidden" 
                         onClick={(e) => {
-                            // Reset value on click so onChange fires even if same file picked
                             if(fileInputRef.current) fileInputRef.current.value = '';
                         }}>
                         <ArrowUpTrayIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
@@ -807,7 +840,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                     </label>
 
                     <button 
-                        onClick={() => setIsResetModalOpen(true)}
+                        onClick={() => {
+                            // 🔥 FIX: Only open reset modal on explicit button click
+                            setIsResetModalOpen(true);
+                        }}
                         className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 flex flex-col items-center gap-2 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
                     >
                         <ArchiveBoxXMarkIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
@@ -825,15 +861,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onUpdateSe
                 </button>
             </div>
 
-            <DeleteConfirmationModal 
-                isOpen={isResetModalOpen} 
-                onClose={() => setIsResetModalOpen(false)} 
-                onConfirm={handleReset}
-                title="Factory Reset App?"
-                message="This will wipe ALL data including study plans, knowledge base, FMGE logs, and settings. This action is irreversible unless you have a backup."
-            />
+            {/* 🔥 FIX: Only render DeleteConfirmationModal when explicitly opened */}
+            {isResetModalOpen && (
+                <DeleteConfirmationModal 
+                    isOpen={isResetModalOpen} 
+                    onClose={() => setIsResetModalOpen(false)} 
+                    onConfirm={handleReset}
+                    title="Factory Reset App?"
+                    message="This will wipe ALL data including study plans, knowledge base, FMGE logs, and settings. This action is irreversible unless you have a backup."
+                />
+            )}
 
-            <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
+            {isChangelogOpen && (
+                <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
+            )}
         </div>
     </div>
   );

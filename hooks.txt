@@ -1,0 +1,218 @@
+===== FILE: hooks/useIntersectionObserver.ts =====
+import { useEffect, useRef, useState, RefObject } from 'react';
+
+/**
+ * Intersection Observer Hook
+ * Detects when an element enters/exits the viewport
+ * https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+ */
+
+export interface UseIntersectionObserverOptions {
+    threshold?: number | number[];
+    root?: Element | null;
+    rootMargin?: string;
+    freezeOnceVisible?: boolean;
+}
+
+export const useIntersectionObserver = (
+    options: UseIntersectionObserverOptions = {}
+): [RefObject<HTMLDivElement>, boolean, IntersectionObserverEntry | null] => {
+    const {
+        threshold = 0.1,
+        root = null,
+        rootMargin = '0px',
+        freezeOnceVisible = false,
+    } = options;
+
+    const elementRef = useRef<HTMLDivElement>(null);
+    const [isVisible, setIsVisible] = useState(false);
+    const [entry, setEntry] = useState<IntersectionObserverEntry | null>(null);
+    const frozen = useRef(false);
+
+    useEffect(() => {
+        const element = elementRef.current;
+        if (!element) return;
+
+        // Check if already frozen
+        if (frozen.current) return;
+
+        // Create observer
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                setEntry(entry);
+                const isIntersecting = entry.isIntersecting;
+
+                setIsVisible(isIntersecting);
+
+                // Freeze if option enabled and element is visible
+                if (freezeOnceVisible && isIntersecting) {
+                    frozen.current = true;
+                    observer.disconnect();
+                }
+            },
+            { threshold, root, rootMargin }
+        );
+
+        observer.observe(element);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [threshold, root, rootMargin, freezeOnceVisible]);
+
+    return [elementRef, isVisible, entry];
+};
+
+/**
+ * Lazy load images hook
+ */
+export const useLazyLoadImage = (src: string) => {
+    const [imageSrc, setImageSrc] = useState<string | null>(null);
+    const [ref, isVisible] = useIntersectionObserver({
+        threshold: 0.1,
+        freezeOnceVisible: true,
+    });
+
+    useEffect(() => {
+        if (isVisible && !imageSrc) {
+            setImageSrc(src);
+        }
+    }, [isVisible, src, imageSrc]);
+
+    return { ref, imageSrc, isLoaded: !!imageSrc };
+};
+
+/**
+ * Infinite scroll hook
+ */
+export const useInfiniteScroll = (callback: () => void) => {
+    const [ref, isVisible] = useIntersectionObserver({
+        threshold: 0.1,
+        rootMargin: '100px', // Trigger 100px before element is visible
+    });
+
+    useEffect(() => {
+        if (isVisible) {
+            callback();
+        }
+    }, [isVisible, callback]);
+
+    return ref;
+};
+
+===== FILE: hooks/usePopover.ts =====
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+/**
+ * Hook for managing native Popover API state
+ * Provides imperative control over popover modals
+ */
+
+export const usePopover = (defaultOpen = false) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    const popoverIdRef = useRef(`popover-${Math.random().toString(36).slice(2, 9)}`);
+
+    const open = useCallback(() => {
+        setIsOpen(true);
+    }, []);
+
+    const close = useCallback(() => {
+        setIsOpen(false);
+    }, []);
+
+    const toggle = useCallback(() => {
+        setIsOpen(prev => !prev);
+    }, []);
+
+    return {
+        id: popoverIdRef.current,
+        isOpen,
+        open,
+        close,
+        toggle,
+    };
+};
+
+/**
+ * Hook for checking Popover API support
+ */
+export const usePopoverSupport = () => {
+    const [isSupported, setIsSupported] = useState(false);
+
+    useEffect(() => {
+        // Check if browser supports Popover API
+        const supported = typeof HTMLElement !== 'undefined' && 
+                         'popover' in HTMLElement.prototype;
+        setIsSupported(supported);
+        
+        if (!supported) {
+            console.info('📢 Popover API not supported, using fallback modals');
+        }
+    }, []);
+
+    return isSupported;
+};
+
+===== FILE: hooks/useScrollAnimation.ts =====
+// 🆕 Feature #13: Intersection Observer for Scroll Animations
+import { useEffect, useRef } from 'react';
+import { useIntersectionObserver } from './useIntersectionObserver';
+
+/**
+ * Hook to automatically animate elements when they scroll into view
+ * Uses Intersection Observer API (Feature #13)
+ * 
+ * Usage:
+ * ```tsx
+ * const ref = useScrollAnimation();
+ * <div ref={ref} className="scroll-fade-in">Content</div>
+ * ```
+ */
+export const useScrollAnimation = (options?: IntersectionObserverInit) => {
+  const [ref, isVisible] = useIntersectionObserver({
+    threshold: 0.1,
+    rootMargin: '50px',
+    ...options
+  });
+
+  useEffect(() => {
+    if (ref.current && isVisible) {
+      ref.current.classList.add('animate-fade-in-up');
+    }
+  }, [isVisible, ref]);
+
+  return ref;
+};
+
+/**
+ * Initialize scroll animations for all elements with 'scroll-fade-in' class
+ * Call this once on component mount
+ */
+export const initScrollAnimations = () => {
+  if (typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+    return;
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('animate-fade-in-up');
+          // Optional: unobserve after animation
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    {
+      threshold: 0.1,
+      rootMargin: '50px'
+    }
+  );
+
+  // Observe all elements with scroll-fade-in class
+  document.querySelectorAll('.scroll-fade-in').forEach((el) => {
+    observer.observe(el);
+  });
+
+  return () => observer.disconnect();
+};

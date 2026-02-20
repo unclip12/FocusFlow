@@ -1,0 +1,968 @@
+===== FILE: components/TaskCompletionModal.tsx =====
+
+
+import React, { useState, useEffect } from 'react';
+import { Block, BlockTask } from '../types';
+import { CheckCircleIcon, XMarkIcon, ClockIcon, ArrowRightIcon, PlusIcon, CalendarIcon } from './Icons';
+
+interface TaskCompletionModalProps {
+    isOpen: boolean;
+    block: Block;
+    onClose: () => void;
+    onSave: (
+        status: 'COMPLETED' | 'PARTIAL' | 'NOT_DONE', 
+        tasks: BlockTask[], 
+        rescheduleAction?: { type: 'NEW_BLOCK' | 'NEXT_BLOCK' | 'FUTURE_DATE', time?: string, duration?: number, date?: string, tasks: BlockTask[] }
+    ) => void;
+    defaultDuration: number;
+}
+
+const REASONS = ["Ran out of time", "Difficult topic", "Distracted", "Too tired", "Tech issue", "Material missing"];
+
+export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({ isOpen, block, onClose, onSave, defaultDuration }) => {
+    const [tasks, setTasks] = useState<BlockTask[]>([]);
+    const [rescheduleMode, setRescheduleMode] = useState<'NEW_BLOCK' | 'NEXT_BLOCK' | 'FUTURE_DATE' | null>(null);
+    
+    // Reschedule Time State
+    const [newBlockStartTime, setNewBlockStartTime] = useState('');
+    const [newBlockEndTime, setNewBlockEndTime] = useState('');
+    
+    // Future Date State
+    const [futureDate, setFutureDate] = useState('');
+    
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [isOpen]);
+
+    // Initialize state from block
+    useEffect(() => {
+        if (isOpen && block.tasks) {
+            setTasks(block.tasks.map(t => ({
+                ...t,
+                execution: t.execution || { completed: false, note: '' }
+            })));
+            
+            const now = new Date();
+            const startStr = now.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'});
+            setNewBlockStartTime(startStr);
+            
+            // Default end time based on defaultDuration
+            const d = new Date();
+            d.setMinutes(d.getMinutes() + defaultDuration);
+            setNewBlockEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+
+            // Default future date: tomorrow
+            const tmr = new Date();
+            tmr.setDate(tmr.getDate() + 1);
+            setFutureDate(tmr.toISOString().split('T')[0]);
+        }
+    }, [isOpen, block, defaultDuration]);
+
+    const toggleTaskStatus = (index: number, status: boolean) => {
+        const newTasks = [...tasks];
+        newTasks[index].execution = { ...newTasks[index].execution, completed: status, note: '' };
+        setTasks(newTasks);
+    };
+
+    const updateTaskNote = (index: number, note: string) => {
+        const newTasks = [...tasks];
+        newTasks[index].execution = { ...newTasks[index].execution!, note };
+        setTasks(newTasks);
+    };
+
+    const adjustEndTime = (minutes: number) => {
+        if (!newBlockStartTime) return;
+        const [h, m] = newBlockStartTime.split(':').map(Number);
+        const d = new Date();
+        d.setHours(h, m + minutes);
+        setNewBlockEndTime(d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}));
+    };
+
+    const getIncompleteTasks = () => tasks.filter(t => !t.execution?.completed);
+
+    const handleSave = () => {
+        const incomplete = getIncompleteTasks();
+        const allDone = incomplete.length === 0;
+        const status = allDone ? 'COMPLETED' : (incomplete.length === tasks.length ? 'NOT_DONE' : 'PARTIAL');
+        
+        let rescheduleAction = undefined;
+        if (incomplete.length > 0 && rescheduleMode) {
+            let duration = defaultDuration;
+            
+            if (rescheduleMode === 'NEW_BLOCK' && newBlockStartTime && newBlockEndTime) {
+                const [sH, sM] = newBlockStartTime.split(':').map(Number);
+                const [eH, eM] = newBlockEndTime.split(':').map(Number);
+                duration = (eH * 60 + eM) - (sH * 60 + sM);
+                if (duration < 0) duration += 24*60;
+            }
+
+            rescheduleAction = {
+                type: rescheduleMode,
+                time: rescheduleMode === 'NEW_BLOCK' ? newBlockStartTime : undefined,
+                duration: rescheduleMode === 'NEW_BLOCK' ? duration : undefined,
+                date: rescheduleMode === 'FUTURE_DATE' ? futureDate : undefined,
+                tasks: incomplete
+            };
+        }
+
+        onSave(status, tasks, rescheduleAction);
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    const incompleteCount = getIncompleteTasks().length;
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
+                
+                <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white">Session Review</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{block.title}</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"><XMarkIcon className="w-6 h-6 text-slate-400" /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-slate-950/50">
+                    
+                    {/* Task List */}
+                    <div className="space-y-4">
+                        {tasks.map((task, idx) => (
+                            <div key={task.id} className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded">{task.type}</span>
+                                        <p className="font-bold text-slate-800 dark:text-white mt-1">{task.detail}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => toggleTaskStatus(idx, true)}
+                                            className={`p-2 rounded-lg transition-all ${task.execution?.completed ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-green-100 dark:hover:bg-green-900/20 hover:text-green-500'}`}
+                                        >
+                                            <CheckCircleIcon className="w-6 h-6" />
+                                        </button>
+                                        <button 
+                                            onClick={() => toggleTaskStatus(idx, false)}
+                                            className={`p-2 rounded-lg transition-all ${!task.execution?.completed ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 hover:bg-red-100 dark:hover:bg-red-900/20 hover:text-red-500'}`}
+                                        >
+                                            <XMarkIcon className="w-6 h-6" />
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {/* Context Input */}
+                                <div className="mt-2">
+                                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-1">
+                                        {task.execution?.completed ? "Experience / Notes" : "Reason for Incomplete"}
+                                    </label>
+                                    
+                                    {!task.execution?.completed && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {REASONS.map(r => (
+                                                <button 
+                                                    key={r}
+                                                    onClick={() => updateTaskNote(idx, r)}
+                                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${task.execution?.note === r ? 'bg-red-100 border-red-200 text-red-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+                                                >
+                                                    {r}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <textarea 
+                                        value={task.execution?.note || ''}
+                                        onChange={(e) => updateTaskNote(idx, e.target.value)}
+                                        className={`w-full p-2 rounded-lg border text-sm outline-none focus:ring-2 transition-all ${task.execution?.completed ? 'bg-green-50/50 dark:bg-green-900/10 border-green-200 dark:border-green-900/30 focus:ring-green-500/20' : 'bg-red-50/50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30 focus:ring-red-500/20'}`}
+                                        placeholder={task.execution?.completed ? "Key takeaways..." : "Other reason..."}
+                                        rows={2}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Reschedule Options (Only if incompletes exist) */}
+                    {incompleteCount > 0 && (
+                        <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-2xl p-5 animate-fade-in">
+                            <div className="flex items-center gap-2 mb-4 text-amber-700 dark:text-amber-400">
+                                <ClockIcon className="w-5 h-5" />
+                                <h4 className="font-bold">Reschedule {incompleteCount} Tasks</h4>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'NEW_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'NEW_BLOCK'} 
+                                        onChange={() => setRescheduleMode('NEW_BLOCK')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <PlusIcon className="w-4 h-4"/> Create New Block Today
+                                        </span>
+                                        {rescheduleMode === 'NEW_BLOCK' && (
+                                            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-100 dark:border-amber-800/50">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1">
+                                                        <span className="text-[10px] text-slate-400 font-bold mb-1 block">Start</span>
+                                                        <input 
+                                                            type="time" 
+                                                            value={newBlockStartTime}
+                                                            onChange={(e) => setNewBlockStartTime(e.target.value)}
+                                                            className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <span className="text-[10px] text-slate-400 font-bold mb-1 block">End</span>
+                                                        <input 
+                                                            type="time" 
+                                                            value={newBlockEndTime}
+                                                            onChange={(e) => setNewBlockEndTime(e.target.value)}
+                                                            className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2 flex-wrap mt-2">
+                                                    {[15, 30, 45, 60].map(min => (
+                                                        <button 
+                                                            key={min} 
+                                                            onClick={() => adjustEndTime(min)}
+                                                            className="px-2 py-1 rounded bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-100 dark:border-amber-800 hover:bg-amber-50 transition-colors"
+                                                        >
+                                                            +{min}m
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
+
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'NEXT_BLOCK' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'NEXT_BLOCK'} 
+                                        onChange={() => setRescheduleMode('NEXT_BLOCK')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <ArrowRightIcon className="w-4 h-4"/> Add to Next Block
+                                        </span>
+                                    </div>
+                                </label>
+
+                                <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${rescheduleMode === 'FUTURE_DATE' ? 'border-amber-500 bg-white dark:bg-slate-800 shadow-md' : 'border-transparent bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="reschedule" 
+                                        checked={rescheduleMode === 'FUTURE_DATE'} 
+                                        onChange={() => setRescheduleMode('FUTURE_DATE')}
+                                        className="text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="flex-1">
+                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm">
+                                            <CalendarIcon className="w-4 h-4"/> Reschedule to Date
+                                        </span>
+                                        {rescheduleMode === 'FUTURE_DATE' && (
+                                            <div className="mt-2 p-2">
+                                                <input 
+                                                    type="date" 
+                                                    value={futureDate}
+                                                    onChange={(e) => setFutureDate(e.target.value)}
+                                                    className="w-full p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:border-amber-500"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+
+                <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-end gap-3 shrink-0 rounded-b-3xl">
+                    <button onClick={onClose} className="px-6 py-3 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                    <button onClick={handleSave} className="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-colors flex items-center gap-2">
+                        <CheckCircleIcon className="w-5 h-5" /> Finish Session
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    );
+};
+
+===== FILE: components/StatsCard.tsx =====
+import React, { useMemo, useState } from 'react';
+import { StudyPlanItem, getAdjustedDate, KnowledgeBaseEntry, DayPlan, RevisionLog } from '../types';
+import { ClockIcon, BookOpenIcon, FireIcon, CheckCircleIcon, ChartBarIcon, TrophyIcon, RepeatIcon, ArrowPathIcon } from './Icons';
+import { DashboardDetailModal, PageInfo, RevisionInfo } from './DashboardDetailModal';
+
+interface StatsProps {
+  knowledgeBase: KnowledgeBaseEntry[];
+  studyPlan?: StudyPlanItem[];
+  streak?: number;
+  todayPlan?: DayPlan | null; // NEW prop
+}
+
+// Helper for progress bars
+const ProgressBar = ({ current, total, colorClass }: { current: number, total: number, colorClass: string }) => {
+    const percent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
+    return (
+        <div className="h-2.5 w-full bg-white/40 dark:bg-slate-700/40 rounded-full overflow-hidden mt-3 shadow-inner-3d border border-white/30 dark:border-white/10">
+            <div className={`h-full rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.2)] ${colorClass}`} style={{ width: `${percent}%` }}></div>
+        </div>
+    );
+};
+
+export const TodayGlance: React.FC<Pick<StatsProps, 'knowledgeBase' | 'studyPlan' | 'todayPlan'>> = ({ knowledgeBase, studyPlan = [], todayPlan }) => {
+    const todayStr = getAdjustedDate(new Date());
+    const now = new Date();
+    
+    // State for the detail modal
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [detailType, setDetailType] = useState<'TIME' | 'PAGES' | 'REVISIONS' | null>(null);
+    const [modalData, setModalData] = useState<any>({});
+
+    const metrics = useMemo(() => {
+        const studiedPagesLog = new Set<string>();
+        const revisedPagesLog = new Set<string>();
+        const revisionLogsToday: RevisionInfo[] = [];
+
+        // 1. Calculate base stats from KnowledgeBase Logs (Actual Execution Source of Truth)
+        knowledgeBase.forEach(kb => {
+            (kb.logs || []).forEach(log => {
+                if (getAdjustedDate(log.timestamp) === todayStr) {
+                    if (log.type === 'STUDY') {
+                        studiedPagesLog.add(kb.pageNumber);
+                    } else if (log.type === 'REVISION') {
+                        revisedPagesLog.add(kb.pageNumber);
+                        revisionLogsToday.push({
+                            pageNumber: kb.pageNumber,
+                            topic: kb.title,
+                            timestamp: log.timestamp
+                        });
+                    }
+                }
+            });
+        });
+
+        // 2. Calculate Time from DayPlan Blocks
+        let todayMinutes = 0;
+        let plannedMinutes = 0;
+        let ankiPlanned = 0;
+        let ankiCompleted = 0;
+        const studyTimeBlocks = (todayPlan?.blocks || []).filter(b => b.status === 'DONE' && b.type !== 'BREAK');
+
+        if (todayPlan && todayPlan.blocks) {
+            todayMinutes = studyTimeBlocks.reduce((acc, b) => acc + (b.actualDurationMinutes || 0), 0);
+            plannedMinutes = todayPlan.totalStudyMinutesPlanned || 0;
+
+            // Calculate Anki Stats from Blocks
+            todayPlan.blocks.forEach(block => {
+                const ankiTasks = block.tasks?.filter(t => t.type === 'ANKI') || [];
+                if (ankiTasks.length > 0) {
+                    ankiTasks.forEach(t => {
+                        const count = t.meta?.count || 0;
+                        ankiPlanned += count;
+                        if (t.execution?.completed) {
+                            ankiCompleted += count;
+                        }
+                    });
+                } else if (block.relatedAnkiInfo?.totalCards) {
+                    ankiPlanned += block.relatedAnkiInfo.totalCards;
+                    if (block.status === 'DONE') {
+                        ankiCompleted += block.relatedAnkiInfo.totalCards;
+                    }
+                }
+            });
+
+        } else {
+             knowledgeBase.forEach(kb => {
+                (kb.logs || []).forEach(log => {
+                    if (getAdjustedDate(log.timestamp) === todayStr) {
+                         todayMinutes += log.durationMinutes || 0;
+                    }
+                });
+            });
+            plannedMinutes = 240;
+        }
+
+        // 3. Planned Pages Calculation
+        const allPlannedPages: PageInfo[] = [];
+        const completedPlannedPages: PageInfo[] = [];
+        
+        if (todayPlan && todayPlan.blocks) {
+            todayPlan.blocks.forEach(block => {
+                if (block.type === 'REVISION_FA' || block.type === 'MIXED') {
+                    (block.tasks || []).filter(t => t.type === 'FA').forEach(task => {
+                        const pageNum = String(task.meta?.pageNumber || task.detail.match(/\d+/)?.[0] || 'N/A');
+                        const pageInfo = {
+                            pageNumber: pageNum,
+                            topic: task.meta?.topic || block.title,
+                            isCompleted: task.execution?.completed || false
+                        };
+                        
+                        if (!allPlannedPages.some(p => p.pageNumber === pageNum)) {
+                            allPlannedPages.push(pageInfo);
+                        }
+                        if (pageInfo.isCompleted && !completedPlannedPages.some(p => p.pageNumber === pageNum)) {
+                            completedPlannedPages.push(pageInfo);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // 4. Revision Goal Calculation
+        let currentDueCount = 0;
+        knowledgeBase.forEach(kb => {
+            if (kb.nextRevisionAt && new Date(kb.nextRevisionAt) <= now) {
+                currentDueCount++;
+            } 
+        });
+
+        const revisedTodayCount = revisedPagesLog.size;
+        const revisionGoalTotal = currentDueCount + revisedTodayCount; 
+        
+        const hours = Math.floor(todayMinutes / 60);
+        const mins = todayMinutes % 60;
+        const timeString = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+        return { 
+            timeString, todayMinutes, plannedMinutes,
+            plannedPagesTotal: allPlannedPages.length,
+            plannedPagesCompleted: completedPlannedPages.length,
+            totalUniqueStudied: studiedPagesLog.size,
+            revisionGoalTotal,
+            revisionGoalCompleted: revisedTodayCount,
+            totalUniqueRevised: revisedPagesLog.size,
+            ankiPlanned, ankiCompleted,
+            // Data for modal
+            studyTimeBlocks, allPlannedPages, completedPlannedPages, revisionLogsToday
+        };
+    }, [knowledgeBase, todayStr, now, todayPlan]);
+
+    const openDetail = (type: 'TIME' | 'PAGES' | 'REVISIONS') => {
+        setDetailType(type);
+        if (type === 'TIME') setModalData({ timeLogs: metrics.studyTimeBlocks });
+        if (type === 'PAGES') setModalData({ pageLogs: { all: metrics.allPlannedPages, completed: metrics.completedPlannedPages } });
+        if (type === 'REVISIONS') setModalData({ revisionLogs: metrics.revisionLogsToday });
+        setIsDetailOpen(true);
+    };
+
+    return (
+        <>
+            {isDetailOpen && detailType && (
+                <DashboardDetailModal 
+                    isOpen={isDetailOpen}
+                    onClose={() => setIsDetailOpen(false)}
+                    type={detailType}
+                    data={modalData}
+                />
+            )}
+            <div className="card-3d rounded-3xl p-5 mb-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10">
+                <h3 className="text-base font-extrabold text-slate-800 dark:text-white mb-4 flex items-center gap-2 tracking-tight">
+                    <span className="w-1.5 h-5 bg-indigo-600 rounded-full shadow-sm"></span>
+                    Today at a Glance
+                </h3>
+                
+                {/* Horizontal scroll on mobile to save vertical space, Grid on desktop */}
+                <div className="flex overflow-x-auto snap-x gap-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:pb-0 scrollbar-hide">
+                    {/* Card 1: Time */}
+                    <button onClick={() => openDetail('TIME')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100/50 dark:border-blue-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <ClockIcon className="w-12 h-12 text-blue-600" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
+                                <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                    <ClockIcon className="w-3.5 h-3.5" />
+                                </div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider">Study Time</span>
+                            </div>
+                            <div className="flex items-baseline gap-2 relative z-10">
+                                <p className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.timeString}</p>
+                                <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {Math.round(metrics.plannedMinutes / 60)}h</span>
+                            </div>
+                        </div>
+                        <ProgressBar current={metrics.todayMinutes} total={metrics.plannedMinutes || 1} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" />
+                    </button>
+
+                    {/* Card 2: Pages Studied */}
+                    <button onClick={() => openDetail('PAGES')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-900/20 border border-emerald-100/50 dark:border-emerald-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <BookOpenIcon className="w-12 h-12 text-emerald-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-1 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <BookOpenIcon className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Pages</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.plannedPagesCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.plannedPagesTotal}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.plannedPagesCompleted} total={metrics.plannedPagesTotal || 1} colorClass="bg-gradient-to-r from-emerald-500 to-emerald-600" />
+                        </div>
+                    </button>
+
+                    {/* Card 3: Revisions */}
+                    <button onClick={() => openDetail('REVISIONS')} className="snap-start shrink-0 w-[240px] sm:w-auto text-left p-4 rounded-2xl bg-violet-50/60 dark:bg-violet-900/20 border border-violet-100/50 dark:border-violet-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <ArrowPathIcon className="w-12 h-12 text-violet-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-1 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-violet-700 dark:text-violet-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <ArrowPathIcon className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Revisions</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.revisionGoalCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.revisionGoalTotal}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.revisionGoalCompleted} total={metrics.revisionGoalTotal || 1} colorClass="bg-gradient-to-r from-violet-500 to-violet-600" />
+                        </div>
+                    </button>
+
+                    {/* Card 4: Anki */}
+                    <div className="snap-start shrink-0 w-[240px] sm:w-auto p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-900/20 border border-amber-100/50 dark:border-amber-900/30 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-sm flex flex-col justify-between relative group hover:-translate-y-1 transition-transform h-32 sm:h-auto">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <FireIcon className="w-12 h-12 text-amber-600" />
+                        </div>
+                        <div className="flex justify-between items-start mb-1 relative z-10">
+                            <div>
+                                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 mb-2">
+                                    <div className="p-1.5 bg-white/70 dark:bg-slate-800/70 rounded-lg shadow-sm backdrop-blur-md">
+                                        <FireIcon className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Anki Cards</span>
+                                </div>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100 drop-shadow-sm">{metrics.ankiCompleted}</span>
+                                    <span className="text-[10px] text-slate-500 font-bold bg-white/40 dark:bg-black/20 px-1.5 py-0.5 rounded-md backdrop-blur-sm">/ {metrics.ankiPlanned}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-auto">
+                            <ProgressBar current={metrics.ankiCompleted} total={metrics.ankiPlanned || 1} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};
+
+export const StatsGrid: React.FC<Pick<StatsProps, 'knowledgeBase' | 'streak'>> = ({ knowledgeBase, streak = 0 }) => {
+    
+    const stats = useMemo(() => {
+        const totalPages = knowledgeBase.length;
+        
+        const totalMinutes = knowledgeBase.reduce((acc, kb) => 
+            acc + (kb.logs || []).reduce((hAcc: number, h: any) => hAcc + (h.durationMinutes || 0), 0), 0);
+        const totalHours = Math.round(totalMinutes / 60);
+
+        const totalAnki = knowledgeBase.reduce((acc, kb) => acc + (kb.ankiCovered || 0), 0);
+        const totalAnkiTarget = knowledgeBase.reduce((acc, kb) => acc + (kb.ankiTotal || 0), 0);
+
+        return { totalPages, totalHours, totalAnki, totalAnkiTarget };
+    }, [knowledgeBase]);
+
+    return (
+        <div className="mb-8">
+             <h3 className="text-sm font-extrabold text-slate-800 dark:text-white mb-4 flex items-center gap-2 px-1 tracking-tight">
+                <ChartBarIcon className="w-4 h-4 text-slate-400" />
+                Stats & Progress
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+                {/* Card 1: Total Pages */}
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-3xl border border-white/40 dark:border-white/10 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <BookOpenIcon className="w-24 h-24" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Pages</span>
+                         <div className="p-1.5 bg-indigo-50/80 dark:bg-indigo-900/30 rounded-lg text-indigo-500 backdrop-blur-sm">
+                            <BookOpenIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalPages}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">pages</span>
+                    </div>
+                </div>
+
+                {/* Card 2: Total Hours */}
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-3xl border border-white/40 dark:border-white/10 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <ClockIcon className="w-24 h-24" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Time</span>
+                         <div className="p-1.5 bg-blue-50/80 dark:bg-blue-900/30 rounded-lg text-blue-500 backdrop-blur-sm">
+                            <ClockIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalHours}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">hours</span>
+                    </div>
+                </div>
+
+                {/* Card 3: Anki */}
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-3xl border border-white/40 dark:border-white/10 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <FireIcon className="w-24 h-24" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Cards</span>
+                         <div className="p-1.5 bg-amber-50/80 dark:bg-amber-900/30 rounded-lg text-amber-500 backdrop-blur-sm">
+                            <FireIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{stats.totalAnki}</span>
+                        <div className="mt-3">
+                             <ProgressBar current={stats.totalAnki} total={stats.totalAnkiTarget || stats.totalAnki * 1.5} colorClass="bg-gradient-to-r from-amber-500 to-amber-600" />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card 4: Streak */}
+                <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-5 rounded-3xl border border-white/40 dark:border-white/10 flex flex-col justify-between relative overflow-hidden group card-3d">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 transform translate-x-1/3 -translate-y-1/3">
+                        <TrophyIcon className="w-24 h-24" />
+                    </div>
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                         <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Streak</span>
+                         <div className="p-1.5 bg-yellow-50/80 dark:bg-yellow-900/30 rounded-lg text-yellow-500 backdrop-blur-sm">
+                            <TrophyIcon className="w-4 h-4" />
+                         </div>
+                    </div>
+                    <div className="relative z-10">
+                        <span className="text-3xl font-black text-slate-800 dark:text-white">{streak}</span>
+                        <span className="text-xs text-slate-400 ml-1 font-bold">days</span>
+                        <p className="text-[10px] text-green-500 font-bold mt-1 bg-green-50/80 dark:bg-green-900/20 px-2 py-0.5 rounded-md inline-block backdrop-blur-sm">Keep it up!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Default export kept for compatibility if imported elsewhere
+const StatsCard: React.FC<StatsProps> = (props) => {
+    return (
+        <div className="space-y-6">
+            <TodayGlance {...props} />
+            <StatsGrid {...props} />
+        </div>
+    );
+};
+
+export default StatsCard;
+
+===== FILE: components/StudyTrackerView.tsx =====
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { StudyEntry, getAdjustedDate } from '../types';
+import { getStudyEntries, saveStudyEntry, deleteStudyEntry } from '../services/firebase';
+import { PlusIcon, TrashIcon, CheckCircleIcon, ClockIcon, CalendarIcon, PencilSquareIcon, ChevronLeftIcon, ChevronRightIcon, TableCellsIcon, ArrowPathIcon, XMarkIcon } from './Icons';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+
+const generateId = () => crypto.randomUUID();
+
+export const StudyTrackerView: React.FC = () => {
+    const [entries, setEntries] = useState<StudyEntry[]>([]);
+    const [selectedDate, setSelectedDate] = useState(getAdjustedDate(new Date()));
+    const [isLoading, setIsLoading] = useState(true);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    
+    // Form State
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [taskName, setTaskName] = useState('');
+    const [time, setTime] = useState('');
+    const [progress, setProgress] = useState(0);
+    const [revision, setRevision] = useState(false);
+    
+    const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+    useEffect(() => {
+        loadEntries();
+    }, [selectedDate]);
+
+    const loadEntries = async () => {
+        setIsLoading(true);
+        try {
+            const data = await getStudyEntries(selectedDate);
+            setEntries(data);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleOpenAdd = () => {
+        setEditingId(null);
+        setTaskName('');
+        const now = new Date();
+        setTime(now.toTimeString().slice(0, 5));
+        setProgress(0);
+        setRevision(false);
+        setIsFormOpen(true);
+    };
+
+    const handleEdit = (entry: StudyEntry) => {
+        setEditingId(entry.id);
+        setTaskName(entry.taskName);
+        setTime(entry.time);
+        setProgress(entry.progress);
+        setRevision(entry.revision);
+        setIsFormOpen(true);
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const entry: StudyEntry = {
+            id: editingId || generateId(),
+            date: selectedDate,
+            time,
+            taskName,
+            progress,
+            revision
+        };
+        
+        await saveStudyEntry(entry);
+        await loadEntries();
+        setIsFormOpen(false);
+    };
+
+    const handleDelete = async () => {
+        if (itemToDelete) {
+            await deleteStudyEntry(itemToDelete);
+            setEntries(prev => prev.filter(e => e.id !== itemToDelete));
+            setItemToDelete(null);
+        }
+    };
+
+    const handleDateChange = (offset: number) => {
+        const d = new Date(selectedDate + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        setSelectedDate(getAdjustedDate(d));
+    };
+
+    return (
+        <div className="animate-fade-in space-y-6 pb-24">
+            <DeleteConfirmationModal 
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={handleDelete}
+                title="Delete Entry?"
+                message="Are you sure you want to remove this log entry?"
+            />
+
+            {/* Quick Form Modal */}
+            {isFormOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-6 animate-scale-up">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">
+                                {editingId ? 'Edit Entry' : 'Log Task'}
+                            </h3>
+                            <button onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-6 h-6" /></button>
+                        </div>
+                        
+                        <form onSubmit={handleSave} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task Name</label>
+                                <input 
+                                    type="text" 
+                                    required 
+                                    value={taskName} 
+                                    onChange={e => setTaskName(e.target.value)}
+                                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                                    placeholder="e.g. Pathology Chapter 2"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Time</label>
+                                    <input 
+                                        type="time" 
+                                        required 
+                                        value={time} 
+                                        onChange={e => setTime(e.target.value)}
+                                        className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Progress (%)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0" max="100"
+                                        required 
+                                        value={progress} 
+                                        onChange={e => setProgress(parseInt(e.target.value) || 0)}
+                                        className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
+                                <input 
+                                    type="checkbox" 
+                                    checked={revision} 
+                                    onChange={e => setRevision(e.target.checked)}
+                                    className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Requires Revision?</span>
+                            </label>
+
+                            <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all btn-3d">
+                                {editingId ? 'Update Entry' : 'Save Entry'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-3 bg-indigo-100 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl backdrop-blur-sm">
+                        <TableCellsIcon className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Study Tracker</h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Detailed task logging by date and time.</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={handleOpenAdd}
+                    className="btn-3d flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 dark:shadow-none"
+                >
+                    <PlusIcon className="w-5 h-5" /> Add Log Entry
+                </button>
+            </div>
+
+            {/* Date Swiper */}
+            <div className="flex justify-between items-center bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl p-2 rounded-2xl border border-white/40 dark:border-slate-700/50 shadow-sm card-3d">
+                <button onClick={() => handleDateChange(-1)} className="p-2 rounded-xl hover:bg-white/80 dark:hover:bg-slate-700/80 shadow-sm transition-all active:scale-90"><ChevronLeftIcon className="w-6 h-6 text-slate-500" /></button>
+                <div className="relative cursor-pointer px-6 py-1 flex flex-col items-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Logs for</span>
+                    <h2 className="text-lg font-black text-slate-800 dark:text-white text-center">
+                        {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                    </h2>
+                    <input 
+                        type="date" 
+                        value={selectedDate} 
+                        onChange={e => setSelectedDate(e.target.value)}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                </div>
+                <button onClick={() => handleDateChange(1)} className="p-2 rounded-xl hover:bg-white/80 dark:hover:bg-slate-700/80 shadow-sm transition-all active:scale-90"><ChevronRightIcon className="w-6 h-6 text-slate-500" /></button>
+            </div>
+
+            {/* Table View */}
+            <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-3xl border border-white/30 dark:border-slate-800 overflow-hidden shadow-glass card-3d">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[600px]">
+                        <thead>
+                            <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800">
+                                <th className="p-5">Time</th>
+                                <th className="p-5">Task Name</th>
+                                <th className="p-5">Progress</th>
+                                <th className="p-5 text-center">Revision</th>
+                                <th className="p-5 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {isLoading ? (
+                                <tr><td colSpan={5} className="p-20 text-center text-slate-400 animate-pulse font-bold">Accessing logs...</td></tr>
+                            ) : entries.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="p-20 text-center">
+                                        <div className="flex flex-col items-center opacity-40">
+                                            <TableCellsIcon className="w-12 h-12 mb-2" />
+                                            <p className="text-slate-400 italic">No entries for this date.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : entries.map(entry => (
+                                <tr key={entry.id} className="hover:bg-white/50 dark:hover:bg-slate-800/30 transition-colors group">
+                                    <td className="p-5 font-mono text-sm font-bold text-slate-600 dark:text-slate-400">
+                                        <div className="flex items-center gap-2">
+                                            <ClockIcon className="w-4 h-4 opacity-30" />
+                                            {entry.time}
+                                        </div>
+                                    </td>
+                                    <td className="p-5">
+                                        <span className="font-bold text-slate-800 dark:text-white text-base leading-tight">{entry.taskName}</span>
+                                    </td>
+                                    <td className="p-5 min-w-[180px]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-200/50 dark:border-slate-700/50">
+                                                <div 
+                                                    className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-full transition-all duration-1000 shadow-sm"
+                                                    style={{ width: `${entry.progress}%` }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-xs font-black text-slate-500 w-10">{entry.progress}%</span>
+                                        </div>
+                                    </td>
+                                    <td className="p-5 text-center">
+                                        {entry.revision ? (
+                                            <span className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border border-amber-200/50 dark:border-amber-800/50 animate-pulse">
+                                                <ArrowPathIcon className="w-3.5 h-3.5" /> YES
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">NO</span>
+                                        )}
+                                    </td>
+                                    <td className="p-5 text-right">
+                                        <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleEdit(entry)} className="p-2.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm">
+                                                <PencilSquareIcon className="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => setItemToDelete(entry.id)} className="p-2.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-red-500 hover:border-red-200 transition-all shadow-sm">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
